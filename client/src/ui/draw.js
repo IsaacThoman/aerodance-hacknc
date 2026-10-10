@@ -492,3 +492,20 @@ export function drawQR(g, modules, box, view, { dark = '#0b3d6b' } = {}) {
   }
   g.restore();
 }
+
+// Splits text into lines no wider than maxW in the current font.
+export function wrapText(g, text, maxW) {
+  const lines = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && g.measureText(next).width > maxW) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}

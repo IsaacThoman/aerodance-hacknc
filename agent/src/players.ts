@@ -1,6 +1,6 @@
 // Wallets, iMessage linking, and the notifier used to text players.
 import { Keypair } from "@solana/web3.js";
-import { getProfile, pool, updateProfile, type Profile } from "./db.ts";
+import { getProfile, notifyChange, pool, updateProfile, type Profile } from "./db.ts";
 import { handle } from "./jobs.ts";
 import { fundFromTreasury, getBalanceSol } from "./solana.ts";
 import { photonEnabled, registerPhotonUser } from "./photon.ts";
@@ -64,6 +64,7 @@ export async function fundWallet(profileId: string): Promise<void> {
       log("funded", wallet.address, sig);
     }
     await pool.query("UPDATE wallets SET funded_sig = $2 WHERE profile_id = $1", [profileId, sig]);
+    await notifyChange({ profile: profileId }); // the phone view shows the new balance
   } finally {
     funding.delete(profileId);
   }

@@ -98,7 +98,8 @@ io.on('connection', (socket) => {
   });
   socket.on('battle:unwatch', (id) => { if (typeof id === 'string') socket.leave(battleRoom(id)); });
 
-  socket.on('me:watch', async (deviceToken) => {
+  // Acks once joined, so the phone can refetch anything that changed before then.
+  socket.on('me:watch', async (deviceToken, ack) => {
     if (typeof deviceToken !== 'string') return;
     for (const room of socket.rooms) if (room.startsWith('profile:')) socket.leave(room);
     try {
@@ -107,6 +108,7 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('failed to watch profile:', err.message);
     }
+    if (typeof ack === 'function') ack();
   });
 
   socket.on('spin', async () => {

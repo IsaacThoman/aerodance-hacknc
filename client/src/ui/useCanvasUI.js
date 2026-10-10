@@ -144,6 +144,8 @@ export default function useCanvasUI(options) {
     const onUp = (e) => {
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
       down = null;
+      // A lifted finger isn't hovering anything.
+      if (e.pointerType === 'touch') setTimeout(() => { s.pointer = null; }, 0);
       if (s.drag) { s.drag = null; return; }
       const id = s.pressed;
       s.pressed = null;
@@ -240,6 +242,12 @@ export default function useCanvasUI(options) {
       const sy = overlay.canvas.height / s.h;
       g.setTransform(1, 0, 0, 1, 0, 0);
       g.clearRect(0, 0, overlay.canvas.width, overlay.canvas.height);
+      // The context outlives each draw: start every redraw from the same state.
+      Object.assign(g, {
+        globalAlpha: 1, textAlign: 'start', textBaseline: 'alphabetic', shadowColor: 'transparent',
+        shadowBlur: 0, shadowOffsetY: 0, lineWidth: 1, lineCap: 'butt', lineJoin: 'miter',
+      });
+      if ('letterSpacing' in g) g.letterSpacing = '0px';
       g.setTransform(sx, 0, 0, sy, 0, -s.scroll * sy);
       o.draw(g, s);
       overlay.texture.needsUpdate = true;
