@@ -4,7 +4,8 @@ services:
     expose:
       - "3000"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-aerodance}
+      # Coolify renames services for PR previews (for example, db-pr-3).
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@${SERVICE_NAME_DB:-db}:5432/${POSTGRES_DB:-aerodance}
     depends_on:
       db:
         condition: service_healthy
