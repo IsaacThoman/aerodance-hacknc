@@ -52,7 +52,7 @@ adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 adb shell am start -n tech.aerodance.androidclient/.MainActivity
 ```
 
-Enter the exact website origin (for example `https://game.example.com`, without a trailing slash) and press **Start**. Use the LAN address shown by the app:
+On first use, enter the exact website origin (for example `https://game.example.com`, without a trailing slash) and press **Start**. The origin is saved; subsequent launches and returns to the foreground start streaming automatically. **Stop** keeps streaming paused while the app remains in the foreground. Use the LAN address shown by the app:
 
 ```bash
 curl http://192.168.43.1:1337/v1/status
@@ -62,7 +62,7 @@ python3 scripts/check-stream.py 192.168.43.1 --origin https://game.example.com
 
 The check script exercises CORS, preflight, incremental JSON, empty poses, the one-client limit, reconnect, and slow-reader cancellation. Run it with no browser already connected. After Stop, add `--expect-stopped` to verify the listener closes.
 
-Synthetic poses move at approximately 30 Hz and clear for one second every ten seconds. The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. Leaving the activity stops the server; returning requires pressing Start.
+Synthetic poses move at approximately 30 Hz and clear for one second every ten seconds. The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. Leaving the activity stops the server; returning starts a new session automatically using the saved origin.
 
 The board-specific font fallback loads the installed `Roboto-Regular.ttf` directly because this firmware references missing system fonts. Other images fall back to the normal font family if that file is unavailable. No firmware files are modified.
 

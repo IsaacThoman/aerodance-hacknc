@@ -86,7 +86,7 @@ Sequence gaps are normal. Pose state needs no acknowledgment or replay. Game eve
 
 A `PipelineController` owns the camera, estimator, server, workers, and shutdown. Start once, stop idempotently, and handle camera contention, model errors, Wi-Fi changes, and disconnects without leaks.
 
-Initially run while the activity is active; stop on leaving that lifecycle and restart cleanly on return. A service and boot launch are a later milestone: verify this image's launcher/permissions, using an appropriate foreground service if continuous capture is required. Capture lifetime is independent of browser connections.
+Initially run while the activity is active; stop on leaving that lifecycle and restart automatically on launch/return using the saved origin after initial setup. Manual Stop pauses streaming until Start or the next foreground entry. A service and boot launch are a later milestone: verify this image's launcher/permissions, using an appropriate foreground service if continuous capture is required. Capture lifetime is independent of browser connections.
 
 Show Start/Stop, LAN address/port, errors, browser connection, capture/result rates, and timing summaries. Preview/skeleton rendering are optional diagnostics that can be disabled. Game credentials stay in the browser/backend.
 

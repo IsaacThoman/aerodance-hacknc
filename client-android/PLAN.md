@@ -86,7 +86,7 @@ Website implementation belongs in the web-client repository. This repo defines i
 
 ## Progress — 2026-10-10
 
-The synthetic streaming slice is installed and tested on the board. Port is **1337**. See [device validation](docs/hardware/synthetic-stream-validation.md) for measured delivery and remaining acceptance checks. The app requires the exact game origin before Start and stops when the activity leaves the foreground. Camera/MediaPipe work and the deployed HTTPS browser test remain open.
+The synthetic streaming slice is installed and tested on the board. Port is **1337**. See [device validation](docs/hardware/synthetic-stream-validation.md) for measured delivery and remaining acceptance checks. Initial setup requires the exact game origin and Start; later launches and foreground returns start automatically with the saved origin. Streaming stops when the activity leaves the foreground. Camera/MediaPipe work and the deployed HTTPS browser test remain open.
 
 MediaPipe `0.10.21` and Lite float16 version 1 now pass native loading and
 known-image CPU inference on the API 27 `armeabi-v7a` board: one pose, 33 finite

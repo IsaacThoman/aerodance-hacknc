@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         active = true
         main.post(poll)
+        start()
     }
 
     private fun start() {
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
         if (!valid) { error = "Enter an origin such as https://game.example.com (no path or trailing slash)."; return }
         if (android.os.Build.VERSION.SDK_INT >= 37 && checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf("android.permission.ACCESS_LOCAL_NETWORK"), 1337)
-            error = "Allow local network access, then press Start."
+            error = "Allow local network access to start streaming."
             return
         }
         getPreferences(MODE_PRIVATE).edit().putString("origin", approvedOrigin).apply()
@@ -98,6 +99,14 @@ class MainActivity : ComponentActivity() {
                 if (failure != null) { error = "Cannot start server: ${failure.message}" }
                 else { server = candidate; running = true }
             }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1337) {
+            if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) start()
+            else error = "Local network access denied. Allow it in Settings, then press Start."
         }
     }
 

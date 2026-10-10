@@ -42,6 +42,14 @@ The server uses a fixed four-worker pool and no request queue. Latest pose stora
 
 ## Remaining acceptance checks
 
+Automatic startup rechecked on 2026-10-10 after installing the updated debug APK:
+launch started streaming with the saved `https://game.example.com` origin without
+pressing Start. The full stream checker passed (329 poses, 29.7 Hz mean, 32.7 ms
+median interval, 0.42-second slow-reader recovery). Home closed the listener;
+bringing the activity back to the foreground automatically started a different
+session. First-use setup and the API 37 permission callback were not exercised
+by this API 27 board check.
+
 - Deployed HTTPS game in Chrome: permissions, CSP, mixed-content policy, parsing/rendering, and stale clearing. The web-client repository/site configuration is not supplied here.
 - Idle heartbeat delivery with production stopped; continuous synthetic generation does not exercise the five-second idle path on the board.
 - Camera capture, content/orientation/strides, native MediaPipe loading and model licensing/checksum.

@@ -53,6 +53,7 @@ fun App(
                 label = { Text("Allowed game origin") }, placeholder = { Text("https://your-game.example") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             Text("Enter the exact game origin, including scheme and port. No trailing path.")
+            Text("After initial setup, streaming starts automatically when this app opens. Stop pauses it until Start or the next app opening.")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onStart, enabled = !running && !busy) { Text("Start") }
                 OutlinedButton(onClick = onStop, enabled = running && !busy) { Text("Stop") }
