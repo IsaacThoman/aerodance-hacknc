@@ -1,7 +1,7 @@
 // Battle lifecycle: seats, spectators, hype, results and on-chain receipts.
 import { battles, playerToken, profiles, shortId, type Battle, type Profile, type Result } from "./store.ts";
 import { buildMemo, explorerTx, memoStatus, sendHype, sendMemo } from "./solana.ts";
-import { getProfile, notify, walletOf } from "./players.ts";
+import { fundPendingWallets, getProfile, notify, walletOf } from "./players.ts";
 
 export const BATTLE_BASE_URL = (process.env.BATTLE_BASE_URL || "http://localhost:5173").replace(/\/$/, "");
 const RESULT_GRACE_MS = 90_000;
@@ -247,7 +247,7 @@ async function markConfirmed(battle: Battle): Promise<true> {
 }
 
 // ---------- background sweeper ----------
-// Finalizes battles whose grace window passed and retries pending receipts.
+// Finalizes battles whose grace window passed, retries pending receipts and unfunded wallets.
 
 let lastReceiptSweep = 0;
 let sweeping = false;
@@ -266,6 +266,7 @@ async function sweep(): Promise<void> {
     }
     if (now - lastReceiptSweep < RECEIPT_RETRY_MS) return;
     lastReceiptSweep = now;
+    await fundPendingWallets();
     for (const b of Object.values(battles.data)) {
       if (b.status !== "finished" || !b.receipt || (b.receipt.status === "confirmed" && b.receipt.notified)) continue;
       if (b.receipt.status === "pending" && !(await tryReceipt(b, 15_000))) continue;

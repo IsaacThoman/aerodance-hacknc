@@ -190,6 +190,13 @@ export function ensureWallet(key: string): Wallet {
 
 const funding = new Set<string>();
 
+// Retry wallets that missed their starting SOL (e.g. created while the treasury was empty).
+export async function fundPendingWallets(): Promise<void> {
+  for (const key of Object.keys(wallets.data)) {
+    if (!wallets.data[key]!.fundedSig) await fundWallet(key);
+  }
+}
+
 export async function fundWallet(key: string): Promise<void> {
   const wallet = wallets.data[key];
   if (!wallet || wallet.fundedSig || funding.has(key)) return;
