@@ -92,6 +92,7 @@
   .toast a { color: #8fe3ff; }
   .pop { position: fixed; pointer-events: none; font-size: 26px; z-index: 9; animation: popup 1s ease-out forwards; }
   @keyframes popup { to { transform: translateY(-120px) scale(1.4); opacity: 0; } }
+  a.btn { text-align: center; text-decoration: none; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -136,6 +137,10 @@
       <button class="link" id="edit" type="button">Edit</button>
     </div>
     <div style="margin:6px 0 14px"><span class="chip" id="imsg"></span></div>
+    <div class="hidden" id="optin" style="margin:-4px 0 14px">
+      <a class="btn green" id="optinBtn">💬 Text the bot to finish linking</a>
+      <div class="hint" id="optinHint">One tap opens Messages with a hi ready to send. Once it's sent, the bot can text you results, hype and rewards.</div>
+    </div>
     <div class="stats">
       <div><b id="sBattles">0</b><span>battles</span></div>
       <div><b id="sWins">0</b><span>wins</span></div>
@@ -215,7 +220,19 @@
     $("meName").textContent = me.name;
     const chip = $("imsg");
     chip.className = "chip" + (me.imessage === "registered" ? " ok" : me.imessage === "failed" ? " bad" : "");
-    chip.textContent = { registered: "💬 iMessage linked", pending: "💬 linking iMessage…", failed: "💬 couldn't link iMessage", none: "No phone linked" }[me.imessage];
+    chip.textContent = { registered: "💬 iMessage linked", pending: "💬 linking iMessage…", optin: "💬 one step left", failed: "💬 couldn't link iMessage", none: "No phone linked" }[me.imessage];
+    show("optin", me.imessage === "optin");
+    if (me.imessage === "optin") {
+      // iOS wants "sms:<number>&body=…"; the bot's number is the line Photon assigned to this player.
+      show("optinBtn", !!me.line);
+      if (me.line) $("optinBtn").href = `sms:${me.line}&body=${encodeURIComponent("hi aerodance 🫧")}`;
+      $("optinHint").textContent = me.line
+        ? "One tap opens Messages with a hi ready to send. Once it's sent, the bot can text you results, hype and rewards."
+        : "Finding your bot's number…";
+    }
+    // Keep checking until the link settles (their first text flips "optin" to "registered").
+    clearTimeout(renderMe.timer);
+    if (me.imessage === "optin" || me.imessage === "pending") renderMe.timer = setTimeout(() => { if (!document.hidden) refreshMe(); else renderMe(); }, 3000);
     const s = me.stats;
     $("sBattles").textContent = s.battles; $("sWins").textContent = s.wins; $("sBest").textContent = s.bestScore;
     $("sPops").textContent = s.pops; $("sHype").textContent = s.hypeCount;
@@ -236,7 +253,6 @@
       device = res.deviceToken; store.set("aero.device", device); me = res.me;
       show("formCard", false); renderMe();
       if (battleId && role == null) await joinBattle();
-      if (me.imessage === "pending") setTimeout(refreshMe, 4000);
     } catch (err) {
       toast("🐠 " + esc(err.message));
     } finally { btn.disabled = false; }

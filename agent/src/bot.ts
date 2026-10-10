@@ -1,13 +1,30 @@
 // iMessage bot: texting in creates your profile; your number is your wallet.
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Spectrum, type Message, type Space } from "spectrum-ts";
-import { background, effect, imessage, nativeContactCard } from "spectrum-ts/providers/imessage";
+import { Spectrum, contact, type Message, type Space } from "spectrum-ts";
+import { background, effect, imessage } from "spectrum-ts/providers/imessage";
 import { battles, markSeen, profiles, type Profile } from "./store.ts";
 import { explorerAddress, getBalanceSol } from "./solana.ts";
 import { battleUrl, createBattle } from "./battles.ts";
+import { photonLine } from "./photon.ts";
 import { cleanName, fundWallet, mask, normalizePhone, profileByPhone, profileForPhone, walletOf } from "./players.ts";
 
-const CHAT_BACKGROUND = join(import.meta.dirname, "..", "assets", "chat-background.jpg");
+const ASSETS = join(import.meta.dirname, "..", "assets");
+const CHAT_BACKGROUND = join(ASSETS, "chat-background.jpg");
+const CONTACT_PHOTO = join(ASSETS, "contact-photo.png");
+
+// Text a player typed, unwrapped from replies, effects and markdown. undefined for anything else.
+type AnyContent = { type: string; text?: string; markdown?: string; content?: AnyContent };
+function textOf(content: AnyContent | undefined): string | undefined {
+  if (!content) return undefined;
+  if (content.type === "text") return content.text;
+  if (content.type === "markdown") return content.markdown;
+  if (content.type === "reply" || content.type === "effect") return textOf(content.content);
+  return undefined;
+}
+// Real things a person sent that we can't read yet. Everything else (read receipts, typing,
+// tapbacks, edits, unsends, chat updates) is a background event and gets no reply.
+const UNREADABLE = new Set(["attachment", "voice", "poll", "richlink", "app"]);
 
 const HELP = [
   "🫧 aerodance bot 🐠",
@@ -42,21 +59,34 @@ export async function startBot() {
     await decorate(space, profileByPhone(handle));
   }
 
-  // Once per player: the aero chat wallpaper plus the bot's name and photo. Best effort.
+  // Once per player: the aero chat wallpaper, then an "aerodance" contact card for the
+  // number that texts them (shared-pool lines can't carry our own name/photo). Best effort.
   async function decorate(space: Space, profile: Profile | undefined): Promise<void> {
-    if (!profile?.phone || profile.decorated) return;
-    profile.decorated = true;
-    await profiles.save();
-    const extras = [
-      ["background", () => background(CHAT_BACKGROUND)],
-      ["contact card", () => nativeContactCard()],
-    ] as const;
-    for (const [what, build] of extras) {
+    if (!profile?.phone || (profile.decorated && profile.contactCard)) return;
+    const phone = profile.phone;
+    const attempt = async (what: string, send: () => Promise<unknown>) => {
       try {
-        await space.send(build());
+        await send();
       } catch (err) {
-        log(`${what} for ${mask(profile.phone)} failed:`, (err as Error).message);
+        log(`${what} for ${mask(phone)} failed:`, (err as Error).message);
       }
+    };
+    if (!profile.decorated) {
+      profile.decorated = true;
+      await profiles.save();
+      await attempt("background", () => space.send(background(CHAT_BACKGROUND)));
+    }
+    if (!profile.contactCard) {
+      profile.contactCard = true;
+      await profiles.save();
+      await attempt("contact card", async () => {
+        profile.line ??= await photonLine(phone);
+        if (!profile.line) throw new Error("no assigned line found");
+        await profiles.save();
+        const photo = { mimeType: "image/png", read: () => readFile(CONTACT_PHOTO) };
+        await space.send(contact({ name: { first: "aerodance", last: "🫧" }, phones: [{ value: profile.line, type: "mobile" }], photo }));
+        await space.send("👆 Tap that card and Save so I show up as aerodance 🫧");
+      });
     }
   }
 
@@ -77,13 +107,14 @@ export async function startBot() {
     if (!sender) return;
     spaces.set(sender, space);
 
-    const { profile, isNew } = profileForPhone(sender);
-    if (message.content.type !== "text") {
-      await space.send("🫧 I only speak text for now. Try 'battle' or 'help' 🐠");
+    const text = textOf(message.content as AnyContent);
+    if (text === undefined) {
+      if (UNREADABLE.has(message.content.type)) await space.send("🫧 I only speak text for now. Try 'battle' or 'help' 🐠");
       return;
     }
+    const { profile, isNew, justOptedIn } = profileForPhone(sender);
 
-    const [first = "", ...rest] = message.content.text.trim().split(/\s+/);
+    const [first = "", ...rest] = text.trim().split(/\s+/);
     const cmd = first.toLowerCase();
     const known = ["battle", "challenge", "wallet", "stats", "name", "help"].includes(cmd);
     log(`${mask(sender)} → ${known ? cmd : "(chat)"}`);
@@ -95,6 +126,11 @@ export async function startBot() {
       await decorate(space, profile);
       // First text ever: take them straight to a dance battle.
       if (!known) return sendBattle(space, profile);
+    }
+    if (justOptedIn) {
+      await space.send(`🫧 You're linked, ${profile.name}! 🐠\nI'll text you battle results, hype and rewards here. Text 'help' anytime.`);
+      await decorate(space, profile);
+      if (!known) return;
     }
     await decorate(space, profile); // players from before backgrounds existed
 

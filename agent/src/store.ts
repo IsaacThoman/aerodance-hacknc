@@ -55,7 +55,10 @@ export type Profile = {
   name: string;
   phone?: string; // E.164; only ever shown back to its owner
   photon?: "registered" | "failed"; // Photon allowlist registration
-  decorated?: boolean; // got the chat background + contact card
+  decorated?: boolean; // got the chat background
+  contactCard?: boolean; // got the "aerodance" contact card
+  line?: string; // the Photon number assigned to text this player
+  optedIn?: boolean; // has texted the bot; Photon only delivers to players who have
   walletKey: string; // key into wallets.json
   deviceTokens: string[]; // browsers signed in as this profile
   createdAt: string;

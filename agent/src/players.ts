@@ -67,13 +67,23 @@ function newProfile(fields: { name?: string; phone?: string }): Profile {
 }
 
 // The bot side: whoever texts us gets a profile keyed by their number.
-export function profileForPhone(phone: string): { profile: Profile; isNew: boolean } {
+// justOptedIn: they linked on the join page and this is their first text, which opts them in.
+export function profileForPhone(phone: string): { profile: Profile; isNew: boolean; justOptedIn: boolean } {
   const existing = profileByPhone(phone);
-  if (existing) return { profile: existing, isNew: false };
+  if (existing) {
+    const justOptedIn = !existing.optedIn;
+    if (justOptedIn) {
+      existing.optedIn = true;
+      existing.photon = "registered";
+      void profiles.save();
+    }
+    return { profile: existing, isNew: false, justOptedIn };
+  }
   const profile = newProfile({ phone });
   profile.photon = "registered"; // they reached us, so the line can reach them
+  profile.optedIn = true;
   void profiles.save();
-  return { profile, isNew: true };
+  return { profile, isNew: true, justOptedIn: false };
 }
 
 // The join page: create or update the profile behind a device token.
@@ -95,6 +105,8 @@ export function upsertProfile(
     } else if (profile) {
       profile.phone = fields.phone;
       delete profile.photon;
+      delete profile.line;
+      delete profile.optedIn;
       phoneLinked = true;
     } else {
       profile = newProfile({ phone: fields.phone });
@@ -106,16 +118,21 @@ export function upsertProfile(
   if (!profile.deviceTokens.includes(token)) profile.deviceTokens.push(token);
   void profiles.save();
   if (phoneLinked || (profile.phone && profile.photon !== "registered")) void linkPhone(profile);
+  else backfillLine(profile);
   return { profile, deviceToken: token, phoneLinked };
 }
 
-// Put the number on Photon's allowlist, then say hi over iMessage.
+// Put the number on Photon's allowlist. Photon only delivers once the player has texted
+// their assigned line, so until then the join page shows a "text the bot" button.
 async function linkPhone(profile: Profile): Promise<void> {
   if (!profile.phone) return;
   try {
-    if (photonEnabled()) await registerPhotonUser(profile.phone, profile.name);
+    const user = photonEnabled() ? await registerPhotonUser(profile.phone, profile.name) : undefined;
     profile.photon = "registered";
+    if (user?.line) profile.line = user.line;
+    if (user?.optedIn) profile.optedIn = true;
     await profiles.save();
+    if (!profile.optedIn) return; // the bot welcomes them when their first text arrives
     await notify(profile, `🫧 Hey ${profile.name}! You're linked to aerodance 🐠\nI'll text you battle results, hype and rewards here. Text 'help' anytime.`);
   } catch (err) {
     profile.photon = "failed";
@@ -124,8 +141,17 @@ async function linkPhone(profile: Profile): Promise<void> {
   }
 }
 
+// Players linked before we stored lines: look theirs up once so the page can show the button.
+const backfilling = new Set<string>();
+function backfillLine(profile: Profile): void {
+  if (!profile.phone || profile.optedIn || profile.line || !photonEnabled() || backfilling.has(profile.id)) return;
+  backfilling.add(profile.id);
+  void linkPhone(profile).finally(() => backfilling.delete(profile.id));
+}
+
 // What the owner sees about themselves.
 export async function selfView(profile: Profile) {
+  backfillLine(profile);
   const wallet = wallets.data[profile.walletKey];
   let balance: number | null = null;
   try {
@@ -135,7 +161,9 @@ export async function selfView(profile: Profile) {
     id: profile.id,
     name: profile.name,
     phone: profile.phone ?? null,
-    imessage: profile.phone ? (profile.photon ?? "pending") : "none",
+    // "optin": on the allowlist, waiting for their first text to `line`.
+    imessage: !profile.phone ? "none" : profile.photon === "registered" && !profile.optedIn ? "optin" : (profile.photon ?? "pending"),
+    line: profile.optedIn ? null : profile.line ?? null,
     stats: profile.stats,
     wallet: wallet ? { address: wallet.address, balance, explorer: explorerAddress(wallet.address) } : null,
   };
