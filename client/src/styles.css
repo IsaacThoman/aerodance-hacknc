@@ -8,6 +8,20 @@ body,
   font-family: system-ui, sans-serif;
 }
 
+#root {
+  display: grid;
+  place-items: center;
+}
+
+.canvas-frame {
+  width: min(100vw, calc(100dvh * 16 / 9));
+  aspect-ratio: 16 / 9;
+}
+
+.canvas-frame canvas {
+  image-rendering: pixelated;
+}
+
 .hud {
   position: fixed;
   top: 16px;
