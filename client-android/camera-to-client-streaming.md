@@ -1,15 +1,13 @@
-# Camera-to-client streaming plan
+# Camera-to-client streaming specification
 
-> Current planning update (2026-10-10): the user accepts the GPU/libyuv performance
-> baseline; extended performance benchmarks are deferred. Game-selected one/two-player
-> capture with fixed-side player IDs is implemented. See
-> [the feature plan](PLAN.md#next-feature-game-selected-one--or-two-player-capture).
-> Protocol version 2 is implemented below; real two-person board acceptance
-> remains an explicit validation step.
+> Protocol version 2 and game-selected one/two-player capture are implemented.
+> See [implementation and validation](docs/two-player-capture.md) for board
+> observations and remaining manual checks. Extended performance benchmarks
+> and deployed HTTPS validation are deferred.
 
-This is the connection and protocol specification for the Open-Q 624A Android Things pose app. See [PLAN.md](PLAN.md) for implementation order, [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries, and [the hardware inspection](docs/hardware/open-q-624a.md) for device constraints. The endpoints below deliver live camera Lite GPU results on port 1337. A [local HTTP test page](pose-test-site/README.md) is implemented in this repo at the user’s request. Deployed HTTPS browser validation is deferred.
+This is the connection and protocol specification for the Open-Q 624A Android Things pose app. See [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries and [the hardware inspection](docs/hardware/open-q-624a.md) for device constraints. The endpoints below deliver live camera Lite GPU results on port 1337. A [local HTTP test page](pose-test-site/README.md) is implemented in this repo at the user’s request. Deployed HTTPS browser validation is deferred.
 
-## Proposed design
+## Design
 
 Use an **HTTP streaming server inside the Android app**. The HTTPS game page opens a connection over the LAN and uses pose results locally as soon as they arrive. Backend forwarding uses the game's existing connection independently of local processing.
 
@@ -356,19 +354,7 @@ Display:
 
 The IP can change when Wi-Fi changes, so update the display and restart/rebind the server as needed.
 
-## 4. Implementation order
-
-1. Validate camera capture and 32-bit MediaPipe loading on the board.
-2. **Android:** implement `/v1/status` and flushed synthetic poses.
-3. **Website:** connect from the actual HTTPS game, verify permissions/policies, and display synthetic poses without backend forwarding.
-4. Connect Camera2 → MediaPipe → latest pose → stream writer.
-5. Measure freshness/throughput; tune conversion, delegate, resolution, and buffering.
-6. Add backend forwarding, reconnection, bounded buffering, and lifecycle handling.
-7. Verify appliance deployment and document tested browser versions; evaluate Firefox separately.
-
-**Do the deployed-site test early.** Hardware and browser feasibility checks can proceed independently. The user authorized local HTTP browser integration first, deferring the deployed HTTPS gate. [PLAN.md](PLAN.md) provides the detailed milestone checklist.
-
-## 5. Acceptance tests
+## 4. Acceptance tests
 
 - Android has LAN connectivity but no WAN access.
 - First connection prompts for local-network permission.
@@ -387,7 +373,7 @@ The IP can change when Wi-Fi changes, so update the display and restart/rebind t
 - Rotated input and anatomical left/right match the actual camera view.
 - Extended sustained-performance checks are deferred by user acceptance. Use a short real-board two-person and live-switch check for this feature; performance goals remain provisional until measured.
 
-## 6. Minimal security boundary
+## 5. Minimal security boundary
 
 Plain HTTP is consistent with the requirements. Still, restrict access to the intended website origin and expose only the necessary endpoints. CORS is **not authentication** against other LAN applications; add a simple pairing token later if needed.
 

@@ -4,7 +4,7 @@
 
 Build a small Android Things app for the Open-Q 624A Development Kit: camera input, local MediaPipe pose estimation, and fresh landmarks delivered directly to a computer browser over the LAN.
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md), [PLAN.md](PLAN.md), and [camera-to-client-streaming.md](camera-to-client-streaming.md) before changing the pipeline. The streaming document owns the protocol, the architecture owns component boundaries, and the plan tracks implementation milestones.
+Read [ARCHITECTURE.md](ARCHITECTURE.md) and [camera-to-client-streaming.md](camera-to-client-streaming.md) before changing the pipeline. The streaming document owns the protocol, and the architecture owns component boundaries. Implementation and validation notes for player modes live in [docs/two-player-capture.md](docs/two-player-capture.md).
 
 ## Hardware baseline
 

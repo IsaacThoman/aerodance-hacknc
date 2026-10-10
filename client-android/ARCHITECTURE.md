@@ -1,11 +1,9 @@
 # Architecture
 
-> Current planning update (2026-10-10): the user accepts the GPU/libyuv performance
-> baseline; extended performance benchmarks are deferred. Game-selected one/two-player
-> capture with fixed-side player IDs is implemented. See
-> [the feature plan](PLAN.md#next-feature-game-selected-one--or-two-player-capture).
-> The implemented protocol is version 2, with game-selected one/two-player
-> output and one persistent two-pose GPU task.
+> Protocol version 2 supports game-selected one/two-player output with fixed-side
+> player IDs and one persistent two-pose GPU task. See
+> [implementation and validation](docs/two-player-capture.md). The GPU/libyuv
+> performance baseline is accepted; extended benchmarks are deferred.
 
 ## Goal and current state
 
@@ -28,32 +26,28 @@ flowchart LR
     B --> W[Existing backend connection]
 ```
 
-The browser initiates `GET /v1/stream`; Android pushes through that response. Keep the [streaming plan's](camera-to-client-streaming.md) HTTP port `1337`, NDJSON, and one streaming client initially. No per-frame requests or WAN relay sit between inference and the browser.
+The browser initiates `GET /v1/stream`; Android pushes through that response. Keep the [streaming specification's](camera-to-client-streaming.md) HTTP port `1337`, NDJSON, and one streaming client initially. No per-frame requests or WAN relay sit between inference and the browser.
 
 HTTP over TCP is the initial practical low-latency design, not a guarantee of the lowest possible latency under packet loss. Measure it before considering another transport.
 
-## Planned source structure
-
-Create these packages/assets as their milestones are implemented. Names describe responsibilities, not mandatory class counts.
+## Source structure
 
 ```text
 androidApp/src/main/
   AndroidManifest.xml
-  assets/pose_landmarker_lite.task        # add after model/license verification
+  assets/pose_landmarker_lite.task        # bundled offline model
   kotlin/tech/aerodance/androidclient/
     MainActivity.kt                      # existing entry point
     camera/                              # CameraSource, Camera2, conversion
-    pose/                                # MediaPipePoseEstimator, mapping
+    pose/                                # LivePoseEstimator, result mapping
     pipeline/                            # lifecycle, frame admission
     streaming/                           # HTTP routes, CORS, stream writer
-    diagnostics/                         # counters and timing summaries
 shared/src/commonMain/kotlin/tech/aerodance/androidclient/
-  App.kt                                 # existing UI; replace template later
-  protocol/                              # status, pose, heartbeat, validation
-  config/                                # camera/model/server settings
-  ui/                                    # status and optional preview controls
+  App.kt                                 # status and Start/Stop UI
+  protocol/                              # wire models, player assignment, config
+  pipeline/                              # latest-frame mailbox, task timestamps
 shared/src/commonTest/                    # protocol and bounded-state tests
-shared/src/androidHostTest/               # existing Android host tests
+androidApp/src/debug/                     # hardware diagnostic activities
 scripts/release-camera.sh                 # ADB camera-owner utility
 docs/hardware/open-q-624a.md               # observed deployment baseline
 ```
@@ -62,7 +56,7 @@ docs/hardware/open-q-624a.md               # observed deployment baseline
 
 ## Camera and inference
 
-Start with **Camera2** for this fixed board. Its HAL exposes Camera2 with vendor-specific behavior, so direct capture gives a clear baseline without adding CameraX dependencies. Keep a narrow `CameraSource` boundary for substituting CameraX later if it improves reliability.
+Use **Camera2** for this fixed board. Its HAL exposes Camera2 with vendor-specific behavior, so direct capture gives a clear baseline without adding CameraX dependencies. Keep a narrow `CameraSource` boundary for substituting CameraX later if it improves reliability.
 
 Use `ImageReader` with `YUV_420_888`, initially 640×480 and the advertised `[30, 30]` FPS range. Start with ordinary automatic controls. Sensor metadata reports 90 degrees, but the user confirmed that this camera mounting should be processed **without rotation**. The live pipeline uses unmirrored 640×480 input. Anatomical left/right still needs visual validation.
 
@@ -107,7 +101,7 @@ Initially run while the activity is active; stop on leaving that lifecycle and r
 
 Show Start/Stop, LAN address/port, errors, browser connection, capture/result rates, and timing summaries. Preview/skeleton rendering are optional diagnostics that can be disabled. Game credentials stay in the browser/backend.
 
-Declare `CAMERA`, `INTERNET`, and network-state access when implemented. Test camera permission behavior on this Things image. API 27 does not use the newer LAN runtime permission; deployments on Android 17 with target SDK 37 need `ACCESS_LOCAL_NETWORK` handling. See [Android LAN permission guidance](https://developer.android.com/privacy-and-security/local-network-permission).
+The manifest declares `CAMERA`, `INTERNET`, and network-state access. Test camera permission behavior on this Things image. API 27 does not use the newer LAN runtime permission; deployments on Android 17 with target SDK 37 need `ACCESS_LOCAL_NETWORK` handling. See [Android LAN permission guidance](https://developer.android.com/privacy-and-security/local-network-permission).
 
 ## Timing and performance
 
@@ -117,4 +111,4 @@ Wire timing is labeled as arrival-based. Measure sensor-to-browser latency using
 
 Provisional goals: sustained 30 pose results/second where inference permits, p95 camera-callback-to-browser receipt <100 ms, and p95 inference-completion-to-write-completion <10 ms on a healthy LAN. These are unmeasured targets. Bounded age takes priority over an FPS number.
 
-Report p50/p95/p99, achieved rates, replaced frames/results, payload size, memory, and thermal behavior over 30 minutes. Heartbeats and pose freshness are separate metrics. See [PLAN.md](PLAN.md) for acceptance criteria.
+Extended stage profiling and 30-minute memory/thermal benchmarks are deferred. Short board measurements and their limits are recorded in [native conversion](docs/libyuv-conversion.md) and [player-mode validation](docs/two-player-capture.md). Heartbeats and pose freshness are separate metrics.

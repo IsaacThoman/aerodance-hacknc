@@ -2,12 +2,12 @@
 
 A small Android Things app for the Open-Q 624A: camera input → local MediaPipe pose estimation → fresh landmarks streamed to a computer browser over the LAN.
 
-The app streams live camera poses over LAN HTTP on port **1337**, using MediaPipe Lite GPU and native libyuv conversion with bounded frame replacement. Start/Stop, the exact origin allowlist, connection status, capture/result counters, and processing timings are shown on Android. Short board tests show approximately 30 FPS capture and 2 ms median libyuv conversion; real-person orientation and sustained performance remain open. A [local test website](pose-test-site/README.md) renders the landmarks without a domain or HTTPS.
+The app streams live camera poses over LAN HTTP on port **1337**, using MediaPipe Lite GPU and native libyuv conversion with bounded frame replacement. Protocol version 2 supports game-selected one/two-player output and live mode changes on the existing stream. Start/Stop, the exact origin allowlist, connection status, capture/result counters, and processing timings are shown on Android. Short board tests show approximately 30 FPS capture and 2 ms median libyuv conversion; real-person orientation and sustained performance remain open. A [local test website](pose-test-site/README.md) renders the landmarks without a domain or HTTPS.
 
 ## Project documents
 
-- [PLAN.md](PLAN.md): milestones and acceptance criteria.
-- [ARCHITECTURE.md](ARCHITECTURE.md): components, planned packages, lifecycle, latency.
+- [ARCHITECTURE.md](ARCHITECTURE.md): components, source layout, lifecycle, latency.
+- [One/two-player capture](docs/two-player-capture.md): player assignment, live mode changes, and validation.
 - [camera-to-client-streaming.md](camera-to-client-streaming.md): endpoints, pose schema, browser integration.
 - [AGENTS.md](AGENTS.md): guidance for future changes.
 - [Open-Q 624A inspection](docs/hardware/open-q-624a.md): observed firmware/camera baseline.
