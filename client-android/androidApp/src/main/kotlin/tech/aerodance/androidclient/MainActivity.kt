@@ -41,6 +41,8 @@ class MainActivity : ComponentActivity() {
     private var rateTime = 0L
     private var rateFrames = 0L
     private var rateResults = 0L
+    private var addressRefreshPending = false
+    private var nextAddressRefresh = 0L
     private val poll = object : Runnable {
         override fun run() {
             if (!active) return
@@ -61,13 +63,21 @@ class MainActivity : ComponentActivity() {
                     rateTime = now; rateFrames = frames; rateResults = results
                 }
             }
-            worker.execute {
-                val addresses = runCatching {
-                    NetworkInterface.getNetworkInterfaces().toList().flatMap { it.inetAddresses.toList() }
-                        .filterIsInstance<Inet4Address>().filter { !it.isLoopbackAddress }
-                        .joinToString("\n") { "http://${it.hostAddress}:$PORT" }
-                }.getOrDefault("").ifBlank { "No LAN IPv4 address (port $PORT)" }
-                main.post { address = addresses }
+            val now = SystemClock.elapsedRealtime()
+            if (!addressRefreshPending && now >= nextAddressRefresh) {
+                addressRefreshPending = true
+                nextAddressRefresh = now + 5_000
+                worker.execute {
+                    val addresses = runCatching {
+                        NetworkInterface.getNetworkInterfaces().toList().flatMap { it.inetAddresses.toList() }
+                            .filterIsInstance<Inet4Address>().filter { !it.isLoopbackAddress }
+                            .joinToString("\n") { "http://${it.hostAddress}:$PORT" }
+                    }.getOrDefault("").ifBlank { "No LAN IPv4 address (port $PORT)" }
+                    main.post {
+                        addressRefreshPending = false
+                        if (active) address = addresses
+                    }
+                }
             }
             main.postDelayed(this, 500)
         }

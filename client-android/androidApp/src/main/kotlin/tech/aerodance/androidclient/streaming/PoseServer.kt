@@ -64,14 +64,14 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
             socket.soTimeout = 2000
             // Bound total header time as well as size; do not accept indefinite trickle requests.
             deadline.set(SystemClock.elapsedRealtime() + 2000)
-            val input = socket.getInputStream()
+            val input = socket.getInputStream().buffered(8192)
             val bytes = java.io.ByteArrayOutputStream()
-            var tail = ""
-            while (!tail.endsWith("\r\n\r\n")) {
+            var tail = 0
+            while (tail != 0x0d0a0d0a) {
                 val b = input.read()
                 if (b < 0 || bytes.size() >= 8192) return
                 bytes.write(b)
-                tail = (tail + b.toChar()).takeLast(4)
+                tail = (tail shl 8) or b
             }
             deadline.set(0)
             val lines = bytes.toString("US-ASCII").split("\r\n")

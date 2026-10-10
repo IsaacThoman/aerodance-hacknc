@@ -50,7 +50,11 @@ async function connect(token) {
     state.lastRecord = performance.now();
     const decoder = new NdjsonDecoder(record => {
       const now = performance.now();
-      if (state.accept(record, now)) { times.push(now); retry = 0; }
+      if (state.accept(record, now)) {
+        // Animation frames pause in hidden tabs; prune on receipt as well as draw.
+        times = times.filter(t => now-t < 1000).slice(-999);
+        times.push(now); retry = 0;
+      }
       if (record.type === 'heartbeat' && record.pipelineState === 'error') throw Error('Android pipeline reported an error');
     });
     const reader = stream.body.getReader();

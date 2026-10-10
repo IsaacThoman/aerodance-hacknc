@@ -46,9 +46,15 @@ This can proceed independently of camera work after the starter runs.
 
 ## 4. Measure and tune sustained latency
 
+The [performance review](docs/performance-review.md) maps reviewed bottlenecks,
+implemented allocation/scheduling fixes and short board comparisons. Sustained
+acceptance checks below remain separate from that review.
+
 - [ ] Instrument arrival, conversion, inference, serialization/write, browser receive/render.
 - [ ] Compare Lite CPU/GPU sustained performance and stability.
 - [ ] Compare supported capture sizes, conversion, preview on/off, and exposure behavior.
+- [ ] Benchmark native libyuv through JNI against the Kotlin YUV converter on the board: pin the source revision/license, build for API 27 and `armeabi-v7a` with ARM NEON support, read Camera2 plane buffers with their actual positions/strides, and write directly into inference-owned bitmap storage where supported. Preserve one input in flight and storage ownership through callback/task shutdown. Validate color/channel order, limited-range YUV, odd dimensions, padding and rotations against reference fixtures; measure conversion p50/p95/p99, allocations and end-to-end CPU/GPU pose rates in comparable scenes before switching the default. Current short-probe baseline is approximately 50 ms conversion; no native speedup is established yet.
+- [ ] If native CPU conversion remains material, evaluate GPU conversion feeding inference without CPU readback; verify compatibility with the pinned Tasks API before changing the pipeline. Prefer libyuv for the first benchmark; the archived RenderScript replacement toolkit requires YUV layout adaptation and is a lower-priority option.
 - [ ] Remove avoidable batching, compression buffering, and fixed sender delays.
 - [ ] Run a 30-minute thermal/memory test and deliberately slow-reader test.
 - [ ] Record achieved FPS, p50/p95/p99 age/stage timings, replacements, and bytes/result.

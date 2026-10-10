@@ -7,8 +7,9 @@ enum class PipelineState { starting, running, error, stopping }
 
 data class Landmark(val x: Float, val y: Float, val z: Float, val visibility: Float? = null, val presence: Float? = null) {
     init {
-        require(listOfNotNull(x, y, z, visibility, presence).all { it.isFinite() })
-        require(listOfNotNull(visibility, presence).all { it in 0f..1f })
+        require(x.isFinite() && y.isFinite() && z.isFinite())
+        require(visibility == null || (visibility.isFinite() && visibility in 0f..1f))
+        require(presence == null || (presence.isFinite() && presence in 0f..1f))
     }
 }
 

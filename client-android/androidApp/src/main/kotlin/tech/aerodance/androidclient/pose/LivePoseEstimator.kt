@@ -12,7 +12,7 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
-import tech.aerodance.androidclient.camera.uprightBitmap
+import tech.aerodance.androidclient.camera.YuvToBitmap
 import tech.aerodance.androidclient.pipeline.LatestFrameMailbox
 import tech.aerodance.androidclient.pipeline.TaskTimestamps
 import tech.aerodance.androidclient.protocol.Landmark
@@ -41,6 +41,7 @@ class LivePoseEstimator(
     private val thread = HandlerThread("live-pose").apply { start() }
     private val worker = Handler(thread.looper)
     private val timestamps = TaskTimestamps()
+    private val converter = YuvToBitmap()
     private var task: PoseLandmarker? = null
     private var input: Input? = null
     private var seq = 0L
@@ -93,7 +94,7 @@ class LivePoseEstimator(
         var bitmap: Bitmap? = null
         try {
             val started = SystemClock.elapsedRealtime()
-            bitmap = frame.image.use { uprightBitmap(it, rotation) }
+            bitmap = frame.image.use { converter.convert(it, rotation) }
             if (isClosed()) { bitmap.recycle(); return }
             val converted = SystemClock.elapsedRealtime()
             val mpImage = BitmapImageBuilder(bitmap).build()
