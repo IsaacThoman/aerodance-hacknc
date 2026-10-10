@@ -18,6 +18,10 @@ body,
   aspect-ratio: 16 / 9;
 }
 
+.canvas-frame canvas {
+  image-rendering: pixelated;
+}
+
 .hud {
   position: fixed;
   top: 16px;
