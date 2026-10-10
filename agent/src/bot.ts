@@ -84,7 +84,7 @@ export async function startBot() {
         if (!profile.line) throw new Error("no assigned line found");
         await profiles.save();
         const photo = { mimeType: "image/png", read: () => readFile(CONTACT_PHOTO) };
-        await space.send(contact({ name: { first: "aerodance", last: "🫧" }, phones: [{ value: profile.line, type: "mobile" }], photo }));
+        await space.send(contact({ name: { first: "aerodance" }, phones: [{ value: profile.line, type: "mobile" }], photo }));
         await space.send("👆 Tap that card and Save so I show up as aerodance 🫧");
       });
     }
