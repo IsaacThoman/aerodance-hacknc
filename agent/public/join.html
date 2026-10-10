@@ -115,6 +115,18 @@
     background: linear-gradient(180deg, #ffffff, #dfe7ed); box-shadow: 0 5px 12px rgba(11,61,107,.2); }
   .wii .b { width: 70px; height: 70px; border-radius: 50%; font-size: 24px; font-weight: 900; }
   .wii .small.on { color: #fff; background: linear-gradient(180deg, #7fdcff, var(--aqua-deep)); }
+  .wii .modes { display: flex; width: 100%; padding: 4px; border-radius: 999px; background: #e3eaf0; box-shadow: inset 0 2px 5px rgba(11,61,107,.15); }
+  .wii .modes button { flex: 1; border: 0; padding: 10px; border-radius: 999px; background: none; font: 800 15px -apple-system, system-ui, sans-serif; color: #5d6e7c; }
+  .wii .modes button.on { color: #fff; background: linear-gradient(180deg, #7fdcff, var(--aqua-deep)); box-shadow: 0 3px 8px rgba(10,120,194,.35); }
+  .wii .pad.touch { color: var(--ink-soft); border-style: dashed; border-width: 2px; border-color: #b9cad6; }
+
+  /* Holding the remote: the page becomes a locked, full-screen controller. */
+  body.remote-mode { position: fixed; inset: 0; overflow: hidden; touch-action: none; }
+  body.remote-mode main { height: 100%; display: flex; flex-direction: column; }
+  body.remote-mode main > *:not(#remoteCard):not(.toast) { display: none !important; }
+  body.remote-mode #remoteCard { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0; }
+  body.remote-mode .wii { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  body.remote-mode .wii .pad { flex: 1; }
   .wii .tune { width: 100%; font-size: 13px; color: #5d6e7c; }
   .wii .tune summary { text-align: center; font-weight: 800; cursor: pointer; padding: 4px; }
   .wii .tune label { display: block; margin: 10px 4px 0; color: #5d6e7c; }
@@ -159,11 +171,14 @@
       <button class="link" id="remoteRelease" type="button">Hand off</button>
     </div>
     <div class="wii">
-      <div class="pad" id="pad">Drag here to move the cursor<br />or tap 🎯 to point with your phone</div>
+      <div class="modes">
+        <button id="modeRemote" type="button">🎯 Remote</button>
+        <button id="modeTouch" type="button">✋ Touchpad</button>
+      </div>
+      <div class="pad" id="pad"></div>
       <button class="a" id="remoteA" type="button">A</button>
       <div class="keys">
         <button class="b" id="remoteB" type="button" aria-label="Back">B</button>
-        <button class="small" id="remoteMotion" type="button">🎯 Point</button>
         <button class="small" id="remoteCenter" type="button">⊙ Center</button>
       </div>
       <details class="tune">
@@ -214,10 +229,6 @@
     <div class="wallet" id="wallet"></div>
   </section>
 
-  <section class="card hidden" id="installCard">
-    <div class="row"><b>📲 Keep aerodance on your Home Screen</b><button class="link" id="dismissInstall" type="button">✕</button></div>
-    <p class="hint" style="margin:6px 0 0">Tap <b>Share</b> → <b>Add to Home Screen</b>. It opens full screen with no accidental refreshes, and your stats come with you.</p>
-  </section>
 </main>
 <div class="toast" id="toast"></div>
 
@@ -420,12 +431,6 @@
     try { renderBattle(await api("GET", `/battles/${battleId}`)); } catch {}
   }
 
-  // ---------- install hint ----------
-  const standalone = navigator.standalone || matchMedia("(display-mode: standalone)").matches;
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  show("installCard", isIOS && !standalone && !store.get("aero.installDismissed"));
-  $("dismissInstall").onclick = () => { store.set("aero.installDismissed", "1"); show("installCard", false); };
-
   // ---------- phone remote ----------
   // The first player to open /join?remote=CODE holds the remote for that screen. Motion
   // comes from the gyroscope (Wii-style pointing) or from dragging on the pad.
@@ -464,6 +469,7 @@
     rsock.on("remote:ended", ({ reason }) => {
       holding = false;
       show("remoteCard", false);
+      document.body.classList.remove("remote-mode");
       toast(reason === "moved" ? "🎮 The remote moved to your other device" : "🎮 That screen turned off");
     });
     requestAnimationFrame(sendMoves);
@@ -473,6 +479,7 @@
     rsock.emit("remote:claim", { code: remoteCode, deviceToken: device }, (r) => {
       holding = !!r?.ok;
       show("remoteCard", holding);
+      document.body.classList.toggle("remote-mode", holding);
       show("remoteTaken", r?.reason === "taken");
       show("scanCard", false);
       if (holding) { $("remoteStatus").textContent = `Controlling screen ${remoteCode}`; keepAwake(); }
@@ -485,6 +492,10 @@
     rsock?.emit("remote:release");
     holding = false;
     show("remoteCard", false);
+    document.body.classList.remove("remote-mode");
+    window.removeEventListener("devicemotion", onMotion);
+    motionOn = false;
+    renderMode();
     toast("🎮 Remote handed off");
   };
 
@@ -513,28 +524,48 @@
     if (Math.abs(yaw) > tune.dead) pending.dx -= yaw * k * (tune.flipX ? -1 : 1);
     if (Math.abs(pitch) > tune.dead) pending.dy -= pitch * k * (tune.flipY ? -1 : 1);
   }
-  async function toggleMotion() {
-    if (motionOn) {
-      window.removeEventListener("devicemotion", onMotion);
-      motionOn = false;
-    } else {
+  // Two exclusive modes: "remote" points with the gyroscope, "touch" drags on the pad.
+  let mode = store.get("aero.remoteMode") === "touch" ? "touch" : "remote";
+  async function setMode(next) {
+    window.removeEventListener("devicemotion", onMotion);
+    motionOn = false;
+    if (next === "remote") {
       try {
         if (typeof DeviceMotionEvent === "undefined") throw new Error("unsupported");
-        // iOS only grants motion from inside a tap, so this runs from the 🎯 button.
+        // iOS only grants motion from inside a tap, so this runs from the mode buttons.
         if (typeof DeviceMotionEvent.requestPermission === "function" && (await DeviceMotionEvent.requestPermission()) !== "granted") throw new Error("denied");
         window.addEventListener("devicemotion", onMotion);
         motionOn = true;
         lastMotion = 0;
-      } catch { toast("🎯 Motion isn't available. Drag on the pad instead"); }
+        upVec = null;
+      } catch {
+        toast("🎯 Motion isn't available here. Using the touchpad");
+        next = "touch";
+      }
     }
-    $("remoteMotion").classList.toggle("on", motionOn);
-    $("pad").classList.toggle("live", motionOn);
-    $("pad").innerHTML = motionOn ? "Point your phone at the screen 🎯<br />or drag here" : "Drag here to move the cursor<br />or tap 🎯 to point with your phone";
+    mode = next;
+    store.set("aero.remoteMode", mode);
+    renderMode();
   }
-  $("remoteMotion").onclick = toggleMotion;
+  function renderMode() {
+    $("modeRemote").classList.toggle("on", mode === "remote");
+    $("modeTouch").classList.toggle("on", mode === "touch");
+    $("pad").classList.toggle("live", mode === "remote" && motionOn);
+    $("pad").classList.toggle("touch", mode === "touch");
+    $("pad").innerHTML = mode === "touch"
+      ? "✋ Drag here to move the cursor"
+      : motionOn ? "🎯 Point your phone at the screen" : "Tap 🎯 Remote to start pointing";
+  }
+  $("modeRemote").onclick = () => setMode("remote");
+  $("modeTouch").onclick = () => setMode("touch");
+  renderMode();
 
   let padDrag = null;
-  $("pad").addEventListener("pointerdown", (e) => { padDrag = { x: e.clientX, y: e.clientY }; $("pad").setPointerCapture(e.pointerId); });
+  $("pad").addEventListener("pointerdown", (e) => {
+    if (mode !== "touch") return;
+    padDrag = { x: e.clientX, y: e.clientY };
+    $("pad").setPointerCapture(e.pointerId);
+  });
   $("pad").addEventListener("pointermove", (e) => {
     if (!padDrag) return;
     pending.dx += (e.clientX - padDrag.x) * TOUCH_GAIN * tune.speed;
