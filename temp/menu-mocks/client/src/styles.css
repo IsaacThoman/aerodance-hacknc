@@ -1,0 +1,27 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #000;
+}
+
+#root {
+  display: grid;
+  place-items: center;
+}
+
+.canvas-frame {
+  width: min(100vw, calc(100dvh * 16 / 9));
+  height: min(100dvh, calc(100vw * 9 / 16));
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.canvas-frame canvas {
+  display: block;
+  /* Keep the display at 16:9 even when Three.js updates inline dimensions. */
+  width: 100% !important;
+  height: 100% !important;
+  image-rendering: pixelated;
+}
