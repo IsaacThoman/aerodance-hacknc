@@ -1,0 +1,3 @@
+# Buildless site: dist contains source files, not generated output.
+!dist/
+!dist/**

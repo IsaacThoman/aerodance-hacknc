@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aerodance · Pose lab</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<main>
+  <header><div class="wordmark"><span class="mark">a</span> AERODANCE <span class="lab">/ POSE LAB</span></div><span class="local">LOCAL CAMERA TEST</span></header>
+  <section class="intro"><p class="eyebrow">OPEN-Q 624A → YOUR BROWSER</p><h1>Movement, in view.</h1><p>Live landmarks from the controller. No video leaves the board.</p></section>
+  <div class="layout">
+    <section class="viewer" aria-label="Estimated pose visualization">
+      <div class="viewer-top"><span id="connection" role="status" aria-live="polite">Disconnected</span><label><input id="mirror" type="checkbox"> Mirror display</label></div>
+      <div class="stage"><canvas id="pose" aria-label="Live skeletons by player ID"></canvas><div id="empty"><span class="target">＋</span><strong>Ready when you are</strong><p>Connect the board, then step into the camera view.</p></div></div>
+      <div class="legend"><span><i class="left"></i> Player 0</span><span><i class="right"></i> Player 1</span><span>33 LANDMARKS · NO PREVIEW</span></div>
+    </section>
+    <aside>
+      <section class="panel"><p class="eyebrow">CONTROLLER</p><label for="ip">Board IPv4 address</label><input id="ip" value="192.168.43.1" inputmode="decimal" autocomplete="off"><label for="players">Players</label><select id="players"><option value="1">One player</option><option value="2">Two players</option></select><div class="buttons"><button id="connect">Connect</button><button id="disconnect" disabled>Disconnect</button></div><p id="message" role="status" aria-live="polite">Start streaming on Android before connecting.</p><div class="origin"><span>Allowed origin on Android</span><code id="origin"></code><button id="copy" class="small">Copy origin</button></div></section>
+      <section class="panel"><p class="eyebrow">LIVE READOUT</p><dl><div><dt>Producer</dt><dd id="model">—</dd></div><div><dt>Pose</dt><dd id="presence">—</dd></div><div><dt>Received results / s</dt><dd id="rate">—</dd></div><div><dt>Last result received</dt><dd id="age">—</dd></div><div><dt>Device arrival → result</dt><dd id="latency">—</dd></div><div><dt>Sequence</dt><dd id="sequence">—</dd></div><div><dt>Upright input</dt><dd id="dimensions">—</dd></div></dl><p class="note">Device processing time excludes network transit. Receipt age uses this browser’s clock.</p></section>
+    </aside>
+  </div>
+  <footer>Keep both devices on the same LAN. Empty or stale poses clear automatically after 500 ms. <span>HTTPS validation comes later.</span></footer>
+</main><script type="module" src="app.js"></script>
+</body></html>
