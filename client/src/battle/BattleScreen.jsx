@@ -206,13 +206,12 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
         const host = url.replace(/^https?:\/\//, '');
         g.font = `700 26px ${FONT}`;
         drawShadowText(g, ellipsize(g, host, QR_PANEL.w - 40), QR_PANEL.x + QR_PANEL.w / 2, QR_BOX.y + QR_BOX.h + 40, { size: 26, align: 'center' });
-        const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
-        drawShadowText(
-          g,
-          local ? "Phones can't open localhost: use a LAN IP" : 'First two phones dance · everyone else hypes',
-          QR_PANEL.x + QR_PANEL.w / 2, QR_BOX.y + QR_BOX.h + 80,
-          { size: 21, weight: 600, align: 'center', color: local ? '#ffe27a' : '#ffffff' },
-        );
+        // Local dev only: phones can't follow a localhost QR code.
+        if (/^(localhost|127\.|\[::1\])/.test(location.hostname)) {
+          drawShadowText(g, "Phones can't open localhost: use a LAN IP", QR_PANEL.x + QR_PANEL.w / 2, QR_BOX.y + QR_BOX.h + 80, {
+            size: 21, weight: 600, align: 'center', color: '#ffe27a',
+          });
+        }
         const ready = b.players.filter((pl) => pl.name).length;
         drawPill(g, START, {
           label: 'Start battle',
