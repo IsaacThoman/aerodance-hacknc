@@ -2,7 +2,7 @@
 
 A small Android Things app for the Open-Q 624A: camera input → local MediaPipe pose estimation → fresh landmarks streamed to a computer browser over the LAN.
 
-The app currently streams synthetic poses over LAN HTTP on port **1337**, with Start/Stop, an editable origin allowlist, connection status, and result counters. MediaPipe Lite has passed a debug-only CPU compatibility check on the board; camera capture and live inference integration are next. Synthetic mode is explicitly identified in the UI and status capabilities.
+The app currently streams synthetic poses over LAN HTTP on port **1337**, with Start/Stop, an editable origin allowlist, connection status, and result counters. MediaPipe Lite has passed a debug-only CPU compatibility check on the board; Camera2 now delivers real 640×480 YUV frames after vendor continuous-mode setup; live inference integration is next. Synthetic mode is explicitly identified in the UI and status capabilities.
 
 ## Project documents
 
@@ -12,6 +12,7 @@ The app currently streams synthetic poses over LAN HTTP on port **1337**, with S
 - [AGENTS.md](AGENTS.md): guidance for future changes.
 - [Open-Q 624A inspection](docs/hardware/open-q-624a.md): observed firmware/camera baseline.
 - [MediaPipe compatibility](docs/hardware/mediapipe-compatibility.md): pinned artifacts, board CPU result, and probe instructions.
+- [Camera2 compatibility](docs/hardware/camera-compatibility.md): debug capture probe, vendor setup, measured capture rate, and image validation.
 
 ## Existing modules
 
@@ -41,6 +42,26 @@ adb devices -l
 ```
 
 Defaults to the board at `192.168.43.1:5555`; use `--serial` for another device or address. The target must already be connected through ADB. `--stop` requires working `su` on the device and uses `su 0 kill -9`. No apps are disabled or uninstalled; processes may restart.
+
+## Validate camera capture
+
+The original Flock HAL retains motion-triggered mode and a short plate exposure
+limit even after its camera owner exits. Configure it before direct capture:
+
+```bash
+./scripts/release-camera.sh --stop
+./scripts/prepare-camera.sh --indoor             # inspect only
+./scripts/prepare-camera.sh --indoor --apply     # continuous mode, indoor AEC ceiling
+adb shell am start -S -W -n tech.aerodance.androidclient/.diagnostics.CameraCompatibilityActivity
+```
+
+Install the debug APK and grant CAMERA first, as described in
+[Camera2 compatibility](docs/hardware/camera-compatibility.md). Preparation uses
+existing device `su`, requires no active camera owner, and verifies the property
+writes. `--indoor` raises the exposure ceiling from the observed 0.75 ms plate
+setting to 30 ms; omit it to preserve the existing AEC limit. These settings
+configure capture, without changing firmware or drivers. Reapply after reboot
+or after a vendor app resets them. The main app still streams synthetic poses.
 
 ## Try synthetic streaming
 

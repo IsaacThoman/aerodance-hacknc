@@ -10,7 +10,7 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md), [PLAN.md](PLAN.md), and [camera-to-clie
 
 - The inspected board runs Android 8.1/API 27 with `armeabi-v7a` userspace. Keep `minSdk = 27` unless deployment requirements change.
 - Verify native dependencies contain compatible 32-bit ARM libraries. A 64-bit-capable chip does not make this firmware capable of running an arm64-only APK.
-- Camera `0` advertises Camera2 HAL 3.3, YUV, 640×480, and a 30 FPS range. Advertised capabilities do not establish successful capture or pose throughput.
+- Camera `0` advertises Camera2 HAL 3.3, YUV, 640×480, and a 30 FPS range. Real frame delivery is verified with continuous-mode vendor setup; see [camera validation](docs/hardware/camera-compatibility.md). Pose throughput remains unverified.
 - See [the hardware report](docs/hardware/open-q-624a.md) for observations and remaining checks.
 
 ## Layout and dependencies
@@ -44,7 +44,17 @@ adb devices -l
 
 This is the user-provided reconnect procedure for this board. On 2026-10-10 the PUT returned `{"status":"adb connected"}`, and ADB confirmed a connection to `192.168.43.1:5555`.
 
-Use read-only ADB diagnostics first. [scripts/release-camera.sh](scripts/release-camera.sh) lists current camera owners by default; `--stop` force-stops those packages. The user has authorized stopping competing camera apps for this project. Do not disable, uninstall, root, flash, or modify vendor drivers as part of ordinary camera setup.
+Use read-only ADB diagnostics first. [scripts/release-camera.sh](scripts/release-camera.sh) lists current camera owners by default; `--stop` resolves their PIDs and uses the board's existing `su 0 kill -9`. The user has authorized stopping competing camera apps for this project.
+
+User clarification (2026-10-10): stopping the competing camera service on this board requires root. Preserve the script's existing `su 0 kill -9` behavior; do not replace it with `am force-stop`. Using the existing `su` for this authorized operation is permitted. Do not disable or uninstall apps, newly root the device, flash firmware, or modify vendor drivers as part of ordinary camera setup.
+
+Before direct capture, inspect `scripts/prepare-camera.sh` and run `--apply` with
+no active camera owner. The original HAL's retained motion mode can suppress all
+frames: continuous capture needs `persist.sys.camera.motion.en=0` and
+`persist.sys.camera.motion.timeout_ms=0`. Optional `--indoor` sets the vendor AEC
+exposure ceiling to 30 ms and applies it; the inherited 0.75 ms plate limit is too
+dark indoors. This setup uses existing root for vendor properties, not a
+privileged app installation. Vendor apps may reset properties; recheck them.
 
 ## Verification
 

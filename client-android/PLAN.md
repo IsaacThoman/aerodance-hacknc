@@ -14,7 +14,7 @@ Keep the existing modules and follow [ARCHITECTURE.md](ARCHITECTURE.md). Canonic
 - [x] Assemble/install the starter and verify Compose on the API 27 low-RAM image.
 - [x] Choose a pinned MediaPipe version supporting API 27 and `armeabi-v7a`. Inspect AAR/APK libraries and load it on the board.
 - [x] Add Lite with source, version, license, and checksum; run CPU inference on a known image.
-- [ ] Smoke-test Camera2: camera `0`, 640×480 YUV, `[30,30]`, advancing images/timestamps.
+- [x] Smoke-test Camera2: camera `0`, 640×480 YUV, `[30,30]`, advancing images/timestamps.
 - [ ] Verify content, orientation, row/pixel strides, permissions, and actual capture rate.
 
 **Done when:** this APK installs, real frames arrive, and CPU inference returns plausible landmarks. Advertised settings and current zero frame counters do not satisfy this gate. If the selected Tasks artifact lacks 32-bit libraries, choose a compatible pinned release or evaluate a custom build before integrating the pipeline.
@@ -95,3 +95,37 @@ landmarks, 1,575 ms load and 491 ms first inference. See
 checksums, license, and the debug-only probe. Camera capture, LIVE_STREAM, and
 sustained throughput remain unverified; milestone 1 is still open. Reconnect
 instructions now enable ADB through the board's HTTP API before `adb connect`.
+
+Added and installed a debug-only Camera2 probe for camera `0`, 640×480 YUV,
+automatic controls, and a 12-second capture window. The board accepts the
+configuration and repeating requests but delivers zero images at both `[30,30]`
+and `[2,30]`; shutdown reports a HAL drain timeout. No competing owner was
+active, so `release-camera.sh --stop` had nothing to kill; ownership cleared after
+the probe and no competing restart was observed. The script's authorized
+root-based behavior is unchanged. See [capture validation](docs/hardware/camera-compatibility.md).
+Capture/content/stride/orientation checkboxes remain open. Resolve real frame
+delivery before integrating LIVE_STREAM; the deployed HTTPS browser gate also
+remains open.
+
+
+Camera frame delivery is now verified using the Ciroc camera guide. The HAL
+retained `persist.sys.camera.motion.en=1` and timeout `2000` after the vendor
+camera owner exited; setting both to `0` restored continuous frames. Added
+`scripts/prepare-camera.sh` (inspection by default, explicit `--apply`, owner
+check, property readback), with optional `--indoor` to raise the retained plate
+AEC exposure ceiling from 0.75 ms to 30 ms. Real 640×480 YUV images have advancing
+timestamps and row/pixel strides 640/1, 640/2, 640/2. The visible color snapshot
+is rotated 90° to 480×640 without mirroring. The debug probe now follows the
+record/day request controls and saves one diagnostic image after its capture
+measurement. Repeated opens and closes deliver frames and release ownership.
+See [camera validation](docs/hardware/camera-compatibility.md) for rates and setup.
+Actual person orientation/left-right and live-frame inference remain open;
+main-app streaming is still synthetic. No competing owner was present, so the
+authorized root owner-kill step is still unexercised.
+
+Final capture check: 332 frames over approximately 11 seconds, 30.08 FPS,
+strictly increasing timestamps, 29.16..37.35 ms callback intervals, and visible
+color content. Debug snapshot saving is excluded from the measurement. Final
+APK installed; host tests, assembly, setup-script checks, and ownership release
+passed. This verifies short capture throughput, not sustained inference or
+thermal performance.
