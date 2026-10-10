@@ -39,8 +39,8 @@ fun heartbeat(sessionId: String, nowMs: Long, seq: Long?, state: PipelineState):
     return checkedRecord("""{"protocolVersion":1,"type":"heartbeat","sessionId":${quote(sessionId)},"producerTimeMs":$nowMs,"lastPoseSeq":$seq,"pipelineState":"$state"}""")
 }
 
-fun status(deviceId: String, sessionId: String, state: PipelineState): String =
-    """{"protocolVersion":1,"deviceId":${quote(deviceId)},"sessionId":${quote(sessionId)},"deviceName":"Open-Q 624A Pose Controller (synthetic)","pipelineState":"$state","capabilities":{"poseModel":"synthetic","maxPoses":1,"landmarksPerPose":33,"worldLandmarks":false,"sensorTimestampSource":"unknown"}}"""
+fun status(deviceId: String, sessionId: String, state: PipelineState, synthetic: Boolean = true): String =
+    """{"protocolVersion":1,"deviceId":${quote(deviceId)},"sessionId":${quote(sessionId)},"deviceName":"Open-Q 624A Pose Controller${if (synthetic) " (synthetic)" else ""}","pipelineState":"$state","capabilities":{"poseModel":"${if (synthetic) "synthetic" else "pose_landmarker_lite"}","maxPoses":1,"landmarksPerPose":33,"worldLandmarks":false,"sensorTimestampSource":"unknown"}}"""
 
 private fun checkedRecord(json: String): String {
     require(json.encodeToByteArray().size <= MAX_RECORD_BYTES)

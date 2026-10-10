@@ -28,19 +28,19 @@ This can proceed independently of camera work after the starter runs.
 - [x] Serve `/v1/status` and `/v1/stream` on `1337`, including origin checks and `OPTIONS`.
 - [x] Stream synthetic pose state at 30 Hz.
 - [ ] Connect from the deployed HTTPS game in Chrome using a private IP literal; verify permission, CORS, CSP, and mixed-content behavior.
-- [ ] Parse/render locally in the web-client repo before backend forwarding.
+- [x] Parse/render in the temporary local test site before backend forwarding (user-authorized subfolder; game integration remains open).
 
 **Done when:** records arrive incrementally without a certificate/desktop bridge, and slow readers cannot grow queues indefinitely. Record browser version, site headers, payload size, and inter-arrival timing.
 
 ## 3. Connect camera and MediaPipe
 
-- [ ] Implement capture/conversion and timestamp correlation behind the adapters.
-- [ ] Add LIVE_STREAM inference with one in-flight input and one pending latest frame.
-- [ ] Close replaced/rejected images; handle task errors and stuck callbacks.
-- [ ] Publish normalized immutable landmarks immediately, including `poses: []` on absence.
-- [ ] Connect latest results to the writer without an extra timer or UI dependency.
-- [ ] Show Start/Stop, LAN address, connection, errors, and counters.
-- [ ] Keep preview and world landmarks disabled unless needed for validation.
+- [x] Implement capture/conversion and timestamp correlation behind the adapters.
+- [x] Add LIVE_STREAM inference with one in-flight input and one pending latest frame.
+- [x] Close replaced/rejected images; handle task errors and stuck callbacks.
+- [x] Publish normalized immutable landmarks immediately, including `poses: []` on absence.
+- [x] Connect latest results to the writer without an extra timer or UI dependency.
+- [x] Show Start/Stop, LAN address, connection, errors, and counters.
+- [x] Keep preview and world landmarks disabled unless needed for validation.
 
 **Done when:** the browser follows real movement with correct rotation/left-right, absence clears poses, and capture/inference continue independently of a slow/disconnected browser.
 
@@ -82,7 +82,7 @@ This can proceed independently of camera work after the starter runs.
 
 Host tests cover schema, session/sequence rules, timestamp correlation, bounded replacement, and shutdown. Browser checks cover partial/multiple NDJSON records, size limits, and stale state. Device checks cover native loading, live capture, release, delegates, and sustained performance. Run relevant tests and `:androidApp:assembleDebug` after implementation changes.
 
-Website implementation belongs in the web-client repository. This repo defines its contract and acceptance checks; implementation there requires its code and deployed site configuration. Raw video, multi-person tracking, smoothing, and backend redesign are outside the initial scope.
+Production game integration belongs in the web-client repository and requires its code and deployed configuration. The user authorized a temporary local HTTP test website in this repo on 2026-10-10, deferring HTTPS tests. Raw video, multi-person tracking, smoothing, and backend redesign are outside the initial scope.
 
 ## Progress — 2026-10-10
 
@@ -129,3 +129,47 @@ color content. Debug snapshot saving is excluded from the measurement. Final
 APK installed; host tests, assembly, setup-script checks, and ownership release
 passed. This verifies short capture throughput, not sustained inference or
 thermal performance.
+
+
+## Live pipeline and local test site — 2026-10-10
+
+The user requested a temporary website in a subfolder with HTTPS testing later.
+Added [pose-test-site](pose-test-site/README.md), a buildless local HTTP skeleton
+viewer with optional Docker serving, exact-origin setup, bounded NDJSON parsing,
+empty/stale clearing, disconnect, and capped reconnection. The main Android app
+now streams camera `0` → Lite CPU LIVE_STREAM → immutable records directly to
+the existing writer. Capture/inference continue without a browser. Synthetic
+mode is retained as a debug-only launch option for server regression checks.
+
+One inference input and one latest pending image are retained; task timestamps
+match callbacks, replaced/rejected images close, and five-second camera/task
+watchdogs stop failures. Shutdown drains inference before closing ImageReader.
+No preview/video endpoint or world-landmark publishing was added. UI shows
+Start/Stop, origin, LAN address, browser, errors, counts, and last stage timings;
+capture/result *rate summaries* remain to be added.
+
+Bulk plane conversion reduced mean conversion from 2,530 to 63 ms. The second
+12-second probe captured 355 images at 30.08 FPS and completed 24 empty results,
+with 358 ms mean inference and 642 ms maximum arrival-to-result time. Chromium
+153.0.8010.12 read real records directly from the board at the local page;
+fixture rendering, empty/stale clearing, disconnect, and mobile layout passed.
+See [live validation](docs/hardware/live-pose-validation.md).
+
+Host tests, debug assembly, and seven Node tests passed. Local-network permission
+was granted by automation; its interactive prompt and deployed HTTPS headers/
+policies remain untested. The live scene returned no person. Real-person
+orientation/left-right, actual movement rendering, fault injection, sustained
+performance/delegates, backend integration, and appliance lifecycle remain open.
+These implementation checks do not complete milestone 3's movement acceptance
+gate or establish the provisional latency targets.
+
+The final APK also passed the existing synthetic CORS/slow-reader regression
+(330 records, 29.9 Hz, slot released in 0.33 s). Two foreground-return cycles
+closed the listener and released camera ownership, then resumed live inference
+with new sessions. Full lifecycle and fault acceptance checks remain open.
+
+Mounting correction: the user confirmed that raw camera frames should enter
+MediaPipe without rotation. Live capture and the live diagnostic probe now use
+0° rotation, unmirrored 640×480 input; previous 480×640 measurements above are
+historical. The original capture-only snapshot probe still reports/applies the
+sensor's advertised orientation for its separate diagnostic image.

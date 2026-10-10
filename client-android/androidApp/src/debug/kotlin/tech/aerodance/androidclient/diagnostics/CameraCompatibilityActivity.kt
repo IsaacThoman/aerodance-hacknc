@@ -21,6 +21,10 @@ import android.util.Log
 import android.util.Range
 import android.widget.TextView
 import java.io.File
+import java.util.UUID
+import tech.aerodance.androidclient.camera.CameraSource
+import tech.aerodance.androidclient.pose.LivePoseEstimator
+import tech.aerodance.androidclient.protocol.PoseRecord
 
 /** Debug-only bounded Camera2 capture check; no preview, network output, or inference. */
 class CameraCompatibilityActivity : Activity() {
@@ -44,12 +48,26 @@ class CameraCompatibilityActivity : Activity() {
     private var content = "no snapshot"
     private var snapshotTaken = false
     private var fps = Range(30, 30)
+    private var live = false
+    private var estimator: LivePoseEstimator? = null
+    private var results = 0
+    private var detected = 0
+    private var empty = 0
+    private var latest: PoseRecord? = null
+    private var conversionTotal = 0L
+    private var inferenceTotal = 0L
+    private var maxAge = 0L
+    private var destroyRequested = false
+    private var resourcesClosed = false
+    private val captureTimeout = Runnable { finishProbe("FAIL capture timeout: frames=$frames") }
+    private val captureComplete = Runnable { complete() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         output = TextView(this).apply { text = "Checking camera 0, 640×480 YUV, 30 FPS…" }
         setContentView(output)
         fps = Range(intent.getIntExtra("fpsMin", 30), intent.getIntExtra("fpsMax", 30))
+        live = intent.getBooleanExtra("livePose", false)
         thread.start()
         worker = Handler(thread.looper)
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -69,17 +87,41 @@ class CameraCompatibilityActivity : Activity() {
         if (finished) return
         File(filesDir, "camera-compatibility.txt").delete()
         File(filesDir, "camera-upright.png").delete()
-        worker.postDelayed({ finishProbe("FAIL capture timeout: frames=$frames") }, 20_000)
+        worker.postDelayed(captureTimeout, 20_000)
         try {
             val manager = getSystemService(CameraManager::class.java)
             val characteristics = manager.getCameraCharacteristics("0")
             orientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+            if (live) {
+                File(filesDir, "camera-live-pose.json").delete()
+                estimator = LivePoseEstimator(this, UUID.randomUUID().toString(), CameraSource.INPUT_ROTATION_DEGREES,
+                    onResult = { record, conversion, inference -> worker.post {
+                        if (!finished) {
+                            results++
+                            if (record.poses.isEmpty()) empty++ else detected++
+                            latest = record
+                            conversionTotal += conversion
+                            inferenceTotal += inference
+                            maxAge = maxOf(maxAge, record.resultTimeMs - record.frameReceivedTimeMs)
+                        }
+                    } },
+                    onError = { error -> worker.post { fail(Exception("LIVE_STREAM failure", error)) } },
+                    onClosed = { worker.post { closeReader() } })
+            }
             check(characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
                 ?.contains(fps) == true) { "$fps unavailable" }
             reader = ImageReader.newInstance(640, 480, ImageFormat.YUV_420_888, 3).apply {
                 setOnImageAvailableListener({ source ->
                     if (!finished) {
-                        try { source.acquireLatestImage()?.use { inspect(it) } }
+                        try {
+                            source.acquireLatestImage()?.let { image ->
+                                val arrival = SystemClock.elapsedRealtime()
+                                if (live) {
+                                    try { inspect(image) } catch (error: Exception) { image.close(); throw error }
+                                    estimator!!.offer(image, arrival)
+                                } else image.use { inspect(it) }
+                            }
+                        }
                         catch (error: Exception) { fail(error) }
                     }
                 }, worker)
@@ -113,7 +155,7 @@ class CameraCompatibilityActivity : Activity() {
                                         }
                                     }.build()
                                     configured.setRepeatingRequest(request, null, worker)
-                                    worker.postDelayed({ complete() }, 12_000)
+                                    worker.postDelayed(captureComplete, 12_000)
                                 } catch (error: Exception) { fail(error) }
                             }
                             override fun onConfigureFailed(configured: CameraCaptureSession) {
@@ -151,7 +193,7 @@ class CameraCompatibilityActivity : Activity() {
         lastArrival = arrival
         lastSensor = image.timestamp
         // Measure capture before the expensive diagnostic PNG conversion on this low-RAM board.
-        if (!snapshotTaken && frames >= 30 && arrival - firstArrival >= 11_000_000_000L) {
+        if (!live && !snapshotTaken && frames >= 30 && arrival - firstArrival >= 11_000_000_000L) {
             snapshotTaken = true
             snapshot(image)
             worker.post { complete() } // The acquired image closes before teardown.
@@ -198,13 +240,17 @@ class CameraCompatibilityActivity : Activity() {
     private fun complete() {
         val arrivalSpan = (lastArrival - firstArrival) / 1e9
         val sensorSpan = (lastSensor - firstSensor) / 1e9
-        val pass = frames >= 30 && badTimestamps == 0 && firstSensor > 0
+        val pass = frames >= 30 && badTimestamps == 0 && firstSensor > 0 && (!live || results > 0)
         finishProbe("${if (pass) "PASS" else "FAIL"} camera=0 YUV=640x480 requestedFps=$fps; " +
             "frames=$frames; arrivalFps=${if (arrivalSpan > 0) (frames - 1) / arrivalSpan else 0.0}; " +
             "sensorFps=${if (sensorSpan > 0) (frames - 1) / sensorSpan else 0.0}; " +
             "sensorFirstNs=$firstSensor sensorLastNs=$lastSensor nonIncreasing=$badTimestamps; " +
             "arrivalIntervalMs=${if (frames > 1) minInterval / 1e6 else 0.0}..${maxInterval / 1e6}; " +
-            "planeRowPixelStrides=[$strides]; rotation=$orientation; $content")
+            "planeRowPixelStrides=[$strides]; rotation=${if (live) CameraSource.INPUT_ROTATION_DEGREES else orientation}; $content" +
+            if (live) "; LIVE_STREAM results=$results detected=$detected empty=$empty replacements=${estimator?.replacements}; " +
+                "meanConversionMs=${if (results > 0) conversionTotal / results else 0}; " +
+                "meanInferenceMs=${if (results > 0) inferenceTotal / results else 0}; maxArrivalToResultMs=$maxAge; " +
+                "upright=${latest?.width}x${latest?.height} unmirrored" else "")
     }
 
     private fun fail(error: Exception) {
@@ -215,19 +261,27 @@ class CameraCompatibilityActivity : Activity() {
     private fun finishProbe(report: String) {
         if (finished) return
         finished = true
-        worker.removeCallbacksAndMessages(null)
+        worker.removeCallbacks(captureTimeout)
+        worker.removeCallbacks(captureComplete)
         Log.i(TAG, report)
         File(filesDir, "camera-compatibility.txt").writeText(report + "\n")
+        latest?.let { File(filesDir, "camera-live-pose.json").writeText(it.json()) }
         runOnUiThread { if (!isDestroyed) output.text = report }
         // Persist the measurement before close: a stalled HAL can delay teardown.
         try { session?.close() } finally {
             session = null
             try { camera?.close() } finally {
                 camera = null
-                reader?.close(); reader = null
+                if (estimator == null) closeReader() else estimator?.close()
             }
         }
-        Log.i(TAG, "Camera resources closed")
+    }
+
+    private fun closeReader() {
+        reader?.close(); reader = null
+        resourcesClosed = true
+        Log.i(TAG, "Camera and inference resources closed")
+        if (destroyRequested) thread.quitSafely()
     }
 
     override fun onStop() {
@@ -236,7 +290,11 @@ class CameraCompatibilityActivity : Activity() {
     }
 
     override fun onDestroy() {
-        worker.post { finishProbe("STOP activity destroyed; frames=$frames"); thread.quitSafely() }
+        worker.post {
+            destroyRequested = true
+            finishProbe("STOP activity destroyed; frames=$frames")
+            if (resourcesClosed) thread.quitSafely()
+        }
         super.onDestroy()
     }
 

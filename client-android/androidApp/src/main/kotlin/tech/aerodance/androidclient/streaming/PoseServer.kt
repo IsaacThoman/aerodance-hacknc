@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /** Small HTTP/1.1 server: fixed workers, no request queue, one conflated result, one stream. */
-class PoseServer(private val deviceId: String, private val origins: Set<String>) : AutoCloseable {
+class PoseServer(private val deviceId: String, private val origins: Set<String>, private val synthetic: Boolean = true) : AutoCloseable {
     val sessionId: String = UUID.randomUUID().toString()
     private val listener = ServerSocket()
     private val running = AtomicBoolean(false)
@@ -23,6 +23,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>)
     private val producer = Executors.newSingleThreadScheduledExecutor()
     private val watchdog = Executors.newSingleThreadScheduledExecutor()
     private var seq = 0L
+    @Volatile var state = PipelineState.starting
     val connected: Boolean get() = stream.get()
     val resultCount: Long get() = latest.get()?.seq ?: 0
 
@@ -31,11 +32,11 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>)
             listener.reuseAddress = true
             listener.bind(java.net.InetSocketAddress(PORT))
             running.set(true)
-            producer.scheduleAtFixedRate({
+            if (synthetic) producer.scheduleAtFixedRate({
                 val now = SystemClock.elapsedRealtime()
-                latest.set(syntheticPose(sessionId, ++seq, now))
-                synchronized(signal) { signal.notifyAll() }
+                publish(syntheticPose(sessionId, ++seq, now))
             }, 0, 33, TimeUnit.MILLISECONDS)
+            if (synthetic) state = PipelineState.running
             watchdog.scheduleAtFixedRate({
                 val now = SystemClock.elapsedRealtime()
                 clients.forEach { (socket, deadline) ->
@@ -98,7 +99,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>)
                 return
             }
             if (request[0] != "GET") { respond("405 Method Not Allowed", "{}", "Allow: GET, OPTIONS\r\n"); return }
-            if (request[1] == "/v1/status") { respond("200 OK", status(deviceId, sessionId, PipelineState.running)); return }
+            if (request[1] == "/v1/status") { respond("200 OK", status(deviceId, sessionId, state, synthetic)); return }
             if (!stream.compareAndSet(false, true)) { respond("409 Conflict", "{\"error\":\"A browser is already connected\"}"); return }
             ownsStream = true
             write(socket, deadline, "HTTP/1.1 200 OK\r\n${cors}Content-Type: application/x-ndjson\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".toByteArray())
@@ -112,12 +113,13 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>)
                     lastSeq = pose.seq
                     lastWrite = now
                 } else if (lastWrite == 0L || now - lastWrite >= 5000) {
-                    write(socket, deadline, heartbeat(sessionId, now, latest.get()?.seq, PipelineState.running).toByteArray(Charsets.UTF_8))
+                    write(socket, deadline, heartbeat(sessionId, now, latest.get()?.seq, state).toByteArray(Charsets.UTF_8))
                     lastWrite = now
                 } else synchronized(signal) {
-                    if (latest.get()?.seq == lastSeq) signal.wait(1000)
+                    if (latest.get()?.seq == lastSeq || latest.get() === pose) signal.wait(1000)
                 }
-                if (pose != null && pose.seq != lastSeq && now - pose.resultTimeMs >= 250) break
+                // A stale reconnect snapshot is skipped, not a reason to disconnect a healthy reader.
+                if (lastSeq > 0 && pose != null && pose.seq != lastSeq && now - pose.resultTimeMs >= 250) break
             }
         } catch (_: Exception) {
             // Disconnect, timeout and shutdown all release the stream slot below.
@@ -126,6 +128,13 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>)
             clients.remove(socket)
             runCatching { socket.close() }
         }
+    }
+
+    fun publish(record: PoseRecord) {
+        require(record.sessionId == sessionId)
+        if (!running.get()) return
+        latest.set(record)
+        synchronized(signal) { signal.notifyAll() }
     }
 
     private fun write(socket: Socket, deadline: AtomicLong, bytes: ByteArray) {
@@ -137,6 +146,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>)
     }
 
     override fun close() {
+        state = PipelineState.stopping
         running.set(false)
         runCatching { listener.close() }
         clients.keys.forEach { runCatching { it.close() } }

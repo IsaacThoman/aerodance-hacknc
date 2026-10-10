@@ -1,6 +1,6 @@
 # Camera-to-client streaming plan
 
-This is the connection and protocol specification for the Open-Q 624A Android Things pose app. See [PLAN.md](PLAN.md) for implementation order, [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries, and [the hardware inspection](docs/hardware/open-q-624a.md) for device constraints. The endpoints below are implemented for synthetic poses on port 1337. Real camera inference and deployed browser validation remain pending.
+This is the connection and protocol specification for the Open-Q 624A Android Things pose app. See [PLAN.md](PLAN.md) for implementation order, [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries, and [the hardware inspection](docs/hardware/open-q-624a.md) for device constraints. The endpoints below deliver live camera Lite CPU results on port 1337. A [local HTTP test page](pose-test-site/README.md) is implemented in this repo at the user’s request. Deployed HTTPS browser validation is deferred.
 
 ## Proposed design
 
@@ -284,7 +284,7 @@ The IP can change when Wi-Fi changes, so update the display and restart/rebind t
 6. Add backend forwarding, reconnection, bounded buffering, and lifecycle handling.
 7. Verify appliance deployment and document tested browser versions; evaluate Firefox separately.
 
-**Do the deployed-site test early.** Hardware and browser feasibility checks can proceed independently; both must pass before full integration. [PLAN.md](PLAN.md) provides the detailed milestone checklist.
+**Do the deployed-site test early.** Hardware and browser feasibility checks can proceed independently. The user authorized local HTTP browser integration first, deferring the deployed HTTPS gate. [PLAN.md](PLAN.md) provides the detailed milestone checklist.
 
 ## 5. Acceptance tests
 

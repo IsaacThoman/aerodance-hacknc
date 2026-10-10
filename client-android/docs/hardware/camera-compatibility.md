@@ -44,8 +44,8 @@ adb logcat -d -s CameraCompatibility:I Camera3-Device:E
 
 The explicit ADB grant makes unattended capture reproducible. The activity also
 requests CAMERA when absent; interactive grant/denial behavior is unverified on
-this Things image. CAMERA and the probe activity are declared only in the debug
-manifest until the real pipeline is implemented.
+this Things image. The probe activity remains debug-only; CAMERA is now declared in the main
+manifest for the live pipeline.
 
 The launch uses `-S` to restart this project's app before each probe, ensuring a
 fresh activity even when an earlier probe is still in its task stack. It does not
@@ -172,3 +172,6 @@ behavior, successful apply/readback, and rejection while a camera owner was
 active were exercised. No competing owner needed killing. These observations
 supersede the earlier zero-frame failure and unknown stride/rate conclusions;
 live inference and person orientation checks remain pending.
+
+For the subsequent live Camera2 → MediaPipe CPU tests, see
+[live pose validation](live-pose-validation.md).

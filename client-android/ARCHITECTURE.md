@@ -4,7 +4,7 @@
 
 The Open-Q 624A captures frames and estimates poses locally with MediaPipe. A computer browser receives landmarks over a persistent LAN connection and can forward them through the game's existing backend connection. Local consumption must not wait for the backend.
 
-The repo contains `androidApp` and `shared`. A synthetic producer, bounded HTTP server, common protocol, and Start/Stop UI are implemented. Camera capture and inference remain planned. This document defines the remaining structure to build within those modules.
+The repo contains `androidApp` and `shared`. Camera2 capture, Lite CPU LIVE_STREAM inference, a bounded HTTP server, common protocol, and Start/Stop UI are implemented. A local HTTP test page renders poses; deployed HTTPS validation is deferred. See [live validation](docs/hardware/live-pose-validation.md) for short board measurements and remaining acceptance checks. Synthetic production remains a debug diagnostic.
 
 The device runs Android Things on Android 8.1/API 27, with 32-bit ARM userspace and low-RAM configuration. [Hardware observations](docs/hardware/open-q-624a.md) make capture and native MediaPipe loading the first compatibility gates. Google's Android Things console was retired; deployment uses existing firmware and ADB without that service. See the [official sample's retirement notice](https://github.com/androidthings/sample-googleassistant).
 
@@ -57,7 +57,7 @@ docs/hardware/open-q-624a.md               # observed deployment baseline
 
 Start with **Camera2** for this fixed board. Its HAL exposes Camera2 with vendor-specific behavior, so direct capture gives a clear baseline without adding CameraX dependencies. Keep a narrow `CameraSource` boundary for substituting CameraX later if it improves reliability.
 
-Use `ImageReader` with `YUV_420_888`, initially 640×480 and the advertised `[30, 30]` FPS range. Start with ordinary automatic controls. Sensor orientation is 90 degrees; test the transform instead of assuming sensor pixels are upright.
+Use `ImageReader` with `YUV_420_888`, initially 640×480 and the advertised `[30, 30]` FPS range. Start with ordinary automatic controls. Sensor metadata reports 90 degrees, but the user confirmed that this camera mounting should be processed **without rotation**. The live pipeline uses unmirrored 640×480 input. Anatomical left/right still needs visual validation.
 
 Drain with `acquireLatestImage()` on a camera worker. Start with `maxImages = 3`, retaining at most one pending image and leaving headroom to discard older images. Convert using actual YUV row/pixel strides; copy into bounded inference-owned RGB storage, then close the camera image. See [ImageReader ownership rules](https://developer.android.com/reference/android/media/ImageReader#acquireLatestImage()).
 

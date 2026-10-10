@@ -22,6 +22,9 @@ fun App(
     onStart: () -> Unit = {},
     onStop: () -> Unit = {},
     fontFamily: FontFamily = FontFamily.Default,
+    frames: Long = 0,
+    timings: String = "",
+    synthetic: Boolean = false,
 ) {
     val base = Typography()
     val typography = Typography(
@@ -44,11 +47,12 @@ fun App(
     MaterialTheme(typography = typography) {
         Column(Modifier.fillMaxSize().safeContentPadding().padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Aerodance pose controller", style = MaterialTheme.typography.headlineSmall)
-            Text("Synthetic mode — camera inference is the next milestone.")
+            Text(if (synthetic) "Synthetic diagnostic mode" else "Camera 0 · MediaPipe Lite CPU · unmirrored upright input")
             Text(if (running) "Streaming enabled" else "Streaming stopped")
             Text(address)
             Text(if (connected) "Browser connected" else "Browser disconnected")
-            Text("Completed synthetic results: $results")
+            Text("Captured frames: $frames · completed pose results: $results")
+            if (timings.isNotEmpty()) Text(timings)
             OutlinedTextField(value = origin, onValueChange = onOriginChange, enabled = !running && !busy,
                 label = { Text("Allowed game origin") }, placeholder = { Text("https://your-game.example") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
