@@ -84,6 +84,8 @@ export function createHttp(port: number) {
   });
 
   app.get(["/join", "/join/:id"], (_req, res) => res.sendFile(join(PUBLIC_DIR, "join.html")));
+  // Battle host console: stands in for the game (QR display + fake results).
+  app.get("/host", (_req, res) => res.sendFile(join(PUBLIC_DIR, "host.html")));
 
   app.get("/me", async (req, res) => {
     res.json(await selfView(requireProfile(req)));
