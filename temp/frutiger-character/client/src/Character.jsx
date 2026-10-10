@@ -17,11 +17,9 @@ export default function Character({
   motion,
   person = 0,
   playback,
+  url = `${import.meta.env.BASE_URL}models/aero-character.glb`,
 }) {
-  const gltf = useLoader(
-    GLTFLoader,
-    `${import.meta.env.BASE_URL}models/aero-character.glb`,
-  );
+  const gltf = useLoader(GLTFLoader, url);
   const model = useMemo(() => clone(gltf.scene), [gltf]);
   const retarget = useMemo(
     () => (motion ? createRetargeter(model, motion, person) : null),
