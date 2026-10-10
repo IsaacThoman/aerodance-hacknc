@@ -201,13 +201,15 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
   }
   const grassCanvasEl = grassCanvas();
   const grassTex = tex(grassCanvasEl, true); grassTex.repeat.set(380, 380);
+  // Flat plain in the middle, rising into rolling rim hills from ~1150 m out.
+  function groundY(x, z) {
+    const rim = sstep(1150, 2700, Math.hypot(x, z - 150));
+    return rim * (110 + 80 * Math.sin(x * 0.0021) * Math.cos(z * 0.0017) + 38 * Math.sin(x * 0.005 + z * 0.004)) - 0.02;
+  }
   {
     const g = new THREE.PlaneGeometry(9000, 9000, 200, 200); g.rotateX(-Math.PI / 2);
     const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), z = p.getZ(i), d = Math.hypot(x, z - 150), rim = sstep(1150, 2700, d);
-      p.setY(i, rim * (110 + 80 * Math.sin(x * 0.0021) * Math.cos(z * 0.0017) + 38 * Math.sin(x * 0.005 + z * 0.004)) - 0.02);
-    }
+    for (let i = 0; i < p.count; i++) p.setY(i, groundY(p.getX(i), p.getZ(i)));
     g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: grassTex }));
     m.receiveShadow = true; root.add(m);
@@ -808,8 +810,8 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     return g;
   }
   const detail = small ? 1 : 2;
-  function blob(cx, cy, cz, r, sy, seed) {
-    let g = new THREE.IcosahedronGeometry(1, detail);
+  function blob(cx, cy, cz, r, sy, seed, det = detail) {
+    let g = new THREE.IcosahedronGeometry(1, det);
     g.deleteAttribute('uv'); g.deleteAttribute('normal');
     g = mergeVertices(g);
     const p = g.attributes.position;
@@ -939,6 +941,65 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
   }
   instanceTrees(TREES);
   withRng(515151, () => instanceTrees(DTREES));
+
+  /* --------------------------------------------------- countryside woods */
+  // Woods, copses, hedgerows and lone trees across the plain and up the rim hills, so the
+  // countryside around the meadow isn't bare grass from altitude. These are only seen from
+  // a distance, so they use lighter variants (coarse canopies, no leaf cards).
+  function makeRoundFar(seed) {
+    const blobs = [blob(0, 3.0, 0, 1.3, 0.88, seed, 1)];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * TAU + R(-0.3, 0.3);
+      blobs.push(blob(Math.cos(a) * 0.8, R(2.5, 3.4), Math.sin(a) * 0.8, R(0.75, 0.95), 0.85, seed + i * 7.1, 1));
+    }
+    return { trunk: trunkGeo(2.2, 0.2, 0.12, []), canopy: canopyMerge(blobs), cards: null, tint: () => hsl(R(0.23, 0.32), R(0.55, 0.75), R(0.3, 0.43)) };
+  }
+  function makePoplarFar(seed) {
+    const blobs = [[2.2, 0.75], [3.4, 0.72], [4.5, 0.5]].map(([y, r], i) => blob(0, y, 0, r, 1.4, seed + i * 3.3, 1));
+    return { trunk: trunkGeo(1.6, 0.16, 0.1, []), canopy: canopyMerge(blobs), cards: null, tint: () => hsl(R(0.22, 0.28), R(0.6, 0.8), R(0.34, 0.46)) };
+  }
+  withRng(737373, () => {
+    TREE_KINDS.farRound = [makeRoundFar(4.4), makeRoundFar(8.2), makeRoundFar(12.6)];
+    TREE_KINDS.farPoplar = [makePoplarFar(6.6)];
+    Object.assign(KIND_SCALE, { farRound: 1, farPoplar: 0.9 });
+    const FTREES = [];
+    const excluded = (x, z) =>
+      (Math.abs(x) < 690 && z > -760 && z < 265) || // city and districts
+      (Math.abs(x) < 1230 && z > -505 && z < -245) || // lake and quays
+      (x > -160 && x < -30 && z > 500 && z < 790) || // tulip field
+      (x > -190 && x < -145 && z > 555 && z < 745); // windmills
+    const add = (x, z, s, kind) => {
+      if (excluded(x, z) || Math.hypot(x, z - 150) > 2400) return;
+      const y = groundY(x, z);
+      // Keep the low meadow pass open: the detailed groves own the foreground.
+      if (y < 30 && !clearOfPath(x, 2.2 * s, z, s * 2.6 + 30)) return;
+      FTREES.push({ x, y: y - 0.4, z, s, kind });
+    };
+    const woodKind = (x, z) => {
+      if (noise3(x * 0.003 + 90, 0, z * 0.003) > 0.55) return 'conifer';
+      return rnd() < 0.12 ? 'farPoplar' : 'farRound';
+    };
+    // Hedgerows: broken tree lines along field edges around the meadow.
+    const rows = [[[380, 880], [1300, 900]], [[420, 1180], [1250, 1150]], [[-370, 900], [-1300, 930]], [[-360, 1230], [-1200, 1200]], [[820, 300], [800, 1450]], [[-760, 290], [-790, 1400]], [[-300, 1400], [600, 1420]], [[760, -820], [1500, -760]], [[-760, -840], [-1500, -800]]];
+    for (const [[x0, z0], [x1, z1]] of rows) {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      for (let u = 0; u < len; u += R(8, 13)) {
+        if (noise3(u * 0.02, x0 * 0.01, z0 * 0.01) < 0.3) continue; // gaps and gates
+        const k = u / len;
+        add(x0 + (x1 - x0) * k + R(-2, 2), z0 + (z1 - z0) * k + R(-2, 2), R(2.4, 3.6), rnd() < 0.3 ? 'farPoplar' : 'farRound');
+      }
+    }
+    // Woods where a low-frequency noise field is high, copses on their fringes, lone trees elsewhere.
+    const clump = (x, z) => noise3(x * 0.0045, 0, z * 0.0045) * 0.7 + noise3(x * 0.017 + 40, 0, z * 0.017) * 0.3;
+    const target = Math.round(5200 * Q);
+    for (let i = 0; i < 60000 && FTREES.length < target; i++) {
+      const x = R(-2400, 2400), z = 150 + R(-2400, 2400), c = clump(x, z);
+      if (c > 0.64) add(x, z, R(3, 5.5), woodKind(x, z));
+      else if (c > 0.56 && rnd() < 0.18) add(x, z, R(2.6, 4.6), woodKind(x, z));
+      else if (rnd() < 0.012) add(x, z, R(3, 5), rnd() < 0.2 ? 'farPoplar' : 'farRound');
+    }
+    instanceTrees(FTREES);
+  });
 
   /* ------------------------------------------------------------------- cars */
   const CARN = Math.round(170 * Q);
