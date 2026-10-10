@@ -154,11 +154,8 @@ export async function tx(fn) {
 }
 
 // Hands work to the agent; `db` may be a transaction client so the job commits with the change.
-export async function enqueueJob(db, kind, payload, { delay = '0 seconds' } = {}) {
-  await db.query(
-    "INSERT INTO jobs (kind, payload, run_after) VALUES ($1, $2, now() + $3::interval)",
-    [kind, payload, delay],
-  );
+export async function enqueueJob(db, kind, payload) {
+  await db.query('INSERT INTO jobs (kind, payload) VALUES ($1, $2)', [kind, payload]);
   await db.query("SELECT pg_notify('jobs', $1)", [kind]);
 }
 

@@ -99,5 +99,9 @@ async function tick(): Promise<void> {
 export function startJobs(): void {
   listen("jobs", () => void tick());
   setInterval(() => void tick(), 5_000).unref();
+  // Finished jobs are only useful for debugging; keep a week of them.
+  setInterval(() => {
+    pool.query("DELETE FROM jobs WHERE done_at < now() - interval '7 days'").catch((err) => log("cleanup failed:", err.message));
+  }, 60 * 60_000).unref();
   void tick();
 }

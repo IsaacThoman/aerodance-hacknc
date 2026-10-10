@@ -8,7 +8,7 @@ The server still records `spin` events in the `spins` hypertable, but the curren
 
 ## Aero background
 
-The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, hot-air balloons, gulls, flower meadow). The whole app is one letterboxed 16:9 frame rendered at a fixed 640x480 buffer and scaled up with `image-rendering: pixelated`; the HUD sits inside the frame.
+The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, hot-air balloons, gulls, flower meadow). The display is one letterboxed 16:9 frame rendered at a fixed 640x480 buffer and scaled up with `image-rendering: pixelated`; the HUD sits inside the frame. The phone view (`/join`) is a portrait frame filling the screen, 360 px wide with a height that follows the screen.
 
 - `client/src/aero/aeroBackground.js` builds the world. `createAeroWorld({ renderer, scene, camera, speed, quality })` returns `{ update(dt), render(), setSpeed, dispose }` for use inside an existing renderer; `createAeroBackground(canvas, options)` is a standalone full-canvas version.
 - `client/src/aero/AeroWorld.jsx` plugs it into the Fiber `<Canvas>` (used by `Scene.jsx`): `<AeroWorld speed={1} quality="auto" />`. It renders the frame itself, so it uses whatever buffer size `FixedRenderResolution` sets.
@@ -43,6 +43,15 @@ Compose runs three services: `app` (Express, Socket.IO, the client), `db` (Times
 - The app's internal API listens on port `3001` for the bot (create battles, profiles by phone). Only the Compose network reaches it; the domain routes to `3000`.
 
 To make a devnet treasury for funding wallets and signing receipts, run `npm run treasury` in `agent/` and put the printed `SOLANA_TREASURY_SECRET` in `.env`.
+
+### In-engine UI
+
+All menus and battle screens are drawn on 2D canvases that share the render buffer, so they get the same pixels and stretch as the world. `client/src/ui/useCanvasUI.js` handles the overlay (canvas texture, design-unit layout, hit testing, press/hover/drag, scrolling) and `client/src/ui/draw.js` holds the aero drawing kit (bubble pills, glass panels, headers, the title, icons, a pixel-snapped QR code).
+
+- **Display:** Battle on the main menu opens the lobby (`client/src/battle/BattleScreen.jsx`): a QR code to `/join/<id>`, seat tags over the dancers, the crowd count, and hype rising as bubbles from the dancer it was sent to. Start hands off to the dance; the results screen shows the winner, scores, hype and the on-chain receipt. `/battle/<id>?p=<token>`, the link the bot texts, opens the same lobby with that seat's token.
+- **Phones:** `/join/<id>` (`client/src/phone/`) has the profile form, your seat or crowd role, Hype buttons, the receipt, your stats and wallet, and the iMessage opt-in. The text fields are invisible real `<input>`s over the drawn fields so the phone keyboard opens. It's installable to the Home Screen (`client/public/manifest.webmanifest`).
+- **Debug:** the dance doesn't report scores yet, so the display shows a debug strip that fakes a random winner, a tie or a no-show. It's on in dev, with `?debug` in the URL, or after pressing `` ` ``. When the dance is ready it should report each seat with `reportResult` from `client/src/battle/api.js`, using the tokens in `seatTokens`.
+- Phones can't open `localhost`. To try the phone view from a real phone in dev, run `node --watch server/index.js` and `npx vite --host` instead of `npm run dev`, then open the display by the LAN address Vite prints (or use a tunnel). The QR code uses whatever address the display was opened with.
 
 ## Run locally with Docker Compose
 
