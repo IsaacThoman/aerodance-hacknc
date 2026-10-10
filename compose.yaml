@@ -5,6 +5,10 @@ services:
       - "3000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-aerodance}
+      AGENT_URL: http://agent:4000
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-}
+      # Base for battle links the bot texts out, e.g. https://aerodance.tech
+      PUBLIC_URL: ${PUBLIC_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -25,28 +29,32 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Solana devnet + iMessage worker. Internal only: no domain, no published port.
+  # The app reaches it at agent:4000; it reaches the app's internal API at app:3001.
   agent:
     build: ./agent
     expose:
       - "4000"
     environment:
-      PORT: "4000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-aerodance}
+      APP_URL: http://app:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.devnet.solana.com}
+      SOLANA_TREASURY_SECRET: ${SOLANA_TREASURY_SECRET:-}
+      # Leave these unset (e.g. in PR previews) and the bot stays off; texts are only logged.
       PROJECT_ID: ${PROJECT_ID:-}
       PROJECT_SECRET: ${PROJECT_SECRET:-}
       PHOTON_TOKEN: ${PHOTON_TOKEN:-}
-      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.devnet.solana.com}
-      BATTLE_BASE_URL: ${BATTLE_BASE_URL:-http://localhost:3000}
-      PUBLIC_URL: ${PUBLIC_URL:-}
-    volumes:
-      - agent-data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health || exit 1"]
       interval: 10s
       timeout: 5s
-      start_period: 90s
+      start_period: 60s
       retries: 5
     restart: unless-stopped
 
 volumes:
   db-data:
-  agent-data:

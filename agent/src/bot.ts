@@ -3,15 +3,32 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Spectrum, contact, type Message, type Space } from "spectrum-ts";
 import { background, effect, imessage } from "spectrum-ts/providers/imessage";
-import { battles, markSeen, profiles, type Profile } from "./store.ts";
+import { getProfile, markSeen, pool, type Profile } from "./db.ts";
+import { app as game } from "./app.ts";
 import { explorerAddress, getBalanceSol } from "./solana.ts";
-import { battleUrl, createBattle } from "./battles.ts";
 import { photonLine } from "./photon.ts";
-import { cleanName, fundWallet, mask, normalizePhone, profileByPhone, profileForPhone, walletOf } from "./players.ts";
+import { ensureWallet, fundWallet, mask } from "./players.ts";
 
 const ASSETS = join(import.meta.dirname, "..", "assets");
 const CHAT_BACKGROUND = join(ASSETS, "chat-background.jpg");
 const CONTACT_PHOTO = join(ASSETS, "contact-photo.png");
+
+// "(919) 555-0123" → "+19195550123". US default for 10-digit numbers. Same rules as the app.
+function normalizePhone(raw: string): string | undefined {
+  const s = raw.trim();
+  const digits = s.replace(/\D/g, "");
+  if (s.startsWith("+") && digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return undefined;
+}
+
+const profileByPhone = async (phone: string) =>
+  (await pool.query<Profile>("SELECT * FROM profiles WHERE phone = $1", [phone])).rows[0];
+
+// Flips a once-per-player flag; true only for the caller that flipped it.
+const claimOnce = async (id: string, flag: "decorated" | "contact_card") =>
+  ((await pool.query(`UPDATE profiles SET ${flag} = true WHERE id = $1 AND NOT ${flag}`, [id])).rowCount ?? 0) > 0;
 
 // Text a player typed, unwrapped from replies, effects and markdown. undefined for anything else.
 type AnyContent = { type: string; text?: string; markdown?: string; content?: AnyContent };
@@ -56,13 +73,13 @@ export async function startBot() {
       spaces.set(handle, space);
     }
     await space.send(celebrate ? effect(text, imessage.effect.message.confetti) : text);
-    await decorate(space, profileByPhone(handle));
+    await decorate(space, await profileByPhone(handle));
   }
 
   // Once per player: the aero chat wallpaper, then an "aerodance" contact card for the
   // number that texts them (shared-pool lines can't carry our own name/photo). Best effort.
   async function decorate(space: Space, profile: Profile | undefined): Promise<void> {
-    if (!profile?.phone || (profile.decorated && profile.contactCard)) return;
+    if (!profile?.phone || (profile.decorated && profile.contact_card)) return;
     const phone = profile.phone;
     const attempt = async (what: string, send: () => Promise<unknown>) => {
       try {
@@ -71,20 +88,16 @@ export async function startBot() {
         log(`${what} for ${mask(phone)} failed:`, (err as Error).message);
       }
     };
-    if (!profile.decorated) {
-      profile.decorated = true;
-      await profiles.save();
+    if (await claimOnce(profile.id, "decorated")) {
       await attempt("background", () => space.send(background(CHAT_BACKGROUND)));
     }
-    if (!profile.contactCard) {
-      profile.contactCard = true;
-      await profiles.save();
+    if (await claimOnce(profile.id, "contact_card")) {
       await attempt("contact card", async () => {
-        profile.line ??= await photonLine(phone);
-        if (!profile.line) throw new Error("no assigned line found");
-        await profiles.save();
+        const line = profile.line ?? (await photonLine(phone));
+        if (!line) throw new Error("no assigned line found");
+        if (!profile.line) await pool.query("UPDATE profiles SET line = $2 WHERE id = $1", [profile.id, line]);
         const photo = { mimeType: "image/png", read: () => readFile(CONTACT_PHOTO) };
-        await space.send(contact({ name: { first: "aerodance", last: "🫧" }, phones: [{ value: profile.line, type: "mobile" }], photo }));
+        await space.send(contact({ name: { first: "aerodance", last: "🫧" }, phones: [{ value: line, type: "mobile" }], photo }));
         await space.send("👆 Tap that card and Save so I show up as aerodance 🫧");
       });
     }
@@ -101,7 +114,7 @@ export async function startBot() {
 
   async function handle(space: Space, message: Message): Promise<void> {
     if (message.direction === "outbound") return;
-    if (!markSeen(message.id)) return;
+    if (!(await markSeen(message.id))) return;
     if (message.platform === "imessage" && imessage(space).type === "group") return; // DMs only on Pro
     const sender = message.sender?.id;
     if (!sender) return;
@@ -112,7 +125,9 @@ export async function startBot() {
       if (UNREADABLE.has(message.content.type)) await space.send("🫧 I only speak text for now. Try 'battle' or 'help' 🐠");
       return;
     }
-    const { profile, isNew, justOptedIn } = profileForPhone(sender);
+    const linked = await game.profileForPhone(sender);
+    const { isNew, justOptedIn } = linked;
+    const profile = (await getProfile(linked.profile.id))!;
 
     const [first = "", ...rest] = text.trim().split(/\s+/);
     const cmd = first.toLowerCase();
@@ -142,20 +157,18 @@ export async function startBot() {
       case "wallet":
         return space.responding(() => sendWallet(space, profile));
       case "stats": {
-        const s = profile.stats;
+        const { stats: s } = await game.profile(profile.id);
         await space.send(
           `🫧 ${profile.name}'s reef stats 🐠\nBattles: ${s.battles} · Wins: ${s.wins}\nBest score: ${s.bestScore} · Bubbles popped: ${s.pops}\nCrowd hype: ${s.hypeCount}× (+${s.hypeSol} SOL)`,
         );
         return;
       }
       case "name": {
-        const name = cleanName(rest.join(" "));
-        if (!name) {
+        if (!rest.join(" ").trim()) {
           await space.send(`🐠 You're ${profile.name}. Try: name Glassy Orca`);
           return;
         }
-        profile.name = name;
-        await profiles.save();
+        const { name } = await game.rename(profile.id, rest.join(" "));
         await space.send(`🫧 Splendid! You're now ${name} ✨`);
         return;
       }
@@ -168,8 +181,8 @@ export async function startBot() {
   }
 
   async function sendBattle(space: Space, profile: Profile) {
-    const battle = createBattle([profile.id]);
-    await space.send(`🫧 Your dance battle is ready! 💃🐠\n${battleUrl(battle.id, battle.players[0]!.token)}`);
+    const battle = await game.createBattle([profile.id]);
+    await space.send(`🫧 Your dance battle is ready! 💃🐠\n${battle.players[0]!.url}`);
   }
 
   async function challenge(space: Space, me: Profile, arg: string) {
@@ -183,16 +196,15 @@ export async function startBot() {
       return;
     }
 
-    const battle = createBattle([me.id, undefined]);
+    const battle = await game.createBattle([me.id, null]);
     const [mine, theirs] = battle.players as [(typeof battle.players)[0], (typeof battle.players)[0]];
-    const theirUrl = battleUrl(battle.id, theirs.token);
-    await space.send(`🫧 Challenge sent! Here's your link 💃\n${battleUrl(battle.id, mine.token)}`);
+    const theirUrl = theirs.url;
+    await space.send(`🫧 Challenge sent! Here's your link 💃\n${mine.url}`);
 
     try {
       await sendTo(opponent, `🫧 ${me.name} challenged you to a dance battle! 🐠\nTap to dance: ${theirUrl}\nText 'help' anytime.`);
       // Only seat (and remember) them once we know we can reach them.
-      theirs.profileId = profileForPhone(opponent).profile.id;
-      await battles.save();
+      await game.claimSeat(battle.id, theirs.seat, (await game.profileForPhone(opponent)).profile.id);
     } catch (err) {
       const msg = (err as Error).message ?? "";
       log(`challenge to ${mask(opponent)} failed:`, msg);
@@ -205,8 +217,8 @@ export async function startBot() {
   }
 
   async function sendWallet(space: Space, profile: Profile) {
-    await fundWallet(profile.walletKey); // no-op once funded; retries if the first try failed
-    const wallet = walletOf(profile)!;
+    await fundWallet(profile.id).catch(() => {}); // no-op once funded; the wallet job keeps retrying
+    const wallet = await ensureWallet(profile.id);
     let balance = "unavailable right now 🫧";
     try {
       balance = `${(await getBalanceSol(wallet.address)).toFixed(4)} SOL`;

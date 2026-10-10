@@ -1,11 +1,19 @@
-// `npm run treasury`: create the devnet treasury keypair and try to airdrop to it.
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { connection, createTreasury, getBalanceSol, loadTreasury, withTimeout } from "./solana.ts";
+// `npm run treasury`: make a devnet treasury (or check the one in SOLANA_TREASURY_SECRET)
+// and try to airdrop to it.
+import { Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import bs58 from "bs58";
+import { connection, getBalanceSol, loadTreasury, withTimeout } from "./solana.ts";
 
 const existing = loadTreasury();
-const treasury = existing ?? (await createTreasury());
+const treasury = existing ?? Keypair.generate();
 const address = treasury.publicKey.toBase58();
-console.log(existing ? "Treasury already exists:" : "Created treasury at data/treasury.json:", address);
+if (existing) {
+  console.log("Treasury from SOLANA_TREASURY_SECRET:", address);
+} else {
+  console.log("New treasury:", address);
+  console.log("\nAdd this to .env (or the deployment's environment). Keep it secret:\n");
+  console.log(`  SOLANA_TREASURY_SECRET=${bs58.encode(treasury.secretKey)}\n`);
+}
 
 let balance = await getBalanceSol(address);
 if (balance < 1) {

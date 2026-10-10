@@ -5,6 +5,4 @@ dist
 *.log
 .DS_Store
 
-# aerodance agent: keypairs and local state
-data/
 *.keypair.json
