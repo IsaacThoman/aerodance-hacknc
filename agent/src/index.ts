@@ -3,7 +3,7 @@
 import { loadTreasury } from "./solana.ts"; // importing this runs the devnet guard
 import { waitForSchema } from "./db.ts";
 import { startJobs } from "./jobs.ts";
-import { setNotifier } from "./players.ts";
+import { fundPendingWallets, setNotifier } from "./players.ts";
 import "./battles.ts"; // registers the receipt jobs
 import { createHttp } from "./http.ts";
 import { startBot } from "./bot.ts";
@@ -31,6 +31,7 @@ if (process.env.PROJECT_ID && process.env.PROJECT_SECRET) {
 }
 
 startJobs();
+if (treasury) setInterval(() => void fundPendingWallets(), 60_000).unref();
 createHttp().listen(PORT, () => console.log(`🫧 aerodance agent: http://localhost:${PORT}`));
 
 await bot?.run();

@@ -97,7 +97,7 @@ export async function startBot() {
         if (!line) throw new Error("no assigned line found");
         if (!profile.line) await pool.query("UPDATE profiles SET line = $2 WHERE id = $1", [profile.id, line]);
         const photo = { mimeType: "image/png", read: () => readFile(CONTACT_PHOTO) };
-        await space.send(contact({ name: { first: "aerodance", last: "🫧" }, phones: [{ value: line, type: "mobile" }], photo }));
+        await space.send(contact({ name: { first: "aerodance" }, phones: [{ value: line, type: "mobile" }], photo }));
         await space.send("👆 Tap that card and Save so I show up as aerodance 🫧");
       });
     }

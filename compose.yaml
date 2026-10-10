@@ -39,6 +39,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-aerodance}
       APP_URL: http://app:3001
       INTERNAL_SECRET: ${INTERNAL_SECRET:-}
+      # Trophy NFT metadata URIs point here (the app serves /nft/<id>.json)
+      PUBLIC_URL: ${PUBLIC_URL:-}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.devnet.solana.com}
       SOLANA_TREASURY_SECRET: ${SOLANA_TREASURY_SECRET:-}
       # Leave these unset (e.g. in PR previews) and the bot stays off; texts are only logged.

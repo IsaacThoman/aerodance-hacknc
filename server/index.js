@@ -5,7 +5,7 @@ import path from 'node:path';
 import express from 'express';
 import { Server } from 'socket.io';
 import { listen, migrate, pool, recordSpin, spinHistory, spinsSince } from './db.js';
-import { publicBattle, startSweeper } from './battles.js';
+import { publicBattle, startSweeper, trophyMetadata } from './battles.js';
 import { changes } from './events.js';
 import { profileByDevice } from './profiles.js';
 import { internalApp, publicRoutes } from './routes.js';
@@ -15,6 +15,8 @@ const INTERNAL_PORT = Number(process.env.INTERNAL_PORT) || 3001;
 const distDir = path.resolve(fileURLToPath(import.meta.url), '../../dist');
 
 const app = express();
+// Behind Coolify's proxy: req.protocol reflects the public https URL.
+app.set('trust proxy', true);
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 
@@ -36,6 +38,18 @@ app.get('/api/spins/history', async (_req, res, next) => {
 });
 
 app.use('/api', publicRoutes());
+
+// Metadata for a battle's trophy NFT; the agent mints it with this as the asset's uri.
+app.get('/nft/:id.json', async (req, res, next) => {
+  try {
+    const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const meta = await trophyMetadata(req.params.id, base);
+    if (!meta) return res.status(404).json({ error: 'no trophy for that battle' });
+    res.json(meta);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // In production Express serves the Vite build; in dev Vite serves the client.
 if (existsSync(distDir)) {

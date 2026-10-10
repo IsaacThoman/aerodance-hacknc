@@ -67,7 +67,14 @@ const schema = `
     receipt_signature  TEXT,
     receipt_tx         TEXT,
     receipt_last_valid BIGINT,
-    receipt_attempts   INT         NOT NULL DEFAULT 0
+    receipt_attempts   INT         NOT NULL DEFAULT 0,
+    -- The winner's trophy NFT (Metaplex Core), minted by the agent. The asset key is kept
+    -- until the mint lands, so a retry finds the asset instead of minting a second one.
+    trophy_status       TEXT,                               -- pending | minted; NULL for ties and unclaimed seats
+    trophy_owner        TEXT,                               -- winner's wallet address
+    trophy_asset_secret BYTEA,
+    trophy_asset        TEXT,
+    trophy_attempts     INT         NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS battle_seats (

@@ -1,10 +1,16 @@
-// After the app settles a battle: write the on-chain receipt and text the players.
+// After the app settles a battle: write the on-chain receipt, text the players, and mint
+// the winner's trophy NFT.
+import { Keypair } from "@solana/web3.js";
 import { getProfile, notifyChange, pool } from "./db.ts";
 import { Retry, enqueue, handle } from "./jobs.ts";
+import { mintTrophy } from "./nft.ts";
 import { notify, walletOf } from "./players.ts";
-import { buildMemo, explorerTx, memoStatus, sendMemo, type SignedMemo } from "./solana.ts";
+import { buildMemo, explorerAddress, explorerTx, memoStatus, sendMemo, type SignedMemo } from "./solana.ts";
 
 const RECEIPT_RETRY_MS = 30_000;
+const TROPHY_RETRY_MS = 30_000;
+// Where the trophy's metadata lives (served by the app at /nft/<id>.json).
+const PUBLIC_URL = (process.env.PUBLIC_URL || "http://localhost:3000").replace(/\/$/, "");
 const log = (...args: unknown[]) => console.log("[battles]", ...args);
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
 
@@ -24,6 +30,10 @@ type BattleRow = {
   receipt_signature: string | null;
   receipt_tx: string | null;
   receipt_last_valid: string | null; // BIGINT
+  trophy_status: string | null;
+  trophy_owner: string | null;
+  trophy_asset_secret: Buffer | null;
+  trophy_asset: string | null;
 };
 
 const getBattle = async (id: string) =>
@@ -85,10 +95,62 @@ async function markConfirmed(battleId: string): Promise<true> {
   return true;
 }
 
+// ---------- trophy NFTs ----------
+
+// The winner's seat needs a profile with a wallet to receive it; ties get no trophy.
+async function startTrophy(battle: BattleRow): Promise<void> {
+  if (battle.trophy_status || battle.winner_seat === null) return;
+  const seat = (await getSeats(battle.id)).find((s) => s.seat === battle.winner_seat);
+  const wallet = seat?.profile_id ? await walletOf(seat.profile_id) : undefined;
+  if (!wallet) return;
+  await pool.query(
+    `UPDATE battles SET trophy_status = 'pending', trophy_owner = $2, trophy_asset_secret = $3
+      WHERE id = $1 AND trophy_status IS NULL`,
+    [battle.id, wallet.address, Buffer.from(Keypair.generate().secretKey)],
+  );
+  await notifyChange({ battle: battle.id });
+}
+
+// One attempt to mint. Returns true once minted (or if there's nothing to mint).
+async function tryTrophy(battleId: string): Promise<boolean> {
+  const b = await getBattle(battleId);
+  if (!b?.trophy_status || b.trophy_status === "minted") return true;
+  await pool.query("UPDATE battles SET trophy_attempts = trophy_attempts + 1 WHERE id = $1", [battleId]);
+  let asset: string;
+  try {
+    ({ asset } = await mintTrophy(
+      new Uint8Array(b.trophy_asset_secret!),
+      b.trophy_owner!,
+      `aerodance trophy #${battleId}`,
+      `${PUBLIC_URL}/nft/${battleId}.json`,
+    ));
+  } catch (err) {
+    log(`trophy for ${battleId} not minted:`, (err as Error).message.split("\n")[0]);
+    return false;
+  }
+  await pool.query(
+    "UPDATE battles SET trophy_status = 'minted', trophy_asset = $2, trophy_asset_secret = NULL WHERE id = $1",
+    [battleId, asset],
+  );
+  await notifyChange({ battle: battleId });
+  log(`trophy for ${battleId}: ${asset}`);
+  const winner = (await getSeats(battleId)).find((s) => s.seat === b.winner_seat);
+  await notify(
+    await getProfile(winner?.profile_id),
+    `🏆 Your trophy NFT for battle ${battleId} just landed in your wallet 🫧\n${explorerAddress(asset)}`,
+  );
+  return true;
+}
+
+handle("trophy", async ({ battleId }: { battleId: string }) => {
+  if (!(await tryTrophy(battleId))) throw new Retry("trophy still pending", TROPHY_RETRY_MS);
+});
+
 // First try at the receipt, then the results text (with the link if it landed in time).
 handle("battle_finished", async ({ battleId }: { battleId: string }) => {
   const battle = await getBattle(battleId);
   if (!battle) return;
+  await startTrophy(battle);
   const landed = await tryReceipt(battleId, 20_000);
   if (!landed) await enqueue("receipt", { battleId }, RECEIPT_RETRY_MS);
   const signature = landed ? (await getBattle(battleId))!.receipt_signature! : null;
@@ -119,6 +181,7 @@ handle("battle_finished", async ({ battleId }: { battleId: string }) => {
     ];
     await notify(profile, lines.join("\n"), { celebrate: won });
   }
+  if (!(await tryTrophy(battleId))) await enqueue("trophy", { battleId }, TROPHY_RETRY_MS);
 });
 
 // Retries every 30 s until the memo lands, then sends everyone the link.

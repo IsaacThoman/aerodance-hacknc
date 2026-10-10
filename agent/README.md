@@ -6,7 +6,7 @@ Your phone number is your identity and your Solana devnet wallet. There's no sig
 Battles, profiles, seats and results live in the app (`server/`), which owns the database schema.
 The agent is a worker beside it in Compose, and it holds every Solana key:
 
-- **Jobs:** the app adds rows to the `jobs` table and `NOTIFY`s `jobs`. The agent creates and funds wallets, links phones to Photon, writes the on-chain result receipt and texts the players. Failed jobs retry with backoff, so a restart or a slow RPC never loses a receipt or a text.
+- **Jobs:** the app adds rows to the `jobs` table and `NOTIFY`s `jobs`. The agent creates and funds wallets, links phones to Photon, writes the on-chain result receipt, texts the players and mints the winner's trophy NFT. Failed jobs retry with backoff, so a restart or a slow RPC never loses a receipt or a text.
 - **Internal HTTP API** (port 4000, Compose network only), for things the app needs an answer to right away: `GET /wallets/:profileId` (address and balance) and `POST /hype` (spectator → dancer transfer).
 - **The iMessage bot**, when `PROJECT_ID` and `PROJECT_SECRET` are set. Bot commands that create battles or profiles call the app's internal API (`app:3001`), so battle rules stay in one place. Without credentials (PR previews, local dev), texts are only logged.
 - When a receipt lands or a phone gets linked, the agent `NOTIFY`s `changes` and the app pushes the update to displays and phones over Socket.IO.
@@ -36,6 +36,7 @@ The treasury pays for new-player funding (0.05 SOL each) and for the on-chain re
 | `SOLANA_TREASURY_SECRET` | | Base58 secret key, or a solana-keygen JSON byte array |
 | `PROJECT_ID`, `PROJECT_SECRET` | | Photon dashboard → project settings. Unset = bot off. |
 | `PHOTON_TOKEN` | | Dashboard token so the phone view can add numbers to Photon's allowlist (see below) |
+| `PUBLIC_URL` | `http://localhost:3000` | The app's public address. Trophy NFTs point their metadata at `${PUBLIC_URL}/nft/<battleId>.json`. |
 | `AGENT_PORT` | `4000` | Internal HTTP port |
 
 Player wallets (devnet keys) and phone numbers live in the database. Don't point a preview at the production database.
@@ -77,13 +78,16 @@ When the app settles a battle it queues a `battle_finished` job:
    Seated players are labelled with their devnet wallet address. Empty seats are labelled `p1`, `p2`, …. Names and phones never go on-chain.
 2. Every dancer with a linked phone gets a text with the result, their score, crowd hype and the Explorer link.
 
-If Solana is slow or down, players still get their result right away, with a note that the receipt is pending. A `receipt` job retries every 30 s and texts the link once it lands. Retries resend the same signed transaction until its blockhash expires, so a battle never gets two memos.
+3. The winner gets a trophy NFT ([Metaplex Core](https://developers.metaplex.com/core)) minted by the treasury into their devnet wallet, and a text when it lands. Ties and unclaimed seats get no trophy. The asset key is generated once and kept until the mint lands, so a retry finds the existing asset instead of minting a second one. The app serves the metadata at `/nft/<battleId>.json`, with `trophy.png` as the image.
+
+If Solana is slow or down, players still get their result right away, with a note that the receipt is pending. A `receipt` job retries every 30 s and texts the link once it lands; a `trophy` job does the same for the NFT. Wallets that missed their starting SOL (say, while the treasury was empty) are retried every minute. Retries resend the same signed transaction until its blockhash expires, so a battle never gets two memos.
 
 ## Code map
 
 - `src/index.ts`: wiring (jobs + HTTP + bot)
 - `src/jobs.ts`: the jobs worker (claim, retry with backoff)
-- `src/battles.ts`: receipts and result texts
+- `src/battles.ts`: receipts, result texts and trophies
+- `src/nft.ts`: trophy minting (Metaplex Core via Umi)
 - `src/players.ts`: wallets, Photon linking, iMessage notifier
 - `src/bot.ts`: Spectrum iMessage loop and commands
 - `src/app.ts`: client for the app's internal API

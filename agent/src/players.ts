@@ -70,6 +70,15 @@ export async function fundWallet(profileId: string): Promise<void> {
   }
 }
 
+// Retry wallets that missed their starting SOL (e.g. created while the treasury was empty),
+// after their wallet job gave up.
+export async function fundPendingWallets(): Promise<void> {
+  const { rows } = await pool.query<{ profile_id: string }>("SELECT profile_id FROM wallets WHERE funded_sig IS NULL");
+  for (const { profile_id } of rows) {
+    await fundWallet(profile_id).catch((err) => log("funding retry failed:", (err as Error).message.split("\n")[0]));
+  }
+}
+
 handle("wallet", async ({ profileId }: { profileId: string }) => {
   if (await getProfile(profileId)) await fundWallet(profileId);
 });

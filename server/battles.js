@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { enqueueJob, pool, tx } from './db.js';
 import { AgentError, agentCall } from './agent.js';
 import { changes } from './events.js';
-import { HttpError, explorerTx, getProfile, shortId } from './profiles.js';
+import { HttpError, explorerAddress, explorerTx, getProfile, shortId } from './profiles.js';
 
 export const MAX_SEATS = 8;
 export const HYPE_SOL = 0.005;
@@ -80,6 +80,43 @@ export async function publicBattle(id) {
         ? { status: 'confirmed', signature: b.receipt_signature, explorer: explorerTx(b.receipt_signature) }
         : { status: 'pending', signature: null, explorer: null }
       : null,
+    trophy: finished && b.trophy_status
+      ? b.trophy_status === 'minted'
+        ? { status: 'minted', asset: b.trophy_asset, explorer: explorerAddress(b.trophy_asset) }
+        : { status: 'pending', asset: null, explorer: null }
+      : null,
+  };
+}
+
+// Off-chain metadata the trophy NFT's uri points to (Metaplex JSON standard).
+export async function trophyMetadata(id, baseUrl) {
+  const { rows: [b] } = await pool.query(
+    `SELECT b.id, b.created_at, b.winner_seat, s.score, s.pops, s.sync, s.flair,
+            (SELECT count(*)::int FROM battle_seats WHERE battle_id = b.id) AS dancers,
+            (SELECT count(*)::int FROM hype WHERE battle_id = b.id AND seat = b.winner_seat) AS hype
+       FROM battles b JOIN battle_seats s ON s.battle_id = b.id AND s.seat = b.winner_seat
+      WHERE b.id = $1 AND b.trophy_status IS NOT NULL`,
+    [id],
+  );
+  if (!b) return undefined;
+  const image = `${baseUrl}/trophy.png`;
+  return {
+    name: `aerodance trophy #${b.id}`,
+    symbol: 'AERO',
+    description: `Won dance battle ${b.id} on aerodance 🫧 Frutiger Aero dance battles, scored live.`,
+    image,
+    external_url: baseUrl,
+    attributes: [
+      { trait_type: 'battle', value: b.id },
+      { trait_type: 'dancers', value: b.dancers },
+      { trait_type: 'score', value: b.score ?? 0 },
+      { trait_type: 'pops', value: b.pops ?? 0 },
+      { trait_type: 'sync', value: b.sync ?? 0 },
+      { trait_type: 'flair', value: b.flair ?? 0 },
+      { trait_type: 'hype', value: b.hype },
+      { trait_type: 'date', value: b.created_at.toISOString().slice(0, 10) },
+    ],
+    properties: { category: 'image', files: [{ uri: image, type: 'image/png' }] },
   };
 }
 

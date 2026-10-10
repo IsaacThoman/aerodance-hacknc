@@ -11,7 +11,7 @@ import { joinUrl, useHype } from './api.js';
  * dancers (useFrame priority 2.5). Phases follow the battle:
  *   lobby    QR code to join, seat tags over the dancers, Start
  *   playing  seat tags and hype only (the dance itself hooks in here)
- *   results  winner, scores, hype totals and the on-chain receipt
+ *   results  winner, scores, hype totals, the on-chain receipt and the winner's trophy NFT
  * Hype from phones rises as bubbles from the dancer it was sent to.
  *
  * <BattleScreen visible battle={publicBattle} playing onPlay onBack onRematch onMenu />
@@ -27,12 +27,13 @@ const TAG_Y = 286;
 const BUBBLE_Y = 640;
 
 // Score cards share the space between the banner and the receipt line.
-const CARDS = { x: 128, y: 314, w: 600, h: 256, gap: 16 };
+const CARDS = { x: 128, y: 300, w: 600, h: 256, gap: 16 };
 const cardRect = (i, n) => {
   const h = Math.min(112, (CARDS.h - CARDS.gap * (n - 1)) / n);
   return { x: CARDS.x, y: CARDS.y + i * (h + CARDS.gap), w: CARDS.w, h };
 };
-const RECEIPT = { x: 128, y: 600, w: 600, h: 64 };
+const RECEIPT = { x: 128, y: 580, w: 600, h: 64 };
+const TROPHY = { x: 128, y: 660, w: 600, h: 64 };
 const REMATCH = { x: 128, y: 760, w: 380, h: 100 };
 const MENU = { x: 524, y: 760, w: 290, h: 100 };
 
@@ -133,6 +134,7 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
     if (phase === 'playing') return [{ id: 'back', circle: BACK }];
     const list = [{ id: 'menu-back', circle: BACK }, { id: 'rematch', rect: REMATCH }, { id: 'menu', rect: MENU }];
     if (b?.receipt?.explorer) list.push({ id: 'receipt', rect: RECEIPT });
+    if (b?.trophy?.explorer) list.push({ id: 'trophy', rect: TROPHY });
     return list;
   };
 
@@ -149,6 +151,7 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
         case 'menu': p.onMenu?.(); break;
         case 'rematch': p.onRematch?.(); break;
         case 'receipt': window.open(p.battle.receipt.explorer, '_blank', 'noopener'); break;
+        case 'trophy': window.open(p.battle.trophy.explorer, '_blank', 'noopener'); break;
         default:
       }
     },
@@ -176,7 +179,9 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
       }
       st.bubbles = st.bubbles.filter((b) => b.age < b.life && b.y > -60);
       // Bubbles, countdowns and the receipt spinner animate; everything else is static.
-      if (st.bubbles.length || p.battle?.closesAt || p.battle?.receipt?.status === 'pending') s.invalidate();
+      if (st.bubbles.length || p.battle?.closesAt || p.battle?.receipt?.status === 'pending' || p.battle?.trophy?.status === 'pending') {
+        s.invalidate();
+      }
     },
     opacity: () => st.alpha,
     draw: (g, s) => {
@@ -223,17 +228,22 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
         const winner = w === null ? null : b.players[w];
         drawShadowText(g, winner ? `${winner.name ?? `Seat ${w + 1}`} wins!` : "It's a tie!", 128, 250, { size: 76, weight: 800 });
         b.players.forEach((pl, i) => drawScoreCard(g, cardRect(i, count), pl, { winner: pl.seat === w }));
+        const dots = '.'.repeat(1 + (Math.floor(s.time * 3) % 3));
+        const chip = (rect, label, link, hover) => {
+          g.save();
+          g.globalAlpha *= 0.85 + hover * 0.15;
+          drawGlassPanel(g, rect, rect.h / 2);
+          g.restore();
+          drawShadowText(g, label, rect.x + 32, rect.y + rect.h / 2 + 1, {
+            size: 26, weight: 700, color: link && !hover ? '#bff4ff' : '#ffffff',
+          });
+        };
         const confirmed = b.receipt?.status === 'confirmed';
-        const text = confirmed
-          ? `On-chain receipt ${short(b.receipt.signature)}  ↗`
-          : `Writing the on-chain receipt${'.'.repeat(1 + (Math.floor(s.time * 3) % 3))}`;
-        g.save();
-        g.globalAlpha *= 0.85 + (h.receipt ?? 0) * 0.15;
-        drawGlassPanel(g, RECEIPT, RECEIPT.h / 2);
-        g.restore();
-        drawShadowText(g, text, RECEIPT.x + 32, RECEIPT.y + RECEIPT.h / 2 + 1, {
-          size: 26, weight: 700, color: confirmed && !h.receipt ? '#bff4ff' : '#ffffff',
-        });
+        chip(RECEIPT, confirmed ? `On-chain receipt ${short(b.receipt.signature)}  ↗` : `Writing the on-chain receipt${dots}`, confirmed, h.receipt ?? 0);
+        if (b.trophy) {
+          const minted = b.trophy.status === 'minted';
+          chip(TROPHY, minted ? `Winner's trophy NFT ${short(b.trophy.asset)}  ↗` : `Minting the winner's trophy NFT${dots}`, minted, h.trophy ?? 0);
+        }
         drawPill(g, REMATCH, { label: 'Run it back', icon: 'replay', hover: h.rematch ?? 0, press: s.press * (h.rematch ?? 0) });
         drawPill(g, MENU, { label: 'Menu', icon: 'home', hover: h.menu ?? 0, press: s.press * (h.menu ?? 0) });
       }

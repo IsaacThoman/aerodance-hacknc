@@ -124,6 +124,7 @@ export default function PhoneUI(props) {
         case 'optin': location.href = `sms:${p.me.line}&body=${encodeURIComponent('hi aerodance 🫧')}`; break;
         case 'wallet': window.open(p.me.wallet.explorer, '_blank', 'noopener'); break;
         case 'receipt': window.open(p.battle.receipt.explorer, '_blank', 'noopener'); break;
+        case 'trophy': window.open(p.battle.trophy.explorer, '_blank', 'noopener'); break;
         case 'toast': window.open(p.toast.link, '_blank', 'noopener'); break;
         case 'install-close': p.onDismissInstall(); break;
         case 'name':
@@ -219,7 +220,7 @@ export default function PhoneUI(props) {
           const finished = b.status === 'finished';
           const crowd = p.role?.role === 'spectator';
           const cardH = crowd && !finished ? 300 : 210;
-          const height = 136 + cardH - 20 + PAD + (finished ? 56 : 0);
+          const height = 136 + cardH - 20 + PAD + (finished ? 56 : 0) + (finished && b.trophy ? 52 : 0);
           drawGlassPanel(g, { x: M, y, w: CW, h: height }, 34);
           const roleLine = p.role?.role === 'dancer' ? `You're Dancer ${p.role.seat + 1}!` : crowd ? "You're in the crowd" : 'Joining…';
           text(g, roleLine, PHONE_W / 2, y + 54, { size: 40, weight: 800, align: 'center' });
@@ -265,6 +266,15 @@ export default function PhoneUI(props) {
             const ry = top + cardH + 12;
             if (b.receipt?.explorer) widgets.push({ id: 'receipt', rect: drawLink(g, 'On-chain receipt ↗', PHONE_W / 2, ry, h.receipt, { align: 'center' }) });
             else text(g, 'On-chain receipt pending…', PHONE_W / 2, ry, { size: 26, align: 'center', color: 'rgba(255,255,255,0.85)' });
+            if (b.trophy) {
+              const mine = p.role?.role === 'dancer' && p.role.seat === b.winnerSeat;
+              if (b.trophy.explorer) {
+                const label = mine ? 'Your trophy NFT ↗' : "Winner's trophy NFT ↗";
+                widgets.push({ id: 'trophy', rect: drawLink(g, label, PHONE_W / 2, ry + 52, h.trophy, { align: 'center' }) });
+              } else {
+                text(g, 'Minting the trophy NFT…', PHONE_W / 2, ry + 52, { size: 26, align: 'center', color: 'rgba(255,255,255,0.85)' });
+              }
+            }
           }
           y += height + 28;
         } else if (!p.battleId) {
