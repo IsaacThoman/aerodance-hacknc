@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "client",
+      "runtimeExecutable": "C:/Users/Sara/AppData/Roaming/JetBrains/WebStorm2026.2/node/versions/24.21.0/node.exe",
+      "runtimeArgs": ["node_modules/vite/bin/vite.js"],
+      "port": 5173
+    }
+  ]
+}

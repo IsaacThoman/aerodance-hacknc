@@ -13,11 +13,15 @@ body,
   place-items: center;
 }
 
+/* The whole app lives in one letterboxed 16:9 frame; everything outside it is black bars. */
 .canvas-frame {
+  position: relative;
   width: min(100vw, calc(100dvh * 16 / 9));
   height: min(100dvh, calc(100vw * 9 / 16));
   aspect-ratio: 16 / 9;
   overflow: hidden;
+  /* Sky shown while the city scene builds. */
+  background: linear-gradient(#2f7fe8, #bfe6ff 70%);
 }
 
 .canvas-frame canvas {
@@ -29,7 +33,7 @@ body,
 }
 
 .hud {
-  position: fixed;
+  position: absolute;
   top: 16px;
   left: 16px;
   padding: 10px 14px;

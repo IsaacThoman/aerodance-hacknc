@@ -9,6 +9,8 @@ const serverPort = process.env.PORT || 3000;
 export default defineConfig({
   root: 'client',
   plugins: [react()],
+  // The menu dancers import code from temp/frutiger-character; keep one copy of each runtime.
+  resolve: { dedupe: ['react', 'react-dom', 'three', '@react-three/fiber'] },
   build: {
     outDir: '../dist',
     emptyOutDir: true,
