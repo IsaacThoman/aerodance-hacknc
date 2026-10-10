@@ -1,26 +1,60 @@
-This is a Kotlin Multiplatform project targeting Android.
+# Aerodance Android pose client
 
-* [/shared](./shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./shared/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./shared/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./shared/src/jvmMain/kotlin)
-    folder is the appropriate location.
+A small Android Things app for the Open-Q 624A: camera input → local MediaPipe pose estimation → fresh landmarks streamed to a computer browser over the LAN.
 
-### Running the apps
+The app currently streams synthetic poses over LAN HTTP on port **1337**, with Start/Stop, an editable origin allowlist, connection status, and result counters. Camera capture and MediaPipe inference are the next milestone. Synthetic mode is explicitly identified in the UI and status capabilities.
 
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
+## Project documents
 
-- Android app: `./gradlew :androidApp:assembleDebug`
+- [PLAN.md](PLAN.md): milestones and acceptance criteria.
+- [ARCHITECTURE.md](ARCHITECTURE.md): components, planned packages, lifecycle, latency.
+- [camera-to-client-streaming.md](camera-to-client-streaming.md): endpoints, pose schema, browser integration.
+- [AGENTS.md](AGENTS.md): guidance for future changes.
+- [Open-Q 624A inspection](docs/hardware/open-q-624a.md): observed firmware/camera baseline.
 
-### Running tests
+## Existing modules
 
-Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
+`androidApp` owns Android lifecycle and the bounded HTTP server. `shared` contains the UI, protocol validation/encoding, and synthetic fixtures. Camera and MediaPipe adapters will live in `androidApp`.
 
-- Android tests: `./gradlew :shared:testAndroidHostTest`
+```bash
+./gradlew :androidApp:assembleDebug
+./gradlew :shared:testAndroidHostTest
+```
 
----
+The wrapper requests JDK 21; configure the Android SDK locally. Native loading, capture, and performance must be checked on the board.
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+## Release a competing camera app
+
+```bash
+./scripts/release-camera.sh                 # list owners; no mutation
+./scripts/release-camera.sh --stop          # kill current owners using su
+./scripts/release-camera.sh --serial <device-serial> --stop
+```
+
+Defaults to the board at `192.168.43.1:5555`; use `--serial` for another device or address. The target must already be connected through ADB. `--stop` requires working `su` on the device and uses `su 0 kill -9`. No apps are disabled or uninstalled; processes may restart.
+
+## Try synthetic streaming
+
+Build, install, and launch:
+
+```bash
+./gradlew :shared:testAndroidHostTest :androidApp:assembleDebug
+adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
+adb shell am start -n tech.aerodance.androidclient/.MainActivity
+```
+
+Enter the exact website origin (for example `https://game.example.com`, without a trailing slash) and press **Start**. Use the LAN address shown by the app:
+
+```bash
+curl http://192.168.43.1:1337/v1/status
+curl -N http://192.168.43.1:1337/v1/stream
+python3 scripts/check-stream.py 192.168.43.1 --origin https://game.example.com
+```
+
+The check script exercises CORS, preflight, incremental JSON, empty poses, the one-client limit, reconnect, and slow-reader cancellation. Run it with no browser already connected. After Stop, add `--expect-stopped` to verify the listener closes.
+
+Synthetic poses move at approximately 30 Hz and clear for one second every ten seconds. The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. Leaving the activity stops the server; returning requires pressing Start.
+
+The board-specific font fallback loads the installed `Roboto-Regular.ttf` directly because this firmware references missing system fonts. Other images fall back to the normal font family if that file is unavailable. No firmware files are modified.
+
+See [device validation](docs/hardware/synthetic-stream-validation.md). Deployed HTTPS browser permissions/policies and real camera inference have not been validated yet.
