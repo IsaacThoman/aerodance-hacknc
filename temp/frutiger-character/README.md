@@ -19,6 +19,8 @@ python3 -m http.server 8080 --directory dist
 
 Open http://localhost:8080/dance/. The normal production/PR preview also serves `/dance/`.
 
+The main app's title menu also shows these dancers (`client/src/menu/MenuDancers.jsx`). It imports `Character.jsx`, `motion.js`, the GLB and `dance.json` straight from this folder, so move them before deleting `temp/`.
+
 For standalone development:
 
 ```sh

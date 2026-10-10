@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import Scene from './Scene.jsx';
 import MainMenu from './menu/MainMenu.jsx';
+import MenuDancers from './menu/MenuDancers.jsx';
 import { loadSound, saveSound } from './menu/soundSettings.js';
 import { socket } from './socket.js';
 
@@ -45,6 +46,7 @@ export default function App() {
       <Canvas dpr={1} flat camera={{ fov: 66, near: 0.3, far: 6500 }}>
         <FixedRenderResolution />
         <Scene />
+        <MenuDancers visible={menuOpen} />
         <MainMenu
           visible={menuOpen}
           onStart={(mode, song) => { setSelection({ mode, song }); setMenuOpen(false); }}
