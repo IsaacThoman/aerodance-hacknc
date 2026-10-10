@@ -13,20 +13,32 @@ Click the shape to spin it. Every connected client sees the spin, and each one i
 | Database | TimescaleDB (Tiger Data), via `pg`        |
 | Runtime  | Docker Compose                            |
 
-## Run with Docker Compose
+## Run locally with Docker Compose
 
 ```sh
-docker compose up --build
+cp .env.example .env
+docker compose -f compose.yaml -f compose.local.yaml up --build
 ```
 
-Open http://localhost:3000. Postgres/TimescaleDB is exposed on `localhost:5432` (override with `DB_PORT`).
+Open http://localhost:3000. The local Compose file publishes the app on `127.0.0.1:3000` (override with `PORT`) and Postgres/TimescaleDB on `127.0.0.1:5432` (override with `DB_PORT`). The app always listens on port `3000` inside its container.
+
+## Deploy with Coolify
+
+The base `compose.yaml` publishes no host ports. The app serves the frontend, API, and Socket.IO on container port `3000`, and connects to TimescaleDB privately at `db:5432`.
+
+1. Create a Git-based application in Coolify with the Docker Compose build strategy, using `compose.yaml` at the repository root. Use normal Compose deployment so Coolify generates the proxy labels and networking.
+2. Set `POSTGRES_PASSWORD` to a strong, URL-safe password in Coolify's environment variables. This value is required; the credentials in `.env.example` are for local development. Optionally set `POSTGRES_USER` and `POSTGRES_DB`.
+3. Assign the domain to service `app` with internal port `3000`, for example `https://aerodance.example.com:3000`. Coolify routes HTTPS through Traefik on public port `443` to the app's internal port.
+4. Deploy using only the base Compose file. Include `compose.local.yaml` only for local development.
+
+See [Coolify's Docker Compose documentation](https://coolify.io/docs/applications/builds/docker-compose) for deployment and domain configuration.
 
 ## Local development
 
 ```sh
 npm install
-cp .env.example .env          # optional, defaults match compose
-docker compose up -d db       # just the database
+cp .env.example .env
+docker compose -f compose.yaml -f compose.local.yaml up -d db
 npm run dev
 ```
 
