@@ -1,97 +1,58 @@
-// Battle lifecycle + phone-as-wallet. Shared by the bot and the HTTP API.
-import { Keypair } from "@solana/web3.js";
-import { battles, playerToken, shortId, wallets, type Battle, type Result, type Wallet } from "./store.ts";
-import { buildMemo, explorerTx, fundFromTreasury, getBalanceSol, memoStatus, sendMemo } from "./solana.ts";
+// Battle lifecycle: seats, spectators, hype, results and on-chain receipts.
+import { battles, playerToken, profiles, shortId, type Battle, type Profile, type Result } from "./store.ts";
+import { buildMemo, explorerTx, memoStatus, sendHype, sendMemo } from "./solana.ts";
+import { getProfile, notify, walletOf } from "./players.ts";
 
 export const BATTLE_BASE_URL = (process.env.BATTLE_BASE_URL || "http://localhost:5173").replace(/\/$/, "");
 const RESULT_GRACE_MS = 90_000;
 const RECEIPT_RETRY_MS = 30_000;
-
-// Wired by index.ts so this module doesn't depend on Spectrum directly.
-export type Notify = (handle: string, text: string, opts?: { celebrate?: boolean }) => Promise<void>;
-let notify: Notify = async () => {};
-export function setNotifier(fn: Notify) {
-  notify = fn;
-}
+export const HYPE_SOL = 0.005;
 
 const log = (...args: unknown[]) => console.log("[battles]", ...args);
-
-// ---------- wallets ----------
-
-export function getWallet(handle: string): Wallet | undefined {
-  return wallets.data[handle];
-}
-
-// Phone number = identity = wallet. Returns isNew so the bot can say hello.
-export function ensureWallet(handle: string): { wallet: Wallet; isNew: boolean } {
-  const existing = wallets.data[handle];
-  if (existing) return { wallet: existing, isNew: false };
-  const kp = Keypair.generate();
-  const wallet: Wallet = {
-    address: kp.publicKey.toBase58(),
-    secretKey: Array.from(kp.secretKey),
-    createdAt: new Date().toISOString(),
-  };
-  wallets.data[handle] = wallet;
-  void wallets.save();
-  void fundWallet(handle);
-  return { wallet, isNew: true };
-}
-
-const funding = new Set<string>();
-
-export async function fundWallet(handle: string): Promise<void> {
-  const wallet = wallets.data[handle];
-  if (!wallet || wallet.fundedSig || funding.has(handle)) return;
-  funding.add(handle);
-  try {
-    // A timed-out transfer may still have landed; don't double-fund.
-    if ((await getBalanceSol(wallet.address)) > 0) {
-      wallet.fundedSig = "already-funded";
-    } else {
-      wallet.fundedSig = await fundFromTreasury(wallet.address);
-      log("funded", wallet.address, wallet.fundedSig);
-    }
-    await wallets.save();
-  } catch (err) {
-    log("funding failed for", wallet.address, (err as Error).message);
-  } finally {
-    funding.delete(handle);
-  }
-}
-
-// ---------- battles ----------
 
 export function battleUrl(battleId: string, token: string): string {
   return `${BATTLE_BASE_URL}/battle/${battleId}?p=${encodeURIComponent(token)}`;
 }
 
-export function createBattle(handles: (string | undefined)[]): Battle {
+// Seats may start claimed (bot battles) or empty (claimed by scanning the QR).
+export function createBattle(seats: (string | undefined)[]): Battle {
   let id = shortId();
   while (battles.data[id]) id = shortId();
   const battle: Battle = {
     id,
     createdAt: new Date().toISOString(),
     status: "open",
-    players: handles.map((handle) => ({ token: playerToken(), ...(handle ? { handle } : {}) })),
+    players: seats.map((profileId) => ({ token: playerToken(), ...(profileId ? { profileId } : {}) })),
+    hype: [],
+    spectators: [],
   };
   battles.data[id] = battle;
   void battles.save();
   return battle;
 }
 
-// Public view: no handles, ever.
+const seatProfile = (b: Battle, seat: number) => getProfile(b.players[seat]?.profileId);
+
+// Public view for the display and every phone: names and seats, no tokens or phones.
 export function publicBattle(b: Battle) {
+  const winnerSeat = b.winnerToken ? b.players.findIndex((p) => p.token === b.winnerToken) : null;
   return {
     id: b.id,
     status: b.status,
     createdAt: b.createdAt,
-    players: b.players.map((p) => ({
-      token: p.token,
-      wallet: p.handle ? wallets.data[p.handle]?.address ?? null : null,
-      result: p.result ?? null,
-    })),
-    winnerToken: b.winnerToken,
+    players: b.players.map((p, seat) => {
+      const profile = getProfile(p.profileId);
+      const hype = (b.hype ?? []).filter((h) => h.seat === seat);
+      return {
+        seat,
+        name: profile?.name ?? null,
+        wallet: profile ? walletOf(profile)?.address ?? null : null,
+        result: p.result ?? null,
+        hype: { count: hype.length, sol: round(hype.reduce((sum, h) => sum + h.sol, 0)) },
+      };
+    }),
+    spectators: (b.spectators ?? []).length,
+    winnerSeat: b.status === "finished" ? winnerSeat : null, // null + finished = tie
     receipt: b.receipt
       ? b.receipt.status === "confirmed"
         ? { status: "confirmed", signature: b.receipt.signature, explorer: explorerTx(b.receipt.signature!) }
@@ -99,6 +60,8 @@ export function publicBattle(b: Battle) {
       : null,
   };
 }
+
+const round = (n: number) => Math.round(n * 1e6) / 1e6;
 
 export class BattleError extends Error {
   constructor(public status: number, message: string) {
@@ -122,11 +85,52 @@ export function reportResult(battleId: string, token: string, r: Omit<Result, "a
   return battle;
 }
 
+// First people to scan get the empty seats; everyone after spectates.
+export function joinBattle(battleId: string, profile: Profile): { role: "dancer" | "spectator"; seat: number | null } {
+  const battle = battles.data[battleId];
+  if (!battle) throw new BattleError(404, "battle not found");
+  const mine = battle.players.findIndex((p) => p.profileId === profile.id);
+  if (mine >= 0) return { role: "dancer", seat: mine };
+  const free = battle.status === "open" && !battle.firstResultAt ? battle.players.findIndex((p) => !p.profileId) : -1;
+  if (free >= 0) {
+    battle.players[free]!.profileId = profile.id;
+  } else if (!(battle.spectators ??= []).includes(profile.id)) {
+    battle.spectators.push(profile.id);
+  }
+  void battles.save();
+  return free >= 0 ? { role: "dancer", seat: free } : { role: "spectator", seat: null };
+}
+
+// A spectator tips a dancer real devnet SOL from their own wallet.
+export async function hypeDancer(battleId: string, from: Profile, seat: number) {
+  const battle = battles.data[battleId];
+  if (!battle) throw new BattleError(404, "battle not found");
+  if (battle.status === "finished") throw new BattleError(409, "battle already finished");
+  if (battle.players.some((p) => p.profileId === from.id)) throw new BattleError(403, "dancers can't hype");
+  const dancer = seatProfile(battle, seat);
+  const to = dancer && walletOf(dancer);
+  if (!to) throw new BattleError(409, "that seat is empty");
+  const fromWallet = walletOf(from);
+  if (!fromWallet) throw new BattleError(409, "no wallet yet");
+
+  let signature: string;
+  try {
+    signature = await sendHype(fromWallet.secretKey, to.address, HYPE_SOL, JSON.stringify({ app: "aerodance", battleId, hype: seat }));
+  } catch (err) {
+    const msg = (err as Error).message;
+    log(`hype from ${from.id} failed:`, msg.split("\n")[0]);
+    throw new BattleError(/insufficient|debit|no record/i.test(msg) ? 402 : 503, /insufficient|debit|no record/i.test(msg) ? "out of hype SOL" : "Solana is slow, try again");
+  }
+  (battle.hype ??= []).push({ from: from.id, seat, sol: HYPE_SOL, signature, at: new Date().toISOString() });
+  await battles.save();
+  return { signature, explorer: explorerTx(signature) };
+}
+
 // Label used on-chain: the player's devnet wallet if they have one (phone → wallet),
-// otherwise their seat number. Tokens and phones never go on-chain.
+// otherwise their seat number. Tokens, names and phones never go on-chain.
 function chainLabel(b: Battle, i: number): string {
-  const handle = b.players[i]!.handle;
-  return (handle && wallets.data[handle]?.address) || `p${i + 1}`;
+  const profile = seatProfile(b, i);
+  return (profile && walletOf(profile)?.address) || `p${i + 1}`;
 }
 
 const inFlight = new Set<string>();
@@ -156,23 +160,43 @@ async function settle(battle: Battle): Promise<void> {
   await battles.save();
   log(`finished ${battle.id}`, landed ? battle.receipt.signature : "(receipt pending)");
 
+  recordStats(battle);
   await Promise.all(
-    battle.players.map(async (p) => {
-      if (!p.handle) return;
+    battle.players.map(async (p, seat) => {
+      const profile = getProfile(p.profileId);
+      if (!profile?.phone) return;
       const won = battle.winnerToken === p.token;
+      const hype = (battle.hype ?? []).filter((h) => h.seat === seat);
       const lines = [
-        battle.winnerToken === null ? "🫧 It's a tie! Perfectly in sync 🐠🐠" : won ? "🏆 You WON the battle! 🫧✨" : "🐠 So close! The reef salutes you 🫧",
+        battle.winnerToken === null ? "🫧 It's a tie! Perfectly in sync 🐠🐠" : won ? `🏆 ${profile.name}, you WON the battle! 🫧✨` : `🐠 So close, ${profile.name}! The reef salutes you 🫧`,
         p.result
           ? `Your score: ${p.result.score} (pops ${p.result.pops} · sync ${p.result.sync} · flair ${p.result.flair})`
           : "We didn't get a score from you this round.",
+        ...(hype.length ? [`📣 The crowd hyped you ${hype.length}× (+${round(hype.length * HYPE_SOL)} devnet SOL)`] : []),
         landed
           ? `On-chain receipt 🔗 ${explorerTx(battle.receipt!.signature!)}`
           : "On-chain receipt is pending 🫧 I'll text you the link once it lands.",
         "Text 'battle' to go again!",
       ];
-      await notify(p.handle, lines.join("\n"), { celebrate: won });
+      await notify(profile, lines.join("\n"), { celebrate: won });
     }),
   );
+}
+
+function recordStats(battle: Battle): void {
+  battle.players.forEach((p, seat) => {
+    const profile = getProfile(p.profileId);
+    if (!profile) return;
+    const hype = (battle.hype ?? []).filter((h) => h.seat === seat);
+    const s = profile.stats;
+    s.battles++;
+    if (battle.winnerToken === p.token) s.wins++;
+    s.bestScore = Math.max(s.bestScore, p.result?.score ?? 0);
+    s.pops += p.result?.pops ?? 0;
+    s.hypeCount += hype.length;
+    s.hypeSol = round(s.hypeSol + hype.length * HYPE_SOL);
+  });
+  void profiles.save();
 }
 
 // One attempt to get the memo confirmed. Returns true once it's on-chain.
@@ -248,7 +272,7 @@ async function sweep(): Promise<void> {
       b.receipt.notified = true;
       await battles.save();
       for (const p of b.players) {
-        if (p.handle) await notify(p.handle, `🔗 Your battle ${b.id} receipt just landed on Solana devnet 🫧\n${explorerTx(b.receipt.signature!)}`);
+        await notify(getProfile(p.profileId), `🔗 Your battle ${b.id} receipt just landed on Solana devnet 🫧\n${explorerTx(b.receipt.signature!)}`);
       }
     }
   } catch (err) {

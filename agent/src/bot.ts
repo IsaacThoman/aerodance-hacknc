@@ -1,31 +1,22 @@
-// iMessage bot: the sender's handle (phone/email) is their identity and wallet.
+// iMessage bot: texting in creates your profile; your number is your wallet.
 import { Spectrum, type Message, type Space } from "spectrum-ts";
 import { effect, imessage } from "spectrum-ts/providers/imessage";
-import { markSeen } from "./store.ts";
+import { battles, markSeen, profiles, type Profile } from "./store.ts";
 import { explorerAddress, getBalanceSol } from "./solana.ts";
-import { battleUrl, createBattle, ensureWallet, fundWallet, getWallet } from "./battles.ts";
+import { battleUrl, createBattle } from "./battles.ts";
+import { cleanName, fundWallet, mask, normalizePhone, profileForPhone, walletOf } from "./players.ts";
 
 const HELP = [
   "🫧 aerodance bot 🐠",
   "• battle: get a dance battle link",
   "• challenge <phone>: battle a friend",
   "• wallet: your Solana devnet wallet",
+  "• stats: your dance stats",
+  "• name <new name>: change your name",
   "• help: this list",
 ].join("\n");
 
-const mask = (handle: string) => `…${handle.slice(-4)}`;
 const log = (...args: unknown[]) => console.log("[bot]", ...args);
-
-// "(919) 555-0123" → "+19195550123". Emails pass through lowercased.
-export function normalizeHandle(raw: string): string | undefined {
-  const s = raw.trim();
-  if (s.includes("@")) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? s.toLowerCase() : undefined;
-  const digits = s.replace(/[^\d]/g, "");
-  if (s.startsWith("+") && digits.length >= 8 && digits.length <= 15) return `+${digits}`;
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return undefined;
-}
 
 export async function startBot() {
   const app = await Spectrum({
@@ -64,7 +55,7 @@ export async function startBot() {
     if (!sender) return;
     spaces.set(sender, space);
 
-    const { isNew } = ensureWallet(sender);
+    const { profile, isNew } = profileForPhone(sender);
     if (message.content.type !== "text") {
       await space.send("🫧 I only speak text for now. Try 'battle' or 'help' 🐠");
       return;
@@ -72,22 +63,42 @@ export async function startBot() {
 
     const [first = "", ...rest] = message.content.text.trim().split(/\s+/);
     const cmd = first.toLowerCase();
-    const known = ["battle", "challenge", "wallet", "help"].includes(cmd);
+    const known = ["battle", "challenge", "wallet", "stats", "name", "help"].includes(cmd);
     log(`${mask(sender)} → ${known ? cmd : "(chat)"}`);
 
     if (isNew) {
-      await space.send("🫧 Welcome to aerodance! 🐠 Your number is now your Solana devnet wallet. No signup, no login, it just works ✨");
+      await space.send(
+        `🫧 Welcome to aerodance, ${profile.name}! 🐠 Your number is now your Solana devnet wallet. No signup, no login, it just works ✨\n(Text 'name <something>' to change your name.)`,
+      );
       // First text ever: take them straight to a dance battle.
-      if (!known) return sendBattle(space, sender);
+      if (!known) return sendBattle(space, profile);
     }
 
     switch (cmd) {
       case "battle":
-        return sendBattle(space, sender);
+        return sendBattle(space, profile);
       case "challenge":
-        return challenge(space, sender, rest.join(" "));
+        return challenge(space, profile, rest.join(" "));
       case "wallet":
-        return space.responding(() => sendWallet(space, sender));
+        return space.responding(() => sendWallet(space, profile));
+      case "stats": {
+        const s = profile.stats;
+        await space.send(
+          `🫧 ${profile.name}'s reef stats 🐠\nBattles: ${s.battles} · Wins: ${s.wins}\nBest score: ${s.bestScore} · Bubbles popped: ${s.pops}\nCrowd hype: ${s.hypeCount}× (+${s.hypeSol} SOL)`,
+        );
+        return;
+      }
+      case "name": {
+        const name = cleanName(rest.join(" "));
+        if (!name) {
+          await space.send(`🐠 You're ${profile.name}. Try: name Glassy Orca`);
+          return;
+        }
+        profile.name = name;
+        await profiles.save();
+        await space.send(`🫧 Splendid! You're now ${name} ✨`);
+        return;
+      }
       case "help":
         await space.send(HELP);
         return;
@@ -96,34 +107,35 @@ export async function startBot() {
     }
   }
 
-  async function sendBattle(space: Space, sender: string) {
-    const battle = createBattle([sender]);
+  async function sendBattle(space: Space, profile: Profile) {
+    const battle = createBattle([profile.id]);
     await space.send(`🫧 Your dance battle is ready! 💃🐠\n${battleUrl(battle.id, battle.players[0]!.token)}`);
   }
 
-  async function challenge(space: Space, sender: string, arg: string) {
-    const opponent = normalizeHandle(arg);
+  async function challenge(space: Space, me: Profile, arg: string) {
+    const opponent = normalizePhone(arg);
     if (!opponent) {
       await space.send("🐠 Who are we challenging? Try: challenge +1 919 555 0123");
       return;
     }
-    if (opponent === sender) {
+    if (opponent === me.phone) {
       await space.send("🫧 Dancing against yourself? Bold. Text 'battle' for a solo round 🐠");
       return;
     }
 
-    const battle = createBattle([sender, opponent]);
-    const [me, them] = battle.players as [(typeof battle.players)[0], (typeof battle.players)[0]];
-    const theirUrl = battleUrl(battle.id, them.token);
-    await space.send(`🫧 Challenge sent! Here's your link 💃\n${battleUrl(battle.id, me.token)}`);
+    const battle = createBattle([me.id, undefined]);
+    const [mine, theirs] = battle.players as [(typeof battle.players)[0], (typeof battle.players)[0]];
+    const theirUrl = battleUrl(battle.id, theirs.token);
+    await space.send(`🫧 Challenge sent! Here's your link 💃\n${battleUrl(battle.id, mine.token)}`);
 
     try {
-      await sendTo(opponent, `🫧 You've been challenged to a dance battle by ${mask(sender)}! 🐠\nTap to dance: ${theirUrl}\nText 'help' anytime.`);
-      ensureWallet(opponent);
+      await sendTo(opponent, `🫧 ${me.name} challenged you to a dance battle! 🐠\nTap to dance: ${theirUrl}\nText 'help' anytime.`);
+      // Only seat (and remember) them once we know we can reach them.
+      theirs.profileId = profileForPhone(opponent).profile.id;
+      await battles.save();
     } catch (err) {
       const msg = (err as Error).message ?? "";
       log(`challenge to ${mask(opponent)} failed:`, msg);
-      delete them.handle; // we can't text them, so don't keep their number
       await space.send(
         /not allowed/i.test(msg)
           ? `🐠 I can't text that number yet. They need to join aerodance first! For now, send them this link yourself 🫧\n${theirUrl}`
@@ -132,9 +144,9 @@ export async function startBot() {
     }
   }
 
-  async function sendWallet(space: Space, sender: string) {
-    await fundWallet(sender); // no-op once funded; retries if the first try failed
-    const wallet = getWallet(sender)!;
+  async function sendWallet(space: Space, profile: Profile) {
+    await fundWallet(profile.walletKey); // no-op once funded; retries if the first try failed
+    const wallet = walletOf(profile)!;
     let balance = "unavailable right now 🫧";
     try {
       balance = `${(await getBalanceSol(wallet.address)).toFixed(4)} SOL`;

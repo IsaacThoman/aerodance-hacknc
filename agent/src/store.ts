@@ -49,11 +49,25 @@ export type Result = {
   at: string;
 };
 
+// A person. Phone is optional; the profile id is the real identity.
+export type Profile = {
+  id: string;
+  name: string;
+  phone?: string; // E.164; only ever shown back to its owner
+  photon?: "registered" | "failed"; // Photon allowlist registration
+  walletKey: string; // key into wallets.json
+  deviceTokens: string[]; // browsers signed in as this profile
+  createdAt: string;
+  stats: { battles: number; wins: number; bestScore: number; pops: number; hypeCount: number; hypeSol: number };
+};
+
 export type Player = {
-  token: string;
-  handle?: string; // phone/email; server-side only, never returned over HTTP
+  token: string; // result-reporting credential, held by the game display
+  profileId?: string; // set when someone claims the seat
   result?: Result;
 };
+
+export type Hype = { from: string; seat: number; sol: number; signature: string; at: string };
 
 export type Receipt = {
   status: "pending" | "confirmed";
@@ -69,6 +83,8 @@ export type Battle = {
   createdAt: string;
   status: "open" | "finalizing" | "finished";
   players: Player[];
+  hype?: Hype[];
+  spectators?: string[]; // profile ids
   firstResultAt?: string;
   winnerToken?: string | null; // null = tie
   receipt?: Receipt;
@@ -77,6 +93,7 @@ export type Battle = {
 // ---------- files ----------
 
 export const wallets = new JsonFile<Record<string, Wallet>>("wallets.json", {});
+export const profiles = new JsonFile<Record<string, Profile>>("profiles.json", {});
 export const battles = new JsonFile<Record<string, Battle>>("battles.json", {});
 const seen = new JsonFile<string[]>("seen.json", []);
 const seenSet = new Set(seen.data);

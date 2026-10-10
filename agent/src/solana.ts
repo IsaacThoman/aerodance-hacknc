@@ -78,6 +78,20 @@ export async function fundFromTreasury(address: string, sol = NEW_WALLET_SOL): P
   return withTimeout(sendAndConfirmTransaction(connection, tx, [treasury]), 30_000, "fund");
 }
 
+// Spectator → dancer tip. The sender's own wallet pays; the memo tags it on-chain.
+export async function sendHype(fromSecret: number[], toAddress: string, sol: number, memo: string): Promise<string> {
+  const from = Keypair.fromSecretKey(Uint8Array.from(fromSecret));
+  const tx = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: from.publicKey,
+      toPubkey: new PublicKey(toAddress),
+      lamports: Math.round(sol * LAMPORTS_PER_SOL),
+    }),
+    createMemoInstruction(memo, [from.publicKey]),
+  );
+  return withTimeout(sendAndConfirmTransaction(connection, tx, [from]), 20_000, "hype");
+}
+
 // ---------- memo receipts ----------
 // Built and signed once, then (re)sent by raw bytes, so a retry can never
 // produce a second memo while the first one might still land.

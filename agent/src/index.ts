@@ -1,7 +1,8 @@
 // One process: Spectrum message loop + HTTP API for the game.
 import { loadTreasury } from "./solana.ts"; // importing this runs the devnet guard
-import { setNotifier, startSweeper } from "./battles.ts";
-import { createHttp } from "./http.ts";
+import { startSweeper } from "./battles.ts";
+import { setNotifier } from "./players.ts";
+import { createHttp, publicUrl } from "./http.ts";
 import { startBot } from "./bot.ts";
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -14,6 +15,9 @@ const bot = await startBot();
 setNotifier(bot.notify);
 startSweeper();
 
-createHttp().listen(PORT, () => console.log(`🫧 aerodance agent: http://localhost:${PORT}`));
+createHttp(PORT).listen(PORT, () => {
+  console.log(`🫧 aerodance agent: http://localhost:${PORT}`);
+  console.log(`📱 phones join at: ${publicUrl(PORT)}/join/<battleId>`);
+});
 
 await bot.run();
