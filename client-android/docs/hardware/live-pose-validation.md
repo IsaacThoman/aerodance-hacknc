@@ -104,3 +104,40 @@ Lite results with new session IDs. The process was not killed between these
 cycles. This verifies the initial activity-owned path; boot, screen-off,
 permission denial, camera contention, low memory, and sustained operation
 remain separate lifecycle checks.
+
+## Performance follow-up — 2026-10-10
+
+The user confirms detection works with a person, but reports high latency and
+low pose throughput. This confirms live-person detection, not sustained
+performance, anatomical left/right, or all movement acceptance checks.
+
+Additional board probes used the corrected raw 640×480 input:
+
+| Delegate | Window | Camera frames | Results | Detected / empty | Mean conversion | Mean inference | Maximum arrival-to-result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CPU | 12 s | 355 | 32 | 1 / 31 | 63 ms | 261 ms | 558 ms |
+| GPU | 60 s | 1,798 | 180 | 0 / 180 | 61 ms | 90 ms | 479 ms |
+
+GPU completed callbacks and released camera/task resources on the board. A
+12-second GPU probe completed no results because delegate initialization
+exceeded the window; the longer probe was necessary. The 180/60 = 3 results/s
+whole-run rate includes initialization. The mean conversion-plus-inference
+service time is 151 ms (about 6.6/s reciprocally), which is **not a measured
+steady-state rate or browser latency**. CPU/GPU runs had different durations
+and mostly empty scenes; person tracking and sustained GPU stability remain
+unmeasured. There is no claim that the latency targets are met.
+
+The Android UI now reports measured capture FPS and completed pose results/s
+in approximately one-second windows. Stop capture to change the saved
+**Use GPU acceleration** setting, then press Start. GPU is the default at the user’s request
+for installs with no saved selection; explicit saved CPU selections are preserved. GPU startup can take tens of
+seconds; the UI explains initialization before the first result.
+
+The debug probe accepts `--ez gpu true` and `--el durationMs 60000` alongside
+`--ez livePose true`; duration is limited to 12–120 seconds. All GPU task
+creation, submission, and shutdown execute on the same estimator worker, as
+required by the [official MediaPipe sample](https://github.com/google-ai-edge/mediapipe-samples/blob/main/examples/pose_landmarker/android/app/src/main/java/com/google/mediapipe/examples/poselandmarker/PoseLandmarkerHelper.kt).
+
+Remaining tuning: native/vectorized conversion (currently about 61 ms),
+real-person CPU/GPU comparison, startup and stage percentiles, and the planned
+30-minute thermal/memory and slow-reader acceptance tests.

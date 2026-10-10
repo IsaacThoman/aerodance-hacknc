@@ -63,7 +63,7 @@ Drain with `acquireLatestImage()` on a camera worker. Start with `maxImages = 3`
 
 Use MediaPipe Tasks Pose Landmarker with `RunningMode.LIVE_STREAM` and `detectAsync()`. Start with Lite, one pose, segmentation disabled, and default confidence thresholds. Package the model for offline operation. See the [Android task guide](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/android).
 
-Use CPU as the compatibility baseline. Benchmark GPU on the board; retain it only if loading, accuracy, sustained latency, and stability improve. Create, invoke, and close a GPU task on its required owning thread. Reported GLES support does not prove delegate compatibility.
+GPU is the default delegate; a saved UI switch allows CPU selection while stopped. CPU remains the compatibility baseline. Short board probes establish GPU callback delivery and faster mean inference, with slow initialization; real-person accuracy and sustained latency/stability still need comparison. Create, invoke, and close a GPU task on its required owning thread. Reported GLES support does not prove delegate compatibility.
 
 Submit strictly increasing monotonic milliseconds and correlate callbacks by task timestamp. Explicit admission keeps one task in flight; errors and a bounded watchdog recover a stuck estimator. Do not assume every submitted frame generates a callback. See the [PoseLandmarker API](https://developers.google.com/edge/api/mediapipe/java/com/google/mediapipe/tasks/vision/poselandmarker/PoseLandmarker).
 

@@ -22,6 +22,7 @@ import android.util.Range
 import android.widget.TextView
 import java.io.File
 import java.util.UUID
+import com.google.mediapipe.tasks.core.Delegate
 import tech.aerodance.androidclient.camera.CameraSource
 import tech.aerodance.androidclient.pose.LivePoseEstimator
 import tech.aerodance.androidclient.protocol.PoseRecord
@@ -49,6 +50,8 @@ class CameraCompatibilityActivity : Activity() {
     private var snapshotTaken = false
     private var fps = Range(30, 30)
     private var live = false
+    private var delegate = Delegate.CPU
+    private var durationMs = 12_000L
     private var estimator: LivePoseEstimator? = null
     private var results = 0
     private var detected = 0
@@ -68,6 +71,8 @@ class CameraCompatibilityActivity : Activity() {
         setContentView(output)
         fps = Range(intent.getIntExtra("fpsMin", 30), intent.getIntExtra("fpsMax", 30))
         live = intent.getBooleanExtra("livePose", false)
+        delegate = if (intent.getBooleanExtra("gpu", false)) Delegate.GPU else Delegate.CPU
+        durationMs = intent.getLongExtra("durationMs", 12_000L).coerceIn(12_000L, 120_000L)
         thread.start()
         worker = Handler(thread.looper)
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -87,7 +92,7 @@ class CameraCompatibilityActivity : Activity() {
         if (finished) return
         File(filesDir, "camera-compatibility.txt").delete()
         File(filesDir, "camera-upright.png").delete()
-        worker.postDelayed(captureTimeout, 20_000)
+        worker.postDelayed(captureTimeout, durationMs + 8_000)
         try {
             val manager = getSystemService(CameraManager::class.java)
             val characteristics = manager.getCameraCharacteristics("0")
@@ -106,7 +111,7 @@ class CameraCompatibilityActivity : Activity() {
                         }
                     } },
                     onError = { error -> worker.post { fail(Exception("LIVE_STREAM failure", error)) } },
-                    onClosed = { worker.post { closeReader() } })
+                    onClosed = { worker.post { closeReader() } }, delegate = delegate)
             }
             check(characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
                 ?.contains(fps) == true) { "$fps unavailable" }
@@ -155,7 +160,7 @@ class CameraCompatibilityActivity : Activity() {
                                         }
                                     }.build()
                                     configured.setRepeatingRequest(request, null, worker)
-                                    worker.postDelayed(captureComplete, 12_000)
+                                    worker.postDelayed(captureComplete, durationMs)
                                 } catch (error: Exception) { fail(error) }
                             }
                             override fun onConfigureFailed(configured: CameraCaptureSession) {
@@ -247,7 +252,7 @@ class CameraCompatibilityActivity : Activity() {
             "sensorFirstNs=$firstSensor sensorLastNs=$lastSensor nonIncreasing=$badTimestamps; " +
             "arrivalIntervalMs=${if (frames > 1) minInterval / 1e6 else 0.0}..${maxInterval / 1e6}; " +
             "planeRowPixelStrides=[$strides]; rotation=${if (live) CameraSource.INPUT_ROTATION_DEGREES else orientation}; $content" +
-            if (live) "; LIVE_STREAM results=$results detected=$detected empty=$empty replacements=${estimator?.replacements}; " +
+            if (live) "; LIVE_STREAM delegate=$delegate results=$results detected=$detected empty=$empty replacements=${estimator?.replacements}; " +
                 "meanConversionMs=${if (results > 0) conversionTotal / results else 0}; " +
                 "meanInferenceMs=${if (results > 0) inferenceTotal / results else 0}; maxArrivalToResultMs=$maxAge; " +
                 "upright=${latest?.width}x${latest?.height} unmirrored" else "")

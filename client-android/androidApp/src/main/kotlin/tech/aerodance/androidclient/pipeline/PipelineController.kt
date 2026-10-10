@@ -1,6 +1,7 @@
 package tech.aerodance.androidclient.pipeline
 
 import android.content.Context
+import com.google.mediapipe.tasks.core.Delegate
 import tech.aerodance.androidclient.camera.CameraSource
 import tech.aerodance.androidclient.pose.LivePoseEstimator
 import tech.aerodance.androidclient.protocol.PipelineState
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit
 /** Activity-owned capture/inference/server. Browser lifetime never controls the producer. */
 class PipelineController(context: Context, deviceId: String, origins: Set<String>,
     private val synthetic: Boolean = false,
+    private val delegate: Delegate = Delegate.GPU,
     private val onError: (Throwable) -> Unit) : AutoCloseable {
     val server = PoseServer(deviceId, origins, synthetic = synthetic)
     private val closed = AtomicBoolean()
@@ -39,7 +41,7 @@ class PipelineController(context: Context, deviceId: String, origins: Set<String
                 onResult = { record, conversion, inference ->
                     conversionMs = conversion; inferenceMs = inference
                     server.publish(record)
-                }, onError = ::fail, onClosed = { source.close { released.countDown() } })
+                }, onError = ::fail, onClosed = { source.close { released.countDown() } }, delegate = delegate)
             source.start()
         } catch (error: Exception) { fail(error); throw error }
     }

@@ -173,3 +173,25 @@ MediaPipe without rotation. Live capture and the live diagnostic probe now use
 0° rotation, unmirrored 640×480 input; previous 480×640 measurements above are
 historical. The original capture-only snapshot probe still reports/applies the
 sensor's advertised orientation for its separate diagnostic image.
+
+## User validation and performance work — 2026-10-10
+
+The user confirms live detection works with a person, but reports high latency
+and low pose results per second. Real-person detection is now user-verified;
+anatomical left/right, absence transitions, sustained performance, and fault
+acceptance still need explicit checks. Performance tuning is the current focus.
+
+Added capture FPS and pose results/second to the Android UI, alongside conversion
+and inference timings. Added a selectable CPU/GPU debug probe and configurable
+12–120 second capture window; task creation, invocation, and shutdown stay on
+the same inference worker. GPU is now the production default at the user’s request; explicit saved CPU
+selections are preserved.
+
+GPU completes live callbacks on this board: a 60-second corrected-input probe
+produced 180 empty results, with 61 ms mean conversion and 90 ms mean inference
+versus 63/261 ms in the 12-second CPU follow-up (32 results, one detected).
+GPU initialization exceeds the original 12-second window. These are different
+short runs, mostly empty scenes, and do not prove sustained person throughput
+or browser latency. The UI now exposes a saved CPU/GPU selection, changeable
+while stopped; GPU is the default at the user’s request. See the performance follow-up in
+[live validation](docs/hardware/live-pose-validation.md).

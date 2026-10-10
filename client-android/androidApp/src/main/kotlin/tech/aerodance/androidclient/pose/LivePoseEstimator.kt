@@ -19,7 +19,7 @@ import tech.aerodance.androidclient.protocol.Landmark
 import tech.aerodance.androidclient.protocol.Pose
 import tech.aerodance.androidclient.protocol.PoseRecord
 
-/** CPU baseline: one input in flight, one replaceable camera image, no per-frame runnable queue. */
+/** Configurable delegate: one input in flight, one replaceable camera image, no per-frame runnable queue. */
 class LivePoseEstimator(
     context: Context,
     private val sessionId: String,
@@ -27,6 +27,7 @@ class LivePoseEstimator(
     private val onResult: (PoseRecord, Long, Long) -> Unit,
     private val onError: (Throwable) -> Unit,
     private val onClosed: () -> Unit = {},
+    private val delegate: Delegate = Delegate.GPU,
 ) : AutoCloseable {
     private data class Frame(val image: Image, val arrival: Long)
     private data class Input(val image: MPImage, val bitmap: Bitmap, val arrival: Long,
@@ -54,7 +55,7 @@ class LivePoseEstimator(
                 task = PoseLandmarker.createFromOptions(appContext,
                     PoseLandmarker.PoseLandmarkerOptions.builder()
                         .setBaseOptions(BaseOptions.builder().setModelAssetPath("pose_landmarker_lite.task")
-                            .setDelegate(Delegate.CPU).build())
+                            .setDelegate(delegate).build())
                         .setRunningMode(RunningMode.LIVE_STREAM).setNumPoses(1)
                         .setOutputSegmentationMasks(false)
                         .setResultListener { result, _ ->
