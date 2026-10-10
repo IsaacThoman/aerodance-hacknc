@@ -183,6 +183,68 @@ export const ICONS = {
     }
     g.stroke();
   },
+  // Two figures side by side (battles).
+  duo(g, cx, cy, r) {
+    const s = r * 0.5;
+    g.save();
+    g.fillStyle = '#ffffff';
+    g.strokeStyle = '#1f8fd0';
+    g.lineWidth = 5;
+    for (const [dx, k] of [[s * 0.42, 0.82], [-s * 0.38, 1]]) {
+      const hx = cx + dx;
+      g.beginPath();
+      g.arc(hx, cy - s * 0.42 * k, s * 0.34 * k, 0, TAU);
+      g.stroke();
+      g.fill();
+      g.beginPath();
+      g.ellipse(hx, cy + s * 0.62, s * 0.56 * k, s * 0.5 * k, 0, Math.PI, TAU);
+      g.closePath();
+      g.stroke();
+      g.fill();
+    }
+    g.restore();
+  },
+  // Circular arrow (run it back).
+  replay(g, cx, cy, r) {
+    const a = r * 0.42;
+    g.beginPath();
+    g.arc(cx, cy, a, -Math.PI * 0.35, Math.PI * 1.45);
+    g.stroke();
+    const tx = cx + Math.cos(-Math.PI * 0.35) * a;
+    const ty = cy + Math.sin(-Math.PI * 0.35) * a;
+    g.save();
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.moveTo(tx + a * 0.62, ty - a * 0.12);
+    g.lineTo(tx - a * 0.2, ty - a * 0.62);
+    g.lineTo(tx - a * 0.04, ty + a * 0.46);
+    g.closePath();
+    g.fill();
+    g.restore();
+  },
+  home(g, cx, cy, r) {
+    const a = r * 0.42;
+    g.beginPath();
+    g.moveTo(cx - a, cy - a * 0.05);
+    g.lineTo(cx, cy - a * 0.9);
+    g.lineTo(cx + a, cy - a * 0.05);
+    g.moveTo(cx - a * 0.7, cy - a * 0.3);
+    g.lineTo(cx - a * 0.7, cy + a * 0.8);
+    g.lineTo(cx + a * 0.7, cy + a * 0.8);
+    g.lineTo(cx + a * 0.7, cy - a * 0.3);
+    g.stroke();
+  },
+  bubble(g, cx, cy, r) {
+    g.beginPath();
+    g.arc(cx + r * 0.08, cy + r * 0.06, r * 0.36, 0, TAU);
+    g.stroke();
+    g.beginPath();
+    g.arc(cx - r * 0.3, cy - r * 0.32, r * 0.14, 0, TAU);
+    g.stroke();
+    g.beginPath();
+    g.arc(cx - r * 0.03, cy - r * 0.06, r * 0.1, Math.PI * 1.05, Math.PI * 1.55);
+    g.stroke();
+  },
   gear(g, cx, cy, r, angle = 0) {
     const teeth = 8;
     const outer = r * 0.5;
@@ -350,4 +412,83 @@ export function drawGlassPanel(g, { x, y, w, h }, radius = 34) {
   g.lineWidth = 3;
   g.strokeStyle = 'rgba(255,255,255,0.6)';
   g.stroke();
+}
+
+// White text with the navy drop shadow used over the bright world.
+export function drawShadowText(g, text, x, y, { size = 30, weight = 700, align = 'left', color = '#ffffff', alpha = 1 } = {}) {
+  g.save();
+  g.globalAlpha *= alpha;
+  g.font = `${weight} ${size}px ${FONT}`;
+  g.textAlign = align;
+  g.textBaseline = 'middle';
+  g.shadowColor = 'rgba(0, 34, 84, 0.75)';
+  g.shadowBlur = size * 0.2;
+  g.shadowOffsetY = Math.max(2, size * 0.08);
+  g.fillStyle = color;
+  g.fillText(text, x, y);
+  g.restore();
+}
+
+// Shortens text with an ellipsis to fit maxW in the current font.
+export function ellipsize(g, text, maxW) {
+  if (g.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && g.measureText(`${t}…`).width > maxW) t = t.slice(0, -1);
+  return `${t.trimEnd()}…`;
+}
+
+// Soap bubble: clear body, bright rim and a specular highlight.
+export function drawBubble(g, x, y, r, alpha = 1) {
+  g.save();
+  g.globalAlpha *= alpha;
+  const body = g.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.05, x, y, r);
+  body.addColorStop(0, 'rgba(255,255,255,0.6)');
+  body.addColorStop(0.45, 'rgba(170,235,255,0.14)');
+  body.addColorStop(0.82, 'rgba(110,210,255,0.28)');
+  body.addColorStop(1, 'rgba(255,255,255,0.85)');
+  g.beginPath();
+  g.arc(x, y, r, 0, TAU);
+  g.fillStyle = body;
+  g.fill();
+  g.lineWidth = Math.max(2, r * 0.07);
+  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.stroke();
+  g.beginPath();
+  g.ellipse(x - r * 0.36, y - r * 0.42, r * 0.28, r * 0.15, -0.6, 0, TAU);
+  g.fillStyle = 'rgba(255,255,255,0.95)';
+  g.fill();
+  g.restore();
+}
+
+/**
+ * QR code from qrcode's module grid, snapped to whole render-buffer pixels so it stays
+ * crisp after the pixelated stretch. Fills as much of `box` (design units) as fits, on
+ * white with a two-module quiet zone. view = { w, h } is the design size.
+ */
+export function drawQR(g, modules, box, view, { dark = '#0b3d6b' } = {}) {
+  const { canvas } = g;
+  const sx = canvas.width / view.w;
+  const sy = canvas.height / view.h;
+  // Width of a buffer pixel over its height once displayed (design units are square on screen).
+  const pixelAspect = sy / sx;
+  const n = modules.size + 4;
+  let mx = Math.max(1, Math.floor((box.w * sx) / n));
+  let my = Math.max(1, Math.floor((box.h * sy) / n));
+  // Keep modules roughly square on screen.
+  while (mx > 1 && mx * pixelAspect > my * 1.15) mx--;
+  while (my > 1 && my > mx * pixelAspect * 1.15) my--;
+  const t = g.getTransform();
+  const ox = Math.round(t.e + box.x * sx + (box.w * sx - n * mx) / 2);
+  const oy = Math.round(t.f + box.y * sy + (box.h * sy - n * my) / 2);
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = '#ffffff';
+  g.fillRect(ox, oy, n * mx, n * my);
+  g.fillStyle = dark;
+  for (let row = 0; row < modules.size; row++) {
+    for (let col = 0; col < modules.size; col++) {
+      if (modules.get(row, col)) g.fillRect(ox + (col + 2) * mx, oy + (row + 2) * my, mx, my);
+    }
+  }
+  g.restore();
 }

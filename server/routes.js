@@ -1,6 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { MAX_SEATS, claimSeat, createBattle, hypeDancer, joinBattle, publicBattle, reportResult } from './battles.js';
+import {
+  MAX_SEATS, claimSeat, createBattle, hypeDancer, joinBattle, publicBattle, reportResult, seatForToken,
+} from './battles.js';
 import {
   HttpError, cleanName, getProfile, normalizePhone, profileByDevice, profileForPhone, profileStats,
   renameProfile, selfView, upsertProfile,
@@ -61,6 +63,13 @@ export function publicRoutes() {
     const { playerToken } = req.body ?? {};
     if (typeof playerToken !== 'string') throw new HttpError(400, 'playerToken required');
     res.json(await reportResult(req.params.id, playerToken, readResult(req.body)));
+  });
+
+  // A play link (/battle/:id?p=<token>) opened on a display: which seat is it?
+  api.post('/battles/:id/seat', async (req, res) => {
+    const { playerToken } = req.body ?? {};
+    if (typeof playerToken !== 'string') throw new HttpError(400, 'playerToken required');
+    res.json({ seat: await seatForToken(req.params.id, playerToken) });
   });
 
   // ---------- phones ----------

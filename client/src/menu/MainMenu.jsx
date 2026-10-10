@@ -6,18 +6,19 @@ import useCanvasUI from '../ui/useCanvasUI.js';
  * Title menu drawn in-engine (see ui/useCanvasUI.js), laid out in 16:9 design units and
  * drawn after the world (useFrame priority 2).
  *
- * Screens: main (Start + settings), start (random / select song), songs (song list),
- * settings (sound).
+ * Screens: main (Start, Battle, Settings), start (random / select song), songs (song list),
+ * settings (sound). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
  *
- * <MainMenu visible onStart={(mode, song) => ...} sound={sound} onSoundChange={setSound} />
+ * <MainMenu visible onStart={(mode, song) => ...} onBattle={() => ...} sound={sound} onSoundChange={setSound} />
  */
 
 // Design space is 1600x900 (16:9); everything below is in these units.
 const TITLE = { x: 124, y: 418, size: 156 };
 
 // Main screen.
-const START = { x: 128, y: 486, w: 440, h: 112 };
-const SETTINGS = { x: 128, y: 618, w: 440, h: 112 };
+const START = { x: 128, y: 482, w: 440, h: 104 };
+const BATTLE = { x: 128, y: 602, w: 440, h: 104 };
+const SETTINGS = { x: 128, y: 722, w: 440, h: 104 };
 
 // Submenus share a header row: back button + small caps heading.
 const BACK = { x: 166, y: 500, r: 30 };
@@ -41,6 +42,7 @@ const TRACK = { x0: PANEL.x + 190, x1: PANEL.x + PANEL.w - 110 };
 const WIDGETS = {
   main: [
     { id: 'start', rect: START },
+    { id: 'battle', rect: BATTLE },
     { id: 'settings', rect: SETTINGS },
   ],
   start: [
@@ -133,10 +135,10 @@ function drawSoundPanel(g, sound, hover) {
   g.fill();
 }
 
-export default function MainMenu({ visible = true, onStart, onSettingsOpen, sound, onSoundChange }) {
+export default function MainMenu({ visible = true, onStart, onBattle, onSettingsOpen, sound, onSoundChange }) {
   const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null });
   const props = useRef({});
-  props.current = { visible, onStart, onSettingsOpen, sound, onSoundChange };
+  props.current = { visible, onStart, onBattle, onSettingsOpen, sound, onSoundChange };
 
   const m = menu.current;
   const go = (screen) => { if (screen !== m.next) m.next = screen; };
@@ -155,6 +157,7 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
       if (wdg.song) { props.current.onStart?.('select', wdg.song); return; }
       switch (wdg.id) {
         case 'start': go('start'); break;
+        case 'battle': props.current.onBattle?.(); break;
         case 'settings': m.spin += Math.PI / 2; go('settings'); props.current.onSettingsOpen?.(); break;
         case 'back': go(PARENT[m.screen]); break;
         case 'random': props.current.onStart?.('random'); break;
@@ -197,6 +200,7 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
       const press = (id) => s.press * (h[id] ?? 0);
       if (m.screen === 'main') {
         drawPill(g, START, { label: 'Start', icon: 'play', hover: h.start ?? 0, press: press('start') });
+        drawPill(g, BATTLE, { label: 'Battle', icon: 'duo', hover: h.battle ?? 0, press: press('battle') });
         drawPill(g, SETTINGS, { label: 'Settings', icon: 'gear', hover: h.settings ?? 0, press: press('settings'), angle: m.gearAngle });
       } else if (m.screen === 'start') {
         drawHeader(g, BACK, 'START', h.back ?? 0);

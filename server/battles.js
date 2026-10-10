@@ -129,6 +129,16 @@ export async function reportResult(id, token, result) {
   return publicBattle(id);
 }
 
+// Which seat a play link's token belongs to, so the display opened from it can report.
+export async function seatForToken(id, token) {
+  const { rows: [seat] } = await pool.query(
+    'SELECT seat FROM battle_seats WHERE battle_id = $1 AND token = $2',
+    [id, token],
+  );
+  if (!seat) throw new HttpError(403, 'unknown player token');
+  return seat.seat;
+}
+
 // First people to scan get the empty seats; everyone after spectates.
 export async function joinBattle(id, profileId) {
   const joined = await tx(async (db) => {
