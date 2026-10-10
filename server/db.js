@@ -5,8 +5,15 @@ if (existsSync('.env')) process.loadEnvFile();
 
 // Works with the local compose TimescaleDB or a Tiger Cloud service
 // (append ?sslmode=require to the connection string for Tiger Cloud).
+const databaseUrl = new URL(process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/aerodance');
+// Coolify injects the renamed Compose service at runtime for PR previews.
+// Resolve it here because its Compose parser substitutes the production name.
+if (databaseUrl.hostname === 'db' && process.env.SERVICE_NAME_DB) {
+  databaseUrl.hostname = process.env.SERVICE_NAME_DB;
+}
+
 export const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/aerodance',
+  connectionString: databaseUrl.toString(),
 });
 
 const schema = `
