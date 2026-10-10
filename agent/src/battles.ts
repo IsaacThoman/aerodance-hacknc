@@ -155,15 +155,17 @@ handle("battle_finished", async ({ battleId }: { battleId: string }) => {
   if (!landed) await enqueue("receipt", { battleId }, RECEIPT_RETRY_MS);
   const signature = landed ? (await getBattle(battleId))!.receipt_signature! : null;
 
-  const { rows: hype } = await pool.query<{ seat: number; count: number }>(
-    "SELECT seat, count(*)::int AS count FROM hype WHERE battle_id = $1 GROUP BY seat",
+  const { rows: hype } = await pool.query<{ seat: number; count: number; sol: number; stickers: number }>(
+    `SELECT seat, count(*)::int AS count, sum(sol)::float AS sol, count(sticker)::int AS stickers
+       FROM hype WHERE battle_id = $1 GROUP BY seat`,
     [battleId],
   );
   for (const s of await getSeats(battleId)) {
     const profile = await getProfile(s.profile_id);
     if (!profile?.phone) continue;
     const won = battle.winner_seat === s.seat;
-    const hypeCount = hype.find((h) => h.seat === s.seat)?.count ?? 0;
+    const h = hype.find((x) => x.seat === s.seat);
+    const stickers = h?.stickers ?? 0;
     const lines = [
       battle.winner_seat === null
         ? "🫧 It's a tie! Perfectly in sync 🐠🐠"
@@ -173,7 +175,8 @@ handle("battle_finished", async ({ battleId }: { battleId: string }) => {
       s.reported_at
         ? `Your score: ${s.score} (pops ${s.pops} · sync ${s.sync} · flair ${s.flair})`
         : "We didn't get a score from you this round.",
-      ...(hypeCount ? [`📣 The crowd hyped you ${hypeCount}× (+${round(hypeCount * 0.005)} devnet SOL)`] : []),
+      ...(h ? [`📣 The crowd hyped you ${h.count}× (+${round(h.sol)} devnet SOL)`] : []),
+      ...(stickers ? [`🎁 ${stickers} hype sticker NFT${stickers === 1 ? "" : "s"} landed in your wallet`] : []),
       signature
         ? `On-chain receipt 🔗 ${explorerTx(signature)}`
         : "On-chain receipt is pending 🫧 I'll text you the link once it lands.",

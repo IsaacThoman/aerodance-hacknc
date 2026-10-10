@@ -3,6 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import AeroWorld from '../aero/AeroWorld.jsx';
 import { api, deviceToken, local, useBattle } from '../battle/api.js';
 import { socket } from '../socket.js';
+import { stickerLabel } from '../ui/stickers.js';
 import PhoneUI from './PhoneUI.jsx';
 
 /**
@@ -125,13 +126,15 @@ export default function PhoneApp() {
     setEditing(true);
   }, [me]);
 
-  const hype = useCallback(async (seat) => {
+  // { seat } tips devnet SOL; a sticker mints that sticker NFT into the dancer's wallet.
+  const hype = useCallback(async (seat, sticker) => {
     if (hyping) return;
     setHyping(true);
     navigator.vibrate?.(30);
     try {
-      const r = await api('POST', `/battles/${battleId}/hype`, { seat });
-      say('+0.005 SOL hype sent', r.explorer);
+      if (sticker) say(`Minting your ${stickerLabel(sticker)} sticker NFT…`);
+      const r = await api('POST', `/battles/${battleId}/hype`, sticker ? { seat, sticker } : { seat });
+      say(sticker ? 'Sticker NFT sent!' : '+0.005 SOL hype sent', r.explorer);
     } catch (err) {
       say(err.message);
     } finally {

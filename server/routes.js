@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import {
-  MAX_SEATS, claimSeat, createBattle, hypeDancer, joinBattle, publicBattle, reportResult, seatForToken,
+  MAX_SEATS, claimSeat, createBattle, hypeDancer, isSticker, joinBattle, publicBattle, reportResult, seatForToken,
 } from './battles.js';
 import {
   HttpError, cleanName, getProfile, normalizePhone, profileByDevice, profileForPhone, profileStats,
@@ -11,6 +11,8 @@ import {
 // Where battle links in texts point. Pages opened in a browser build their own links from location.
 export const publicUrl = (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 export const battleUrl = (id, token) => `${publicUrl}/battle/${id}?p=${encodeURIComponent(token)}`;
+// Base for NFT metadata and images: PUBLIC_URL, else the address this request came in on.
+export const requestBaseUrl = (req) => (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
 
 // Express 5 forwards rejected promises to the error handler, so handlers can just throw.
 function errorHandler(err, _req, res, _next) {
@@ -92,10 +94,13 @@ export function publicRoutes() {
     res.json(await joinBattle(req.params.id, (await requireProfile(req)).id));
   });
 
+  // { seat } tips devnet SOL; { seat, sticker } mints a sticker NFT into the dancer's wallet.
   api.post('/battles/:id/hype', async (req, res) => {
     const seat = Number(req.body?.seat);
     if (!Number.isInteger(seat) || seat < 0) throw new HttpError(400, 'seat required');
-    res.json(await hypeDancer(req.params.id, await requireProfile(req), seat));
+    const sticker = req.body?.sticker;
+    if (sticker !== undefined && !isSticker(sticker)) throw new HttpError(400, 'unknown sticker');
+    res.json(await hypeDancer(req.params.id, await requireProfile(req), seat, { sticker, baseUrl: requestBaseUrl(req) }));
   });
 
   api.use((_req, _res, next) => next(new HttpError(404, 'not found')));

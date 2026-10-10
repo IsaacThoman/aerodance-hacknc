@@ -118,7 +118,7 @@ Battle tables: `profiles`, `devices` (browsers signed in as a profile), `wallets
 | `POST /api/battles/:id/result`   | `{ playerToken, score, pops?, sync?, flair? }`, once per seat |
 | `GET /api/me`, `POST /api/me`    | The phone's profile (`x-device-token` header). `POST` takes `{ name?, phone? }` and returns a `deviceToken` |
 | `POST /api/battles/:id/join`     | Take a free dancer seat, or join the crowd. Returns `{ role, seat }` |
-| `POST /api/battles/:id/hype`     | `{ seat }`: send that dancer 0.005 devnet SOL from your wallet |
+| `POST /api/battles/:id/hype`     | `{ seat }`: send that dancer 0.005 devnet SOL from your wallet. `{ seat, sticker }` (`bubble`, `koi`, `rainbow`) mints a sticker NFT into their wallet instead, paid by yours |
 
 Socket.IO events: client emits `spin`; server broadcasts `spin` and `stats` (`{ online, spinsLastMinute }`).
-Battles: emit `battle:watch` with an id to get `battle` (full public state) on every change and `hype` (`{ seat, from }`) the moment a tip starts. Phones emit `me:watch` with their device token to get `me:changed`.
+Battles: emit `battle:watch` with an id to get `battle` (full public state) on every change and `hype` (`{ seat, from, sticker }`) the moment a tip starts. Phones emit `me:watch` with their device token to get `me:changed`.

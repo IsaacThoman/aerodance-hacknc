@@ -88,6 +88,8 @@ function DisplayApp() {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('stats', setStats);
+    // The socket may have connected before these listeners were added.
+    setConnected(socket.connected);
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);

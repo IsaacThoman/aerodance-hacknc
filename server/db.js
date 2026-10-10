@@ -98,14 +98,17 @@ const schema = `
     PRIMARY KEY (battle_id, profile_id)
   );
 
-  -- Confirmed spectator → dancer tips of devnet SOL.
+  -- Confirmed spectator → dancer tips: devnet SOL, or a sticker NFT minted into the dancer's wallet.
   CREATE TABLE IF NOT EXISTS hype (
     time         TIMESTAMPTZ      NOT NULL DEFAULT now(),
     battle_id    TEXT             NOT NULL,
     seat         INT              NOT NULL,
     from_profile TEXT             NOT NULL,
-    sol          DOUBLE PRECISION NOT NULL,
-    signature    TEXT             NOT NULL
+    sol          DOUBLE PRECISION NOT NULL,      -- 0 for stickers
+    signature    TEXT,                           -- NULL if a retried sticker mint found its asset
+    sticker      TEXT,                           -- bubble | koi | rainbow
+    sticker_id   TEXT,                           -- metadata at /nft/hype/<battle_id>/<sticker_id>.json
+    asset        TEXT
   );
 
   SELECT create_hypertable('hype', by_range('time'), if_not_exists => TRUE);

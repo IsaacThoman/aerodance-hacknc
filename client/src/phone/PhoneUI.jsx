@@ -3,6 +3,7 @@ import {
   FONT, NAVY, drawBubble, drawCaps, drawGlassPanel, drawPill, drawTitle, ellipsize, roundRect,
   titleWidth, wrapText,
 } from '../ui/draw.js';
+import { STICKERS, drawSticker } from '../ui/stickers.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 
 /**
@@ -102,7 +103,7 @@ export default function PhoneUI(props) {
     active: () => st.alpha > 0.3,
     onActivate: (wdg) => {
       const p = ref.current;
-      if (wdg.id.startsWith('hype-')) {
+      if (wdg.id.startsWith('hype-') || wdg.id.startsWith('sticker-')) {
         const { rect } = wdg;
         for (let i = 0; i < 7; i++) {
           st.particles.push({
@@ -114,7 +115,7 @@ export default function PhoneUI(props) {
             life: 1.1 + Math.random() * 0.5,
           });
         }
-        p.onHype(wdg.seat);
+        p.onHype(wdg.seat, wdg.sticker);
         return;
       }
       switch (wdg.id) {
@@ -219,7 +220,9 @@ export default function PhoneUI(props) {
         if (p.battleId && b?.players) {
           const finished = b.status === 'finished';
           const crowd = p.role?.role === 'spectator';
-          const cardH = crowd && !finished ? 300 : 210;
+          const anyStickers = b.players.some((pl) => Object.values(pl.hype.stickers ?? {}).some(Boolean));
+          const cardH = (crowd && !finished ? 420 : 210) + (anyStickers ? 46 : 0);
+          const got = anyStickers ? 46 : 0;
           const height = 136 + cardH - 20 + PAD + (finished ? 56 : 0) + (finished && b.trophy ? 52 : 0);
           drawGlassPanel(g, { x: M, y, w: CW, h: height }, 34);
           const roleLine = p.role?.role === 'dancer' ? `You're Dancer ${p.role.seat + 1}!` : crowd ? "You're in the crowd" : 'Joining…';
@@ -251,15 +254,36 @@ export default function PhoneUI(props) {
             text(g, name, cx + cw / 2, top + 40, { size: 30, weight: pl.name ? 800 : 600, align: 'center', color: pl.name ? '#ffffff' : 'rgba(255,255,255,0.6)' });
             text(g, pl.result ? String(pl.result.score) : '–', cx + cw / 2, top + 98, { size: 54, weight: 800, align: 'center', color: finished && pl.seat === b.winnerSeat ? '#ffe27a' : '#ffffff' });
             text(g, `${pl.hype.count} hype · ${fmtSol(pl.hype.sol)}`, cx + cw / 2, top + 154, { size: 22, align: 'center', color: 'rgba(255,255,255,0.8)' });
+            // Stickers this dancer got: icon ×n.
+            const received = STICKERS.filter((st2) => pl.hype.stickers?.[st2.id]);
+            received.forEach((st2, k) => {
+              const sx = cx + cw / 2 + (k - (received.length - 1) / 2) * 80;
+              drawSticker(g, st2.id, sx - 14, top + 194, 36, () => s.invalidate());
+              text(g, `×${pl.hype.stickers[st2.id]}`, sx + 8, top + 195, { size: 22, weight: 700 });
+            });
             if (crowd && !finished) {
               const id = `hype-${pl.seat}`;
-              const btn = { x: cx + 14, y: top + 186, w: cw - 28, h: 80 };
+              const btn = { x: cx + 14, y: top + 186 + got, w: cw - 28, h: 80 };
               const enabled = !!pl.name && !p.hyping;
               g.save();
               if (!enabled) g.globalAlpha *= 0.5;
               drawPill(g, btn, { label: 'Hype', icon: 'bubble', hover: enabled ? (h[id] ?? 0) : 0, press: enabled ? press(id) : 0 });
               g.restore();
               if (enabled) widgets.push({ id, seat: pl.seat, rect: btn });
+              // Or send a sticker NFT.
+              const size = Math.min(76, (cw - 28 - 16) / 3);
+              STICKERS.forEach((st2, k) => {
+                const sid = `sticker-${pl.seat}-${st2.id}`;
+                const cxk = cx + cw / 2 + (k - 1) * (size + 8);
+                const cy = top + 186 + got + 80 + 22 + size / 2;
+                const grow = enabled ? (h[sid] ?? 0) * 6 - press(sid) * 6 : 0;
+                g.save();
+                if (!enabled) g.globalAlpha *= 0.5;
+                drawSticker(g, st2.id, cxk, cy, size + grow, () => s.invalidate());
+                g.restore();
+                if (enabled) widgets.push({ id: sid, seat: pl.seat, sticker: st2.id, rect: { x: cxk - size / 2, y: cy - size / 2, w: size, h: size } });
+              });
+              text(g, 'or send a sticker NFT', cx + cw / 2, top + 186 + got + 80 + 22 + size + 22, { size: 20, align: 'center', color: 'rgba(255,255,255,0.75)' });
             }
           });
           if (finished) {

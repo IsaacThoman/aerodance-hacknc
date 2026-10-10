@@ -1,7 +1,9 @@
-// Internal API for the app (Compose network only): wallet balances and hype transfers.
-// Battle rules live in the app; this only moves devnet SOL between players' wallets.
+// Internal API for the app (Compose network only): wallet balances, hype transfers and
+// sticker NFTs. Battle rules live in the app; this only signs for players' wallets.
 import { timingSafeEqual } from "node:crypto";
+import { Keypair } from "@solana/web3.js";
 import express, { type NextFunction, type Request, type Response } from "express";
+import { mintAsset } from "./nft.ts";
 import { RPC_URL, getBalanceSol, loadTreasury, sendHype } from "./solana.ts";
 import { ensureWallet, fundWallet, imessageEnabled } from "./players.ts";
 
@@ -51,6 +53,13 @@ export function createHttp() {
     res.json({ address: wallet.address, balance });
   });
 
+  const hypeError = (from: string, err: unknown) => {
+    const msg = (err as Error).message;
+    log(`hype from ${from} failed:`, msg.split("\n")[0]);
+    const broke = /insufficient|debit|no record/i.test(msg);
+    return new HttpError(broke ? 402 : 503, broke ? "out of hype SOL" : "Solana is slow, try again");
+  };
+
   // Spectator → dancer tip. The sender's own wallet pays; the memo tags it on-chain.
   app.post("/hype", async (req, res) => {
     const { from, to, sol, memo } = req.body ?? {};
@@ -62,10 +71,25 @@ export function createHttp() {
     try {
       res.json({ signature: await sendHype(fromWallet.secretKey, toWallet.address, sol, memo.slice(0, 200)) });
     } catch (err) {
-      const msg = (err as Error).message;
-      log(`hype from ${from} failed:`, msg.split("\n")[0]);
-      const broke = /insufficient|debit|no record/i.test(msg);
-      throw new HttpError(broke ? 402 : 503, broke ? "out of hype SOL" : "Solana is slow, try again");
+      throw hypeError(from, err);
+    }
+  });
+
+  // Spectator → dancer sticker NFT, minted from (and paid by) the sender's wallet.
+  app.post("/stickers", async (req, res) => {
+    const { from, to, name, uri } = req.body ?? {};
+    if ([from, to, name, uri].some((v) => typeof v !== "string")) throw new HttpError(400, "from, to, name and uri required");
+    const [fromWallet, toWallet] = await Promise.all([ensureWallet(from), ensureWallet(to)]);
+    try {
+      res.json(await mintAsset({
+        payerSecret: fromWallet.secretKey,
+        assetSecret: Keypair.generate().secretKey,
+        owner: toWallet.address,
+        name: name.slice(0, 32),
+        uri: uri.slice(0, 200),
+      }));
+    } catch (err) {
+      throw hypeError(from, err);
     }
   });
 

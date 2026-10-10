@@ -5,10 +5,10 @@ import path from 'node:path';
 import express from 'express';
 import { Server } from 'socket.io';
 import { listen, migrate, pool, recordSpin, spinHistory, spinsSince } from './db.js';
-import { publicBattle, startSweeper, trophyMetadata } from './battles.js';
+import { publicBattle, startSweeper, stickerMetadata, trophyMetadata } from './battles.js';
 import { changes } from './events.js';
 import { profileByDevice } from './profiles.js';
-import { internalApp, publicRoutes } from './routes.js';
+import { internalApp, publicRoutes, requestBaseUrl } from './routes.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const INTERNAL_PORT = Number(process.env.INTERNAL_PORT) || 3001;
@@ -39,16 +39,16 @@ app.get('/api/spins/history', async (_req, res, next) => {
 
 app.use('/api', publicRoutes());
 
-// Metadata for a battle's trophy NFT; the agent mints it with this as the asset's uri.
-app.get('/nft/:id.json', async (req, res, next) => {
-  try {
-    const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    const meta = await trophyMetadata(req.params.id, base);
-    if (!meta) return res.status(404).json({ error: 'no trophy for that battle' });
-    res.json(meta);
-  } catch (err) {
-    next(err);
-  }
+// NFT metadata (the assets' on-chain uris point here): hype stickers and battle trophies.
+app.get('/nft/hype/:id/:stickerId.json', async (req, res) => {
+  const meta = await stickerMetadata(req.params.id, req.params.stickerId, requestBaseUrl(req));
+  if (!meta) return res.status(404).json({ error: 'no such sticker' });
+  res.json(meta);
+});
+app.get('/nft/:id.json', async (req, res) => {
+  const meta = await trophyMetadata(req.params.id, requestBaseUrl(req));
+  if (!meta) return res.status(404).json({ error: 'no trophy for that battle' });
+  res.json(meta);
 });
 
 // In production Express serves the Vite build; in dev Vite serves the client.
@@ -83,7 +83,7 @@ changes.on('battle', async (id) => {
   }
 });
 // Instant feedback while the transfer confirms; the totals follow in the next 'battle'.
-changes.on('hype', ({ battleId, seat, from }) => io.to(battleRoom(battleId)).emit('hype', { battleId, seat, from }));
+changes.on('hype', ({ battleId, seat, from, sticker }) => io.to(battleRoom(battleId)).emit('hype', { battleId, seat, from, sticker }));
 // Phones refetch /api/me (it includes a live wallet balance).
 changes.on('profile', (id) => io.to(profileRoom(id)).emit('me:changed'));
 

@@ -7,7 +7,7 @@ Battles, profiles, seats and results live in the app (`server/`), which owns the
 The agent is a worker beside it in Compose, and it holds every Solana key:
 
 - **Jobs:** the app adds rows to the `jobs` table and `NOTIFY`s `jobs`. The agent creates and funds wallets, links phones to Photon, writes the on-chain result receipt, texts the players and mints the winner's trophy NFT. Failed jobs retry with backoff, so a restart or a slow RPC never loses a receipt or a text.
-- **Internal HTTP API** (port 4000, Compose network only), for things the app needs an answer to right away: `GET /wallets/:profileId` (address and balance) and `POST /hype` (spectator → dancer transfer).
+- **Internal HTTP API** (port 4000, Compose network only), for things the app needs an answer to right away: `GET /wallets/:profileId` (address and balance), `POST /hype` (spectator → dancer transfer) and `POST /stickers` (a sticker NFT minted from the spectator's wallet into the dancer's).
 - **The iMessage bot**, when `PROJECT_ID` and `PROJECT_SECRET` are set. Bot commands that create battles or profiles call the app's internal API (`app:3001`), so battle rules stay in one place. Without credentials (PR previews, local dev), texts are only logged.
 - When a receipt lands or a phone gets linked, the agent `NOTIFY`s `changes` and the app pushes the update to displays and phones over Socket.IO.
 
@@ -87,7 +87,7 @@ If Solana is slow or down, players still get their result right away, with a not
 - `src/index.ts`: wiring (jobs + HTTP + bot)
 - `src/jobs.ts`: the jobs worker (claim, retry with backoff)
 - `src/battles.ts`: receipts, result texts and trophies
-- `src/nft.ts`: trophy minting (Metaplex Core via Umi)
+- `src/nft.ts`: trophy and sticker minting (Metaplex Core via Umi)
 - `src/players.ts`: wallets, Photon linking, iMessage notifier
 - `src/bot.ts`: Spectrum iMessage loop and commands
 - `src/app.ts`: client for the app's internal API

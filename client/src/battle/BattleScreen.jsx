@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import {
   FONT, drawBubble, drawCaps, drawGlassPanel, drawHeader, drawPill, drawQR, drawShadowText, ellipsize, roundRect,
 } from '../ui/draw.js';
+import { drawSticker, stickerLabel } from '../ui/stickers.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { joinUrl, useHype } from './api.js';
 
@@ -12,7 +13,7 @@ import { joinUrl, useHype } from './api.js';
  *   lobby    QR code to join, seat tags over the dancers, Start
  *   playing  seat tags and hype only (the dance itself hooks in here)
  *   results  winner, scores, hype totals, the on-chain receipt and the winner's trophy NFT
- * Hype from phones rises as bubbles from the dancer it was sent to.
+ * Hype from phones rises as bubbles from the dancer it was sent to; stickers rise as themselves.
  *
  * <BattleScreen visible battle={publicBattle} playing onPlay onBack onRematch onMenu />
  */
@@ -109,12 +110,13 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
   const qrRef = useRef(qr);
   qrRef.current = qr;
 
-  const spawn = (x, count, { label, spread = 70, y = BUBBLE_Y } = {}) => {
+  const spawn = (x, count, { label, sticker, spread = 70, y = BUBBLE_Y } = {}) => {
     for (let i = 0; i < count; i++) {
       st.bubbles.push({
         x: x + (Math.random() - 0.5) * spread * 2,
         y: y + Math.random() * 40,
-        r: 14 + Math.random() * 24,
+        r: i === 0 && sticker ? 58 : 14 + Math.random() * 24,
+        sticker: i === 0 ? sticker : undefined,
         vy: -(140 + Math.random() * 120),
         wobble: Math.random() * Math.PI * 2,
         age: -i * 0.07,
@@ -124,9 +126,10 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
     }
   };
 
-  useHype(id, useCallback(({ seat, from }) => {
+  useHype(id, useCallback(({ seat, from, sticker }) => {
     const count = props.current.battle?.players.length ?? 2;
-    spawn(seatX(seat, count), 6, { label: `+hype from ${from}` });
+    const label = sticker ? `${from} sent a ${stickerLabel(sticker)} sticker` : `+hype from ${from}`;
+    spawn(seatX(seat, count), sticker ? 4 : 6, { label, sticker });
   }, []));
 
   const widgetsFor = (phase, b) => {
@@ -277,9 +280,20 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
         if (bubble.age < 0) continue;
         const fade = Math.min(1, bubble.age * 4) * Math.min(1, (bubble.life - bubble.age) * 1.5);
         const x = bubble.x + Math.sin(bubble.age * 2.4 + bubble.wobble) * 14;
-        drawBubble(g, x, bubble.y, bubble.r, fade);
+        if (bubble.sticker) {
+          g.save();
+          g.globalAlpha *= fade;
+          drawSticker(g, bubble.sticker, x, bubble.y, bubble.r * 2, () => s.invalidate());
+          g.restore();
+        } else {
+          drawBubble(g, x, bubble.y, bubble.r, fade);
+        }
         if (bubble.label) {
-          drawShadowText(g, bubble.label, x, bubble.y - bubble.r - 22, { size: 26, weight: 800, align: 'center', alpha: fade });
+          // Keep the label on screen above dancers near the edge.
+          g.font = `800 26px ${FONT}`;
+          const half = g.measureText(bubble.label).width / 2 + 24;
+          const lx = Math.min(s.w - half, Math.max(half, x));
+          drawShadowText(g, bubble.label, lx, bubble.y - bubble.r - 22, { size: 26, weight: 800, align: 'center', alpha: fade });
         }
       }
     },

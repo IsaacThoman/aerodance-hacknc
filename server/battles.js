@@ -8,6 +8,12 @@ import { HttpError, explorerAddress, explorerTx, getProfile, shortId } from './p
 
 export const MAX_SEATS = 8;
 export const HYPE_SOL = 0.005;
+export const STICKERS = {
+  bubble: { label: 'Bubble Hype', emoji: '🫧' },
+  koi: { label: 'Koi Hype', emoji: '🐠' },
+  rainbow: { label: 'Rainbow Hype', emoji: '🌈' },
+};
+export const isSticker = (s) => typeof s === 'string' && Object.hasOwn(STICKERS, s);
 // Once the first score is in, seats that never report are dropped after this long.
 const RESULT_GRACE = '90 seconds';
 
@@ -50,7 +56,11 @@ export async function publicBattle(id) {
       [id],
     ),
     pool.query(
-      'SELECT seat, count(*)::int AS count, sum(sol)::float AS sol FROM hype WHERE battle_id = $1 GROUP BY seat',
+      `SELECT seat, count(*)::int AS count, sum(sol)::float AS sol,
+              count(*) FILTER (WHERE sticker = 'bubble')::int AS bubble,
+              count(*) FILTER (WHERE sticker = 'koi')::int AS koi,
+              count(*) FILTER (WHERE sticker = 'rainbow')::int AS rainbow
+         FROM hype WHERE battle_id = $1 GROUP BY seat`,
       [id],
     ),
     pool.query('SELECT count(*)::int AS count FROM battle_spectators WHERE battle_id = $1', [id]),
@@ -70,7 +80,11 @@ export async function publicBattle(id) {
         result: s.reported_at
           ? { score: s.score, pops: s.pops, sync: s.sync, flair: s.flair, at: s.reported_at }
           : null,
-        hype: { count: h?.count ?? 0, sol: round(h?.sol ?? 0) },
+        hype: {
+          count: h?.count ?? 0,
+          sol: round(h?.sol ?? 0),
+          stickers: Object.fromEntries(Object.keys(STICKERS).map((k) => [k, h?.[k] ?? 0])),
+        },
       };
     }),
     spectators: watching.count,
@@ -219,11 +233,12 @@ export async function claimSeat(id, seat, profileId) {
   changes.emit('battle', id);
 }
 
-// A spectator tips a dancer real devnet SOL from their own wallet. The display shows the
-// bubble right away ('hype' event); the battle's totals update once the transfer confirms.
+// A spectator tips a dancer real devnet SOL from their own wallet, or sends a sticker NFT
+// minted from (and paid by) that wallet. The display shows the bubble right away ('hype'
+// event); the battle's totals update once it lands. baseUrl is where sticker metadata lives.
 const hyping = new Set();
 
-export async function hypeDancer(id, from, seat) {
+export async function hypeDancer(id, from, seat, { sticker, baseUrl } = {}) {
   const { rows: [battle] } = await pool.query('SELECT status FROM battles WHERE id = $1', [id]);
   if (!battle) throw new HttpError(404, 'battle not found');
   if (battle.status === 'finished') throw new HttpError(409, 'battle already finished');
@@ -235,30 +250,68 @@ export async function hypeDancer(id, from, seat) {
 
   hyping.add(from.id);
   try {
-    changes.emit('hype', { battleId: id, seat, from: from.name });
-    let signature;
+    changes.emit('hype', { battleId: id, seat, from: from.name, sticker: sticker ?? null });
+    const stickerId = sticker ? shortId(8) : null;
+    let landed;
     try {
-      ({ signature } = await agentCall('POST', '/hype', {
-        from: from.id,
-        to: dancer.id,
-        sol: HYPE_SOL,
-        memo: JSON.stringify({ app: 'aerodance', battleId: id, hype: seat }),
-      }, 30_000));
+      landed = sticker
+        ? await agentCall('POST', '/stickers', {
+          from: from.id,
+          to: dancer.id,
+          name: `${STICKERS[sticker].label} #${id}`,
+          uri: `${baseUrl}/nft/hype/${id}/${stickerId}.json`,
+        }, 60_000)
+        : await agentCall('POST', '/hype', {
+          from: from.id,
+          to: dancer.id,
+          sol: HYPE_SOL,
+          memo: JSON.stringify({ app: 'aerodance', battleId: id, hype: seat }),
+        }, 30_000);
     } catch (err) {
       if (err instanceof AgentError) throw new HttpError(err.status === 402 ? 402 : 503, err.status === 402 ? 'out of hype SOL' : 'Solana is slow, try again');
       throw err;
     }
     await pool.query(
-      'INSERT INTO hype (battle_id, seat, from_profile, sol, signature) VALUES ($1, $2, $3, $4, $5)',
-      [id, seat, from.id, HYPE_SOL, signature],
+      `INSERT INTO hype (battle_id, seat, from_profile, sol, signature, sticker, sticker_id, asset)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, seat, from.id, sticker ? 0 : HYPE_SOL, landed.signature, sticker ?? null, stickerId, landed.asset ?? null],
     );
     changes.emit('battle', id);
     changes.emit('profile', from.id);
     changes.emit('profile', dancer.id);
-    return { signature, explorer: explorerTx(signature) };
+    return sticker
+      ? { asset: landed.asset, explorer: explorerAddress(landed.asset) }
+      : { signature: landed.signature, explorer: explorerTx(landed.signature) };
   } finally {
     hyping.delete(from.id);
   }
+}
+
+// Off-chain metadata for a sticker NFT. Wallet addresses only: names and phones stay private.
+export async function stickerMetadata(battleId, stickerId, baseUrl) {
+  const { rows: [h] } = await pool.query(
+    `SELECT h.time, h.sticker, w.address
+       FROM hype h LEFT JOIN wallets w ON w.profile_id = h.from_profile
+      WHERE h.battle_id = $1 AND h.sticker_id = $2`,
+    [battleId, stickerId],
+  );
+  if (!h?.sticker) return undefined;
+  const { label, emoji } = STICKERS[h.sticker];
+  const image = `${baseUrl}/stickers/${h.sticker}.png`;
+  return {
+    name: `${label} #${battleId}`,
+    symbol: 'AERO',
+    description: `${emoji} A ${label.toLowerCase()} sticker from the crowd in aerodance battle ${battleId}.`,
+    image,
+    external_url: baseUrl,
+    attributes: [
+      { trait_type: 'sticker', value: label },
+      { trait_type: 'battle', value: battleId },
+      { trait_type: 'from', value: h.address ?? 'a fan' },
+      { trait_type: 'date', value: h.time.toISOString().slice(0, 10) },
+    ],
+    properties: { category: 'image', files: [{ uri: image, type: 'image/png' }] },
+  };
 }
 
 // ---------- background sweeper ----------
