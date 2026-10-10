@@ -44,15 +44,10 @@ export const RATINGS = {
     top: '#ffe6e6', mid: '#ff7070', bottom: '#d12b2b', disc: ['#ff5c5c', '#a51717'], outline: '#7a0d0d',
     particles: 'drops', count: 12, combo: false,
   },
-  lazy: {
-    label: 'NOT EVEN TRYING', icon: 'sleepy', size: 46, hold: 1.25,
-    top: '#f1f4f7', mid: '#b4bec8', bottom: '#717d89', disc: ['#a7b2bd', '#5b6672'], outline: '#3a434c',
-    particles: 'zzz', count: 0, combo: false,
-  },
 };
 
-export const ORDER = ['perfect', 'great', 'good', 'ok', 'miss', 'lazy'];
-export const NAMES = { perfect: 'Perfect', great: 'Great', good: 'Good', ok: 'OK', miss: 'Miss', lazy: 'Not even trying' };
+export const ORDER = ['perfect', 'great', 'good', 'ok', 'miss'];
+export const NAMES = { perfect: 'Perfect', great: 'Great', good: 'Good', ok: 'OK', miss: 'Miss' };
 
 /* --------------------------------------------------------------- drawing kit */
 
@@ -112,18 +107,6 @@ function icon(g, kind, cx, cy, r, t) {
     g.lineTo(cx + s * 0.6, cy + s * 0.6);
     g.moveTo(cx + s * 0.6, cy - s * 0.6);
     g.lineTo(cx - s * 0.6, cy + s * 0.6);
-    g.stroke();
-  } else if (kind === 'sleepy') {
-    // Closed eyes and a flat little mouth.
-    g.lineWidth = 6;
-    for (const ox of [-0.42, 0.42]) {
-      g.beginPath();
-      g.arc(cx + s * ox, cy - s * 0.12, s * 0.26, 0.15 * Math.PI, 0.85 * Math.PI);
-      g.stroke();
-    }
-    g.beginPath();
-    g.moveTo(cx - s * 0.22, cy + s * 0.5);
-    g.lineTo(cx + s * 0.22, cy + s * 0.5);
     g.stroke();
   }
   g.restore();
@@ -234,22 +217,7 @@ function badge(g, R, x, y, w, h, now, age, extra) {
   g.lineJoin = 'round';
   g.lineWidth = 9;
   g.strokeStyle = R.outline;
-  const letters = extra.sag > 0 ? [...R.label] : null;
-  const drawText = (fn) => {
-    if (!letters) { fn(R.label, tx, ty); return; }
-    // Drooping letters for "not even trying": each sags a little more than the last.
-    let cx = tx;
-    letters.forEach((ch, i) => {
-      g.save();
-      const droop = Math.sin(i * 0.9 + now * 2) * 2 + i * extra.sag * 1.1;
-      g.translate(cx, ty + droop);
-      g.rotate(extra.sag * 0.02 * Math.sin(i + now));
-      fn(ch, 0, 0);
-      g.restore();
-      cx += g.measureText(ch).width - 1;
-    });
-  };
-  drawText((s, px, py) => g.strokeText(s, px, py));
+  g.strokeText(R.label, tx, ty);
   if (extra.rainbow) {
     const tw = g.measureText(R.label).width;
     const shift = ((now * 0.5) % 1) * tw;
@@ -258,7 +226,7 @@ function badge(g, R, x, y, w, h, now, age, extra) {
     cols.forEach((c, i) => grad.addColorStop(i / (cols.length - 1), c));
     g.fillStyle = grad;
   } else g.fillStyle = '#ffffff';
-  drawText((s, px, py) => g.fillText(s, px, py));
+  g.fillText(R.label, tx, ty);
   g.restore();
 }
 
@@ -349,19 +317,17 @@ export function createFeedback() {
     const R = RATINGS[p.type];
     const age = now - p.born;
     const out = Math.max(0, now - p.leaveAt);
-    const OUT = p.type === 'miss' ? 0.55 : p.type === 'lazy' ? 0.6 : 0.25;
+    const OUT = p.type === 'miss' ? 0.55 : 0.25;
     if (out > OUT) return false;
     const h = BADGE_H;
     const cx = ANCHOR.x + p.w / 2;
     const cy = ANCHOR.y + h / 2;
     let scale = 1;
-    let sx = 1;
-    let sy = 1;
     let rot = 0;
     let dx = 0;
     let dy = 0;
     let alpha = 1;
-    const extra = { glint: (age - 0.12) / 0.4, crack: 0, rainbow: false, sag: 0 };
+    const extra = { glint: (age - 0.12) / 0.4, crack: 0, rainbow: false };
 
     if (p.type === 'perfect') {
       // Slams in from big, with a burst of light behind it.
@@ -373,15 +339,6 @@ export function createFeedback() {
       dx = Math.sin(age * 70) * 9 * Math.exp(-age * 7);
       extra.crack = clamp01((age - 0.08) / 0.15);
       extra.glint = -1;
-    } else if (p.type === 'lazy') {
-      // Shuffles in without any energy and slowly deflates.
-      const k = easeOut(clamp01(age / 0.5));
-      scale = 0.85 + 0.15 * k;
-      rot = -0.05 * k;
-      dy = 8 * k;
-      sy = 1 - 0.08 * clamp01((age - 0.4) / 0.8);
-      extra.sag = clamp01((age - 0.3) / 0.6);
-      extra.glint = -1;
     } else {
       scale = 0.35 + 0.65 * backOut(clamp01(age / 0.24), p.type === 'ok' ? 1 : 2);
     }
@@ -391,10 +348,6 @@ export function createFeedback() {
       if (p.type === 'miss') {
         dy += 260 * k * k;
         rot += 0.35 * k;
-        alpha = 1 - k;
-      } else if (p.type === 'lazy') {
-        dy += 30 * k;
-        sy *= 1 - 0.5 * k;
         alpha = 1 - k;
       } else {
         dy -= 26 * easeOut(k);
@@ -443,7 +396,7 @@ export function createFeedback() {
 
     g.translate(cx + dx, cy + dy);
     g.rotate(rot);
-    g.scale(scale * sx, scale * sy);
+    g.scale(scale, scale);
     g.translate(-cx, -cy);
     badge(g, R, ANCHOR.x, ANCHOR.y, p.w, h, now, age, extra);
     g.restore();
@@ -457,27 +410,6 @@ export function createFeedback() {
       const k = (1 - Math.exp(-drag * t)) / drag;
       const pos = { ...q, x: q.x + q.vx * k, y: q.y + q.vy * k + 0.5 * grav * t * t, vy: q.vy + grav * t };
       drawParticle(g, pos, t);
-    }
-
-    // Not even trying: lazy z's float up from the face.
-    if (p.type === 'lazy') {
-      for (let i = 0; i < 3; i++) {
-        const za = age - i * 0.35;
-        if (za < 0) continue;
-        const zk = (za % 1.4) / 1.4;
-        g.save();
-        g.globalAlpha = alpha * (1 - zk) * clamp01(za * 4);
-        g.fillStyle = '#ffffff';
-        g.strokeStyle = '#3a434c';
-        g.lineWidth = 5;
-        g.font = `italic 900 ${26 + i * 8}px ${FONT}`;
-        // Drift up and to the right, staying inside the frame above the badge.
-        const zx = ANCHOR.x + h * 0.7 + zk * 70 + i * 18;
-        const zy = ANCHOR.y + 22 - zk * 26 - i * 4;
-        g.strokeText('z', zx, zy);
-        g.fillText('z', zx, zy);
-        g.restore();
-      }
     }
     return true;
   }

@@ -4,37 +4,36 @@ Temporary mockup of the Just Dance–style judgement popups for aerodance. When 
 
 ## Designs
 
-Five text-only Frutiger Aero designs (no container), plus the original bubble badge for comparison. Switch with **Q–Y** or the top row of chips; `#design1`–`#design6` in the URL picks the starting one.
+Five minimal Frutiger Aero designs, plus the original bubble badge for comparison. Each keeps to one idea in flat colour and nothing glows; over the bright sky the words stay readable through a deep ink colour, a thin outline or a tight shadow. Switch with **Q–Y** or the top row of chips; `#design1`–`#design6` in the URL picks the starting one.
 
 | Key | Design | Look |
 | --- | --- | --- |
-| Q | Aqua Gel | Chunky glossy gel letters: white rim, coloured body, gloss band, sweeping glint, mirror reflection |
-| W | Chrome Aero | Vista-style chrome: sky above a dark horizon band, rating colour below, bevel, coloured aura, lens sparkles |
-| E | Liquid | Translucent water letters that drop in one by one with a bounce, drifting caustics, gentle wave, specular dots |
-| R | Sky Glow | Airy white letters glowing in the rating colour, sliding in with afterimages over an anamorphic light streak, twinkles |
-| T | Holo Glass | Smoky glass letters with an iridescent rim and drifting light stripe, swinging in like a glass panel |
+| Q | Sky Glow | White letters in a liquid glass capsule tinted with the rating colour: bright rim, thickness along the inside edge, top highlight, light gathering at the bottom. Slides in and wobbles like water as it lands; on a Miss the letters spill out and the empty capsule fades |
+| W | Aqua Line | Just the word: evenly spaced capitals in flat deep ink of the rating colour |
+| E | Waterline | Pale glass letters with a thin outline, filled with flat water. The level is the grade: Perfect brims, Great is nearly full, Miss barely wets the bottom and drains |
+| R | Mirror | Flat colour letters that rise in one by one over a faint reflection |
+| T | Bubble | Rounded white letters with a flat coloured edge beside one glossy dot in the rating colour; Miss pops it |
 | Y | Badge v1 | The first version: glossy gel pill with an icon disc |
 
 ## Ratings
 
-The motion is shared by every design; colours come from the rating.
+The motion is shared by every design and kept minimal (no sunbursts, star bursts or droplets); colours come from the rating, and Perfect gets an iridescent soap-bubble finish.
 
 | Key | Rating | Behaviour |
 | --- | --- | --- |
-| 1 | Perfect | Slams in from large, rainbow colouring, spinning sunburst, gold stars |
-| 2 | Great | Mint green, pop-in overshoot, sparkles |
-| 3 | Good | Sky blue, pop-in, a few sparkles |
+| 1 | Perfect | Slams in from large, iridescent finish, three crisp twinkles |
+| 2 | Great | Mint green, pop-in overshoot |
+| 3 | Good | Sky blue, pop-in |
 | 4 | OK | Lavender, smaller and softer pop |
-| 5 | Miss | Red, shakes on arrival, then the letters come apart and tumble down with droplets; breaks the combo |
-| 6 | Not even trying | Grey, shuffles in without energy, letters droop, floating "z"s, deflates out; breaks the combo |
+| 5 | Miss | Red, shakes on arrival, then the letters come apart and tumble down; breaks the combo |
 
-Perfect, Great, Good and OK build the combo (`×N COMBO`, shown from 2); Miss and Not even trying break it (`×N COMBO BROKEN`). A new rating hurries the previous one off. The combo line is drawn in the active design's style.
+Perfect, Great, Good and OK build the combo (`×N COMBO`, shown from 2); Miss breaks it (`×N COMBO BROKEN`). A new rating hurries the previous one off. The combo line is drawn in the active design's style.
 
 ## Controls
 
-- **1–6** or the bottom chips: show a rating. **A** or **Space**: auto-play (roughly on the beat of a 118 BPM song, weighted towards good results).
+- **1–5** or the bottom chips: show a rating. **A** or **Space**: auto-play (roughly on the beat of a 118 BPM song, weighted towards good results).
 - **H**: hold each rating on screen until the next one.
-- **G**: gallery, all six ratings of the current design at once (open it directly with `?gallery`).
+- **G**: gallery, all five ratings of the current design at once (open it directly with `?gallery`).
 
 ## View
 
@@ -48,8 +47,8 @@ Open http://localhost:5176 (or http://localhost:5176/?gallery to compare designs
 
 ## Code
 
-- `client/src/textFeedback.js`: the text-only popups. `createTextFeedback()` returns `{ trigger(type, now), draw(ctx, now), setDesign(i), setHold(on), drawSample(...), combo }` and owns the shared timing and motion (pop-in, Perfect slam and sunburst, Miss falling apart, Not even trying drooping, particles, combo).
-- `client/src/designs.js`: the five looks. Each design is a small object with `font`, `tracking`, `draw(ctx, P)` and optional `letters`/`transform` hooks, so a new style is one more entry.
+- `client/src/textFeedback.js`: the minimal popups. `createTextFeedback()` returns `{ trigger(type, now), draw(ctx, now), setDesign(i), setHold(on), drawSample(...), combo }` and owns the shared timing and motion (pop-in, Perfect slam, Miss falling apart, twinkles, combo).
+- `client/src/designs.js`: the five looks. Each design is a small object with `font`, `tracking`, `draw(ctx, P)`, optional settings (`lead`, `comboGap`) and optional `letters`/`transform` hooks, so a new style is one more entry. Bubble uses Nunito (`@fontsource/nunito`); the others use Inter.
 - `client/src/ratings.js`: rating palettes and timings shared by everything, and the original badge renderer (`createFeedback()`).
 - `client/src/App.jsx`: the demo stage (sky, glossy floor, glass puck, bubbles, dancers from `temp/frutiger-character`), the controls and the overlay pass.
 

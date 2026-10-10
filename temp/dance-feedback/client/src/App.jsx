@@ -12,10 +12,10 @@ import { TEXT_DESIGNS } from './designs.js';
 
 /*
  * Move-ratings mockup: the glass dancers perform centre stage while judged-move popups
- * (Perfect, Great, Good, OK, Miss, Not even trying) appear in the top-left corner.
- * Ratings auto-play like a song in progress; 1-6 or the chips trigger one, A toggles auto.
- * Q-T switch between the five text-only designs, Y shows the original bubble badge;
- * H holds each rating on screen until the next one; G shows all six ratings at once.
+ * (Perfect, Great, Good, OK, Miss) appear in the top-left corner.
+ * Ratings auto-play like a song in progress; 1-5 or the chips trigger one, A toggles auto.
+ * Q-T switch between the five minimal designs, Y shows the original bubble badge;
+ * H holds each rating on screen until the next one; G shows all five ratings at once.
  * Rendered in-engine at the main app's 640x480 buffer, stretched to 16:9.
  */
 
@@ -23,9 +23,9 @@ const RENDER = { w: 640, h: 480 };
 const FONT = '"Inter", "Helvetica Neue", Helvetica, Arial, sans-serif';
 const BEAT = 60 / 118;
 // Roughly how a real round might go: mostly good, the odd slip.
-const WEIGHTS = { perfect: 0.3, great: 0.26, good: 0.16, ok: 0.1, miss: 0.1, lazy: 0.08 };
+const WEIGHTS = { perfect: 0.3, great: 0.26, good: 0.18, ok: 0.12, miss: 0.14 };
 const CHIP = { y: 812, h: 58, gap: 14 };
-// Five text-only designs, then the original bubble badge for comparison.
+// Five minimal designs, then the original bubble badge for comparison.
 const DESIGN_NAMES = [...TEXT_DESIGNS.map((d) => d.name), 'Badge v1'];
 const DESIGN_KEYS = ['q', 'w', 'e', 'r', 't', 'y'];
 const BADGE = DESIGN_NAMES.length - 1;
@@ -69,7 +69,7 @@ function chipRow(g, items, y) {
   });
 }
 
-// Bottom: ratings (1-6, A); above it: designs (Q-Y).
+// Bottom: ratings (1-5, A); above it: designs (Q-Y).
 function chipLayout(g) {
   const ratings = [...ORDER.map((k, i) => ({ id: k, text: `${i + 1}  ${NAMES[k]}` })), { id: 'auto', text: 'A  Auto' }, { id: 'hold', text: 'H  Hold' }, { id: 'gallery', text: 'G  Gallery' }];
   const designs = DESIGN_NAMES.map((name, i) => ({ id: `design${i}`, text: `${DESIGN_KEYS[i].toUpperCase()}  ${name}` }));
@@ -225,7 +225,7 @@ function Show() {
     if (!ui.chips) ui.chips = chipLayout(g);
     const fb = d.design === BADGE ? badge : text;
     if (d.gallery) {
-      // All six ratings side by side, settled, for comparing designs.
+      // All five ratings side by side, settled, for comparing designs.
       ORDER.forEach((type, i) => fb.drawSample(g, type, now, (i % 2) * 780, Math.floor(i / 2) * 215));
     } else fb.draw(g, now);
     drawChips(g, ui.chips, d.auto, d.hold, d.gallery, d.design, d.hover);
