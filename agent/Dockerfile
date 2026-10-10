@@ -6,6 +6,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --include=dev
 COPY src ./src
 COPY public ./public
+COPY assets ./assets
 # data/ is a volume in compose.yaml; create it here so the volume is owned by node.
 RUN mkdir -p data && chown node:node data && chmod 700 data
 EXPOSE 4000

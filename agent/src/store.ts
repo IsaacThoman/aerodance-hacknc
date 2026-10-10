@@ -55,6 +55,7 @@ export type Profile = {
   name: string;
   phone?: string; // E.164; only ever shown back to its owner
   photon?: "registered" | "failed"; // Photon allowlist registration
+  decorated?: boolean; // got the chat background + contact card
   walletKey: string; // key into wallets.json
   deviceTokens: string[]; // browsers signed in as this profile
   createdAt: string;

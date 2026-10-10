@@ -1,10 +1,13 @@
 // iMessage bot: texting in creates your profile; your number is your wallet.
+import { join } from "node:path";
 import { Spectrum, type Message, type Space } from "spectrum-ts";
-import { effect, imessage } from "spectrum-ts/providers/imessage";
+import { background, effect, imessage, nativeContactCard } from "spectrum-ts/providers/imessage";
 import { battles, markSeen, profiles, type Profile } from "./store.ts";
 import { explorerAddress, getBalanceSol } from "./solana.ts";
 import { battleUrl, createBattle } from "./battles.ts";
-import { cleanName, fundWallet, mask, normalizePhone, profileForPhone, walletOf } from "./players.ts";
+import { cleanName, fundWallet, mask, normalizePhone, profileByPhone, profileForPhone, walletOf } from "./players.ts";
+
+const CHAT_BACKGROUND = join(import.meta.dirname, "..", "assets", "chat-background.jpg");
 
 const HELP = [
   "🫧 aerodance bot 🐠",
@@ -36,6 +39,25 @@ export async function startBot() {
       spaces.set(handle, space);
     }
     await space.send(celebrate ? effect(text, imessage.effect.message.confetti) : text);
+    await decorate(space, profileByPhone(handle));
+  }
+
+  // Once per player: the aero chat wallpaper plus the bot's name and photo. Best effort.
+  async function decorate(space: Space, profile: Profile | undefined): Promise<void> {
+    if (!profile?.phone || profile.decorated) return;
+    profile.decorated = true;
+    await profiles.save();
+    const extras = [
+      ["background", () => background(CHAT_BACKGROUND)],
+      ["contact card", () => nativeContactCard()],
+    ] as const;
+    for (const [what, build] of extras) {
+      try {
+        await space.send(build());
+      } catch (err) {
+        log(`${what} for ${mask(profile.phone)} failed:`, (err as Error).message);
+      }
+    }
   }
 
   // Never throws: used by background battle code.
@@ -70,9 +92,11 @@ export async function startBot() {
       await space.send(
         `🫧 Welcome to aerodance, ${profile.name}! 🐠 Your number is now your Solana devnet wallet. No signup, no login, it just works ✨\n(Text 'name <something>' to change your name.)`,
       );
+      await decorate(space, profile);
       // First text ever: take them straight to a dance battle.
       if (!known) return sendBattle(space, profile);
     }
+    await decorate(space, profile); // players from before backgrounds existed
 
     switch (cmd) {
       case "battle":
