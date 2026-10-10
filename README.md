@@ -21,6 +21,10 @@ The menu-free two-character Frutiger demo is served at `/dance/` in production a
 
 Six temporary in-engine main-menu variations (Aqua Lagoon, Starlight Galaxy, Eco Metropolis, Aurora Lake, Breezy Meadow, Cloud Stage) are served at `/menu-mocks/` in production and PR previews. Switch with ← / → or 1–6, or link directly with a hash such as `/menu-mocks/#galaxy`. See [the mocks README](temp/menu-mocks/README.md).
 
+## Move ratings mockup
+
+The top-left judgement popups for gameplay (Perfect, Great, Good, OK, Miss, Not even trying) with a combo counter, over the captured dancers, are served at `/dance-feedback/` in production and PR previews, in five text-only Frutiger Aero designs plus the original badge. Q–Y switch designs, 1–6 show a rating, G shows all six at once (`/dance-feedback/?gallery`). See [its README](temp/dance-feedback/README.md).
+
 ## Stack
 
 | Layer    | Tech                                      |

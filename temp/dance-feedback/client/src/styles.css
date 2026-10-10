@@ -1,0 +1,28 @@
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+#root {
+  display: grid;
+  place-items: center;
+}
+/* Same fixed 640x480 buffer, stretched to 16:9 with pixelated scaling, as the main app. */
+.canvas-frame {
+  position: relative;
+  width: min(100vw, calc(100dvh * 16 / 9));
+  height: min(100dvh, calc(100vw * 9 / 16));
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #9adef3;
+}
+.canvas-frame canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  image-rendering: pixelated;
+}
