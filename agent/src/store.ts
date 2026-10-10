@@ -82,6 +82,17 @@ export type Receipt = {
   notified?: boolean; // players got the explorer link
 };
 
+export type Trophy = {
+  status: "pending" | "minted";
+  seat: number;
+  owner: string; // winner's wallet address
+  assetSecret?: number[]; // asset keypair, kept until the mint lands
+  asset?: string;
+  signature?: string | null; // null when a retry found it already minted
+  attempts: number;
+  notified?: boolean;
+};
+
 export type Battle = {
   id: string;
   createdAt: string;
@@ -92,6 +103,7 @@ export type Battle = {
   firstResultAt?: string;
   winnerToken?: string | null; // null = tie
   receipt?: Receipt;
+  trophy?: Trophy; // winner's NFT; absent for ties and empty seats
 };
 
 // ---------- files ----------

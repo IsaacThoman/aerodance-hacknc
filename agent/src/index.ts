@@ -4,8 +4,7 @@ import { startSweeper } from "./battles.ts";
 import { setNotifier } from "./players.ts";
 import { createHttp, publicUrl } from "./http.ts";
 import { startBot } from "./bot.ts";
-
-const PORT = Number(process.env.PORT) || 4000;
+import { PORT } from "./urls.ts";
 
 const treasury = loadTreasury();
 if (!treasury) console.warn("⚠️  No treasury at data/treasury.json. Run `npm run treasury` (new wallets won't be funded and receipts stay pending).");

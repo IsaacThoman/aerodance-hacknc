@@ -289,6 +289,9 @@
       <p class="muted">${r?.status === "confirmed"
         ? `On-chain receipt: <a href="${esc(r.explorer)}" target="_blank" rel="noopener">view on Solana Explorer</a>`
         : "On-chain receipt pending. The agent retries every 30 s (the treasury needs devnet SOL)."}</p>
+      ${battle.trophy ? `<p class="muted">${battle.trophy.status === "minted"
+        ? `🏆 Trophy NFT: <a href="${esc(battle.trophy.explorer)}" target="_blank" rel="noopener">view on Solana Explorer</a>`
+        : "🏆 Minting the winner's trophy NFT…"}</p>` : ""}
       <div class="row" style="justify-content:center;margin-top:8px"><button class="btn green" id="again">Run it back</button></div>`;
     $("again").onclick = () => $("create").click();
   }

@@ -1,6 +1,9 @@
 // Battle lifecycle: seats, spectators, hype, results and on-chain receipts.
+import { Keypair } from "@solana/web3.js";
 import { battles, playerToken, profiles, shortId, type Battle, type Profile, type Result } from "./store.ts";
-import { buildMemo, explorerTx, memoStatus, sendHype, sendMemo } from "./solana.ts";
+import { buildMemo, explorerAddress, explorerTx, memoStatus, sendHype, sendMemo } from "./solana.ts";
+import { mintTrophy } from "./nft.ts";
+import { publicUrl } from "./urls.ts";
 import { fundPendingWallets, getProfile, notify, walletOf } from "./players.ts";
 
 export const BATTLE_BASE_URL = (process.env.BATTLE_BASE_URL || "http://localhost:5173").replace(/\/$/, "");
@@ -57,6 +60,11 @@ export function publicBattle(b: Battle) {
       ? b.receipt.status === "confirmed"
         ? { status: "confirmed", signature: b.receipt.signature, explorer: explorerTx(b.receipt.signature!) }
         : { status: "pending", signature: null, explorer: null }
+      : null,
+    trophy: b.trophy
+      ? b.trophy.status === "minted"
+        ? { status: "minted", asset: b.trophy.asset, explorer: explorerAddress(b.trophy.asset!) }
+        : { status: "pending", asset: null, explorer: null }
       : null,
   };
 }
@@ -161,6 +169,7 @@ async function settle(battle: Battle): Promise<void> {
   log(`finished ${battle.id}`, landed ? battle.receipt.signature : "(receipt pending)");
 
   recordStats(battle);
+  startTrophy(battle);
   await Promise.all(
     battle.players.map(async (p, seat) => {
       const profile = getProfile(p.profileId);
@@ -181,6 +190,68 @@ async function settle(battle: Battle): Promise<void> {
       await notify(profile, lines.join("\n"), { celebrate: won });
     }),
   );
+  await tryTrophy(battle);
+}
+
+// ---------- trophy NFTs ----------
+
+function startTrophy(battle: Battle): void {
+  if (battle.trophy || !battle.winnerToken) return;
+  const seat = battle.players.findIndex((p) => p.token === battle.winnerToken);
+  const winner = seatProfile(battle, seat);
+  const wallet = winner && walletOf(winner);
+  if (!wallet) return; // a seat nobody claimed has no wallet to receive it
+  battle.trophy = { status: "pending", seat, owner: wallet.address, assetSecret: Array.from(Keypair.generate().secretKey), attempts: 0 };
+  void battles.save();
+}
+
+async function tryTrophy(battle: Battle): Promise<void> {
+  const trophy = battle.trophy;
+  if (!trophy || trophy.status === "minted") return;
+  trophy.attempts++;
+  try {
+    const { asset, signature } = await mintTrophy(trophy.assetSecret!, trophy.owner, `aerodance trophy #${battle.id}`, `${publicUrl()}/nft/${battle.id}.json`);
+    Object.assign(trophy, { status: "minted", asset, signature });
+    delete trophy.assetSecret;
+    await battles.save();
+    log(`trophy for ${battle.id}: ${asset}`);
+  } catch (err) {
+    log(`trophy attempt ${trophy.attempts} for ${battle.id} failed:`, (err as Error).message.split("\n")[0]);
+    await battles.save();
+    return;
+  }
+  const winner = seatProfile(battle, trophy.seat);
+  await notify(winner, `🏆 Your trophy NFT for battle ${battle.id} just landed in your wallet 🫧\n${explorerAddress(trophy.asset!)}`);
+  trophy.notified = true;
+  await battles.save();
+}
+
+// Off-chain metadata the NFT's uri points to (Metaplex JSON standard).
+export function trophyMetadata(battle: Battle) {
+  const trophy = battle.trophy;
+  if (!trophy) return undefined;
+  const winner = battle.players[trophy.seat];
+  const result = winner?.result;
+  const hype = (battle.hype ?? []).filter((h) => h.seat === trophy.seat);
+  const image = `${publicUrl()}/app/trophy.png`;
+  return {
+    name: `aerodance trophy #${battle.id}`,
+    symbol: "AERO",
+    description: `Won dance battle ${battle.id} on aerodance 🫧 Frutiger Aero dance battles, scored live.`,
+    image,
+    external_url: publicUrl(),
+    attributes: [
+      { trait_type: "battle", value: battle.id },
+      { trait_type: "dancers", value: battle.players.length },
+      { trait_type: "score", value: result?.score ?? 0 },
+      { trait_type: "pops", value: result?.pops ?? 0 },
+      { trait_type: "sync", value: result?.sync ?? 0 },
+      { trait_type: "flair", value: result?.flair ?? 0 },
+      { trait_type: "hype", value: hype.length },
+      { trait_type: "date", value: battle.createdAt.slice(0, 10) },
+    ],
+    properties: { category: "image", files: [{ uri: image, type: "image/png" }] },
+  };
 }
 
 function recordStats(battle: Battle): void {
@@ -267,6 +338,9 @@ async function sweep(): Promise<void> {
     if (now - lastReceiptSweep < RECEIPT_RETRY_MS) return;
     lastReceiptSweep = now;
     await fundPendingWallets();
+    for (const b of Object.values(battles.data)) {
+      if (b.status === "finished" && b.trophy?.status === "pending") await tryTrophy(b);
+    }
     for (const b of Object.values(battles.data)) {
       if (b.status !== "finished" || !b.receipt || (b.receipt.status === "confirmed" && b.receipt.notified)) continue;
       if (b.receipt.status === "pending" && !(await tryReceipt(b, 15_000))) continue;

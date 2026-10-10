@@ -2,23 +2,16 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import QRCode from "qrcode";
-import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { battles } from "./store.ts";
-import { BATTLE_BASE_URL, BattleError, battleUrl, createBattle, hypeDancer, joinBattle, publicBattle, reportResult } from "./battles.ts";
+import { publicUrl } from "./urls.ts";
+import { BATTLE_BASE_URL, BattleError, battleUrl, createBattle, hypeDancer, joinBattle, publicBattle, reportResult, trophyMetadata } from "./battles.ts";
 import { RPC_URL, loadTreasury } from "./solana.ts";
 import { cleanName, normalizePhone, profileByDevice, selfView, upsertProfile } from "./players.ts";
 
 const PUBLIC_DIR = join(import.meta.dirname, "..", "public");
 
-// Where phones reach this server. Phones can't use localhost, so default to the LAN IP.
-export function publicUrl(port: number): string {
-  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
-  const lan = Object.values(networkInterfaces())
-    .flat()
-    .find((i) => i && i.family === "IPv4" && !i.internal);
-  return `http://${lan?.address ?? "localhost"}:${port}`;
-}
+export { publicUrl } from "./urls.ts";
 
 const deviceToken = (req: Request) => req.get("x-device-token") || undefined;
 function requireProfile(req: Request) {
@@ -84,6 +77,14 @@ export function createHttp(port: number) {
   });
 
   app.get(["/join", "/join/:id"], (_req, res) => res.sendFile(join(PUBLIC_DIR, "join.html")));
+
+  // Metadata for a battle's trophy NFT (the asset's on-chain uri points here).
+  app.get("/nft/:id.json", (req, res) => {
+    const battle = battles.data[req.params.id];
+    const meta = battle && trophyMetadata(battle);
+    if (!meta) return void res.status(404).json({ error: "no trophy for that battle" });
+    res.json(meta);
+  });
   // Battle host console: stands in for the game (QR display + fake results).
   app.get("/host", (_req, res) => res.sendFile(join(PUBLIC_DIR, "host.html")));
 

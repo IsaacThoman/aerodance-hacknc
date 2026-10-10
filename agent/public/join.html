@@ -305,6 +305,9 @@
       r.innerHTML = b.receipt && b.receipt.explorer
         ? `🔗 <a href="${esc(b.receipt.explorer)}" target="_blank" rel="noopener">On-chain receipt</a>`
         : "🔗 On-chain receipt pending…";
+      if (b.trophy) r.innerHTML += b.trophy.explorer
+        ? `<br>🏆 <a href="${esc(b.trophy.explorer)}" target="_blank" rel="noopener">${b.winnerSeat === seat ? "Your trophy NFT" : "Winner's trophy NFT"}</a>`
+        : "<br>🏆 Minting the trophy NFT…";
     }
     if (b.status === "finished" && lastStatus !== "finished") refreshMe();
     lastStatus = b.status;
