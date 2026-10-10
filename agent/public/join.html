@@ -100,39 +100,60 @@
   .pop { position: fixed; pointer-events: none; font-size: 26px; z-index: 9; animation: popup 1s ease-out forwards; }
   @keyframes popup { to { transform: translateY(-120px) scale(1.4); opacity: 0; } }
   a.btn { text-align: center; text-decoration: none; }
-  /* Phone remote: a white Wii-style controller inside the card. */
-  .wii { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 10px; padding: 16px 14px 14px; border-radius: 34px;
-    background: linear-gradient(90deg, #e9eef2, #ffffff 30%, #ffffff 70%, #e3e9ee);
-    box-shadow: 0 12px 28px rgba(11,61,107,.25), inset 0 2px 0 #fff, inset 0 -3px 8px rgba(11,61,107,.12); }
-  .wii .pad { width: 100%; min-height: 150px; border-radius: 22px; display: grid; place-items: center; text-align: center; padding: 12px; touch-action: none;
-    background: radial-gradient(circle at 50% 35%, #f6fbff, #dfe9f0); border: 1px solid #d3dee6; color: #8aa0b2; font-size: 13px; font-weight: 700;
-    box-shadow: inset 0 3px 8px rgba(11,61,107,.12); }
-  .wii .pad.live { color: var(--aqua-deep); }
-  .wii .a { width: 112px; height: 112px; border-radius: 50%; border: 0; font: 900 44px/1 -apple-system, system-ui, sans-serif; color: #5d6e7c; touch-action: none;
-    background: radial-gradient(circle at 40% 30%, #ffffff, #dfe7ed 70%, #c7d3dc); box-shadow: 0 8px 18px rgba(11,61,107,.25), inset 0 -4px 8px rgba(11,61,107,.15); }
-  .wii .keys { display: flex; gap: 12px; align-items: center; justify-content: center; width: 100%; }
-  .wii .b, .wii .small { border: 0; font: 800 14px -apple-system, system-ui, sans-serif; color: #5d6e7c; border-radius: 999px; padding: 12px 14px; touch-action: none;
-    background: linear-gradient(180deg, #ffffff, #dfe7ed); box-shadow: 0 5px 12px rgba(11,61,107,.2); }
-  .wii .b { width: 70px; height: 70px; border-radius: 50%; font-size: 24px; font-weight: 900; }
-  .wii .small.on { color: #fff; background: linear-gradient(180deg, #7fdcff, var(--aqua-deep)); }
-  .wii .modes { display: flex; width: 100%; padding: 4px; border-radius: 999px; background: #e3eaf0; box-shadow: inset 0 2px 5px rgba(11,61,107,.15); }
-  .wii .modes button { flex: 1; border: 0; padding: 10px; border-radius: 999px; background: none; font: 800 15px -apple-system, system-ui, sans-serif; color: #5d6e7c; }
-  .wii .modes button.on { color: #fff; background: linear-gradient(180deg, #7fdcff, var(--aqua-deep)); box-shadow: 0 3px 8px rgba(10,120,194,.35); }
-  .wii .pad.touch { color: var(--ink-soft); border-style: dashed; border-width: 2px; border-color: #b9cad6; }
-
-  /* Holding the remote: the page becomes a locked, full-screen controller. */
+  /* Phone remote: while you hold it, the page becomes one full-screen white Wii remote. */
   body.remote-mode { position: fixed; inset: 0; overflow: hidden; touch-action: none; }
-  body.remote-mode main { height: 100%; display: flex; flex-direction: column; }
-  body.remote-mode main > *:not(#remoteCard):not(.toast) { display: none !important; }
-  body.remote-mode #remoteCard { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0; }
-  body.remote-mode .wii { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-  body.remote-mode .wii .pad { flex: 1; }
-  .wii .tune { width: 100%; font-size: 13px; color: #5d6e7c; }
-  .wii .tune summary { text-align: center; font-weight: 800; cursor: pointer; padding: 4px; }
-  .wii .tune label { display: block; margin: 10px 4px 0; color: #5d6e7c; }
-  .wii .tune input[type=range] { width: 100%; padding: 0; box-shadow: none; border: 0; background: none; accent-color: var(--aqua); }
-  .wii .tune .keys { margin-top: 10px; flex-wrap: wrap; }
-  .wii .down { transform: scale(.93); box-shadow: 0 3px 8px rgba(11,61,107,.25), inset 0 3px 8px rgba(11,61,107,.2); }
+  body.remote-mode main > *:not(#remoteCard) { display: none !important; }
+  .wii {
+    position: fixed; z-index: 2;
+    inset: calc(env(safe-area-inset-top) + 10px) 14px calc(env(safe-area-inset-bottom) + 10px);
+    display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px 24px 14px;
+    border-radius: 56px; color: #8a98a5; font-family: -apple-system, "SF Pro Rounded", system-ui, sans-serif;
+    background: linear-gradient(90deg, #dfe5ea 0%, #f8fafb 12%, #ffffff 40%, #ffffff 60%, #f6f8fa 88%, #dbe2e8 100%);
+    box-shadow: 0 20px 50px rgba(11,61,107,.35), inset 0 2px 0 #fff, inset 0 -4px 10px rgba(11,61,107,.1);
+  }
+  .wii button { touch-action: none; font-family: inherit; }
+  .wii-top { display: flex; align-items: center; gap: 14px; width: 100%; }
+  .power { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 0; position: relative;
+    background: radial-gradient(circle at 40% 30%, #ffffff, #dfe6ec 70%, #c8d3dc); box-shadow: 0 3px 8px rgba(11,61,107,.25); }
+  .power::before { content: ""; position: absolute; inset: 11px; border: 2.5px solid #d9534f; border-top-color: transparent; border-radius: 50%; }
+  .power::after { content: ""; position: absolute; left: 50%; top: 8px; width: 2.5px; height: 11px; margin-left: -1.25px; background: #d9534f; border-radius: 2px; }
+  .modes { flex: 1; display: flex; padding: 3px; border-radius: 999px; background: #e6ecf0; box-shadow: inset 0 2px 5px rgba(11,61,107,.15); }
+  .modes button { flex: 1; border: 0; padding: 8px 6px; border-radius: 999px; background: none; font-size: 13px; font-weight: 800; letter-spacing: .04em; color: #8a98a5; }
+  .modes button.on { color: #fff; background: linear-gradient(180deg, #8fdcff, #1f9be0); box-shadow: 0 2px 6px rgba(10,120,194,.35); }
+  .pad { width: 100%; flex: 1; min-height: 110px; border-radius: 30px; display: grid; place-items: center; text-align: center; padding: 14px;
+    font-size: 13px; font-weight: 700; letter-spacing: .02em; color: #9aa8b4;
+    background: radial-gradient(circle at 50% 30%, #fbfdfe, #e7eef3); box-shadow: inset 0 3px 10px rgba(11,61,107,.14); }
+  .pad.live { color: #1f9be0; }
+  .pad.touch { background: radial-gradient(circle at 50% 30%, #ffffff, #edf2f6); box-shadow: inset 0 0 0 2px #d6e0e8, inset 0 3px 10px rgba(11,61,107,.1); }
+  .wii .a { flex: none; width: 104px; height: 104px; border-radius: 50%; border: 0; font-size: 46px; font-weight: 800; color: #8a98a5;
+    background: radial-gradient(circle at 40% 30%, #ffffff, #e4eaef 70%, #cad5de); box-shadow: 0 8px 18px rgba(11,61,107,.25), inset 0 -4px 8px rgba(11,61,107,.12); }
+  .wii .b { flex: none; width: 66px; height: 66px; border-radius: 50%; border: 0; font-size: 24px; font-weight: 800; color: #8a98a5;
+    background: radial-gradient(circle at 40% 30%, #ffffff, #e4eaef 70%, #cad5de); box-shadow: 0 5px 12px rgba(11,61,107,.22); }
+  .wii-row { display: flex; align-items: center; justify-content: center; gap: 22px; }
+  .pm { width: 44px; height: 44px; border-radius: 50%; border: 0; font-size: 26px; font-weight: 700; line-height: 1; color: #8a98a5;
+    background: linear-gradient(180deg, #ffffff, #e4eaef); box-shadow: 0 3px 8px rgba(11,61,107,.2); }
+  .home { height: 44px; padding: 0 16px; border-radius: 999px; border: 0; font-size: 12px; font-weight: 800; letter-spacing: .12em; color: #1f9be0;
+    background: linear-gradient(180deg, #ffffff, #e4eaef); box-shadow: 0 3px 8px rgba(11,61,107,.2); }
+  .grille { display: grid; grid-template-columns: repeat(6, 5px); gap: 6px; }
+  .grille i { width: 5px; height: 5px; border-radius: 50%; background: #c3ccd4; box-shadow: inset 0 1px 1px rgba(0,0,0,.25); }
+  .leds { display: flex; gap: 14px; }
+  .leds span { width: 9px; height: 9px; border-radius: 2px; background: #cdd6dd; box-shadow: inset 0 1px 1px rgba(0,0,0,.15); }
+  .leds span.on { background: #34b9ff; box-shadow: 0 0 10px #34b9ff, 0 0 3px #9fe0ff; }
+  .wii-brand { font-size: 17px; font-weight: 300; letter-spacing: .2em; color: #b8c3cc; }
+  .wii-foot { display: flex; align-items: center; justify-content: space-between; width: 100%; font-size: 11px; font-weight: 600; color: #a7b3bd; }
+  .wii-foot button { border: 0; background: none; padding: 4px 0; font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #8a98a5; text-transform: uppercase; }
+  .wii .down { transform: scale(.93); box-shadow: 0 2px 6px rgba(11,61,107,.25), inset 0 3px 8px rgba(11,61,107,.2); }
+  .tune-sheet { position: fixed; z-index: 3; left: 14px; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 10px); padding: 18px 20px 16px;
+    border-radius: 32px; background: #ffffff; color: #5d6e7c; font-size: 14px; box-shadow: 0 -10px 40px rgba(11,61,107,.3); }
+  .tune-sheet h3 { margin: 0 0 6px; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: #8a98a5; }
+  .tune-sheet label { display: block; margin-top: 12px; }
+  .tune-sheet input[type=range] { width: 100%; padding: 0; margin-top: 6px; box-shadow: none; border: 0; background: none; accent-color: #1f9be0; }
+  .tune-sheet .opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .tune-sheet .opts button { flex: 1 1 40%; border: 0; padding: 11px 8px; border-radius: 999px; font: 700 13px -apple-system, system-ui, sans-serif; color: #5d6e7c;
+    background: linear-gradient(180deg, #ffffff, #e4eaef); box-shadow: 0 3px 8px rgba(11,61,107,.18); touch-action: none; }
+  .tune-sheet .opts button.on { color: #fff; background: linear-gradient(180deg, #8fdcff, #1f9be0); }
+  .tune-sheet .done { display: block; width: 100%; margin-top: 14px; border: 0; padding: 12px; border-radius: 999px; font: 800 15px -apple-system, system-ui, sans-serif;
+    color: #fff; background: linear-gradient(180deg, #8fdcff, #1f9be0); touch-action: none; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -165,39 +186,48 @@
   </section>
 
   <!-- phone remote for the menu screen (QR on the screen opens /join?remote=CODE) -->
-  <section class="card hidden" id="remoteCard">
-    <div class="row">
-      <h2 style="margin:0">🎮 You're the remote!</h2>
-      <button class="link" id="remoteRelease" type="button">Hand off</button>
-    </div>
+  <section class="hidden" id="remoteCard">
     <div class="wii">
-      <div class="modes">
-        <button id="modeRemote" type="button">🎯 Remote</button>
-        <button id="modeTouch" type="button">✋ Touchpad</button>
+      <div class="wii-top">
+        <button class="power" id="remoteRelease" type="button" aria-label="Hand off the remote"></button>
+        <div class="modes">
+          <button id="modeRemote" type="button">POINT</button>
+          <button id="modeTouch" type="button">TOUCHPAD</button>
+        </div>
       </div>
       <div class="pad" id="pad"></div>
       <button class="a" id="remoteA" type="button">A</button>
-      <div class="keys">
-        <button class="b" id="remoteB" type="button" aria-label="Back">B</button>
-        <button class="small" id="remoteCenter" type="button">⊙ Center</button>
+      <button class="b" id="remoteB" type="button" aria-label="Back">B</button>
+      <div class="wii-row">
+        <button class="pm" id="speedDown" type="button" aria-label="Slower pointer">&minus;</button>
+        <button class="home" id="remoteCenter" type="button" aria-label="Center the cursor">HOME</button>
+        <button class="pm" id="speedUp" type="button" aria-label="Faster pointer">+</button>
       </div>
-      <details class="tune">
-        <summary>⚙️ Tune pointing</summary>
-        <label>Speed <b id="tuneSpeedVal"></b><input type="range" id="tuneSpeed" min="0.3" max="3" step="0.1" /></label>
-        <label>Steadiness <b id="tuneDeadVal"></b><input type="range" id="tuneDead" min="0" max="10" step="0.5" /></label>
-        <div class="keys">
-          <button class="small" id="tuneFlipX" type="button">⇆ Flip left/right</button>
-          <button class="small" id="tuneFlipY" type="button">⇅ Flip up/down</button>
-        </div>
-        <div class="keys"><button class="small" id="tuneSwap" type="button">↻ Swap axes</button><button class="small" id="tuneReset" type="button">Reset</button></div>
-      </details>
+      <div class="grille" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="leds" aria-label="Player 1"><span class="on"></span><span></span><span></span><span></span></div>
+      <div class="wii-brand">aerodance</div>
+      <div class="wii-foot">
+        <span id="remoteStatus"></span>
+        <button id="tuneOpen" type="button">Settings</button>
+      </div>
     </div>
-    <p class="hint" id="remoteStatus" style="text-align:center"></p>
+    <div class="tune-sheet hidden" id="tuneSheet">
+      <h3>Pointer settings</h3>
+      <label>Speed <b id="tuneSpeedVal"></b><input type="range" id="tuneSpeed" min="0.3" max="3" step="0.1" /></label>
+      <label>Steadiness <b id="tuneDeadVal"></b><input type="range" id="tuneDead" min="0" max="10" step="0.5" /></label>
+      <div class="opts">
+        <button id="tuneFlipX" type="button">Flip left / right</button>
+        <button id="tuneFlipY" type="button">Flip up / down</button>
+        <button id="tuneSwap" type="button">Swap axes</button>
+        <button id="tuneReset" type="button">Reset</button>
+      </div>
+      <button class="done" id="tuneDone" type="button">Done</button>
+    </div>
   </section>
 
   <section class="card hidden" id="remoteTaken">
-    <h2>🎮 The remote is taken</h2>
-    <p style="margin:0"><b id="remoteHolder"></b> already has the remote for this screen. Your stats are below ✨</p>
+    <h2>The remote is taken</h2>
+    <p style="margin:0"><b id="remoteHolder"></b> already has the remote for this screen. Your stats are below.</p>
     <button class="btn" id="remoteRetry" type="button">Try again</button>
   </section>
 
@@ -231,6 +261,8 @@
 
 </main>
 <div class="toast" id="toast"></div>
+<!-- iOS haptics: tapping a native switch's label plays the system tick (iOS 18+). -->
+<label id="hapticLabel" style="position:fixed;left:-100px;top:0;opacity:0;pointer-events:none"><input type="checkbox" switch /></label>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -444,7 +476,7 @@
   let tune = { ...TUNE_DEFAULT };
   try { tune = { ...tune, ...JSON.parse(store.get("aero.remoteTune") || "{}") }; } catch {}
   function renderTune() {
-    $("tuneSpeed").value = tune.speed; $("tuneSpeedVal").textContent = `${tune.speed.toFixed(1)}×`;
+    $("tuneSpeed").value = tune.speed; $("tuneSpeedVal").textContent = `${tune.speed.toFixed(1)}x`;
     $("tuneDead").value = tune.dead; $("tuneDeadVal").textContent = `${tune.dead}°/s`;
     $("tuneFlipX").classList.toggle("on", tune.flipX);
     $("tuneFlipY").classList.toggle("on", tune.flipY);
@@ -470,7 +502,7 @@
       holding = false;
       show("remoteCard", false);
       document.body.classList.remove("remote-mode");
-      toast(reason === "moved" ? "🎮 The remote moved to your other device" : "🎮 That screen turned off");
+      toast(reason === "moved" ? "The remote moved to your other device" : "That screen turned off");
     });
     requestAnimationFrame(sendMoves);
   }
@@ -482,9 +514,9 @@
       document.body.classList.toggle("remote-mode", holding);
       show("remoteTaken", r?.reason === "taken");
       show("scanCard", false);
-      if (holding) { $("remoteStatus").textContent = `Controlling screen ${remoteCode}`; keepAwake(); }
+      if (holding) { $("remoteStatus").textContent = `Screen ${remoteCode}`; keepAwake(); }
       else if (r?.reason === "taken") $("remoteHolder").textContent = r.holder || "Someone";
-      else if (r?.reason === "gone") { toast("🎮 " + esc(r.error)); show("scanCard", !battleId); }
+      else if (r?.reason === "gone") { toast(esc(r.error)); show("scanCard", !battleId); }
     });
   }
   $("remoteRetry").onclick = claimRemote;
@@ -496,7 +528,7 @@
     window.removeEventListener("devicemotion", onMotion);
     motionOn = false;
     renderMode();
-    toast("🎮 Remote handed off");
+    toast("Remote handed off");
   };
 
   // Gyro pointing. Yaw is the spin around the world's vertical axis, so it works held
@@ -539,7 +571,7 @@
         lastMotion = 0;
         upVec = null;
       } catch {
-        toast("🎯 Motion isn't available here. Using the touchpad");
+        toast("Motion isn't available here. Using the touchpad");
         next = "touch";
       }
     }
@@ -553,8 +585,8 @@
     $("pad").classList.toggle("live", mode === "remote" && motionOn);
     $("pad").classList.toggle("touch", mode === "touch");
     $("pad").innerHTML = mode === "touch"
-      ? "✋ Drag here to move the cursor"
-      : motionOn ? "🎯 Point your phone at the screen" : "Tap 🎯 Remote to start pointing";
+      ? "Drag here to move the cursor"
+      : motionOn ? "Point at the screen" : "Tap POINT to start pointing";
   }
   $("modeRemote").onclick = () => setMode("remote");
   $("modeTouch").onclick = () => setMode("touch");
@@ -574,12 +606,30 @@
   });
   for (const t of ["pointerup", "pointercancel"]) $("pad").addEventListener(t, () => { padDrag = null; });
 
+  // A short click on every remote button press: vibrate where supported (Android),
+  // the hidden switch trick on iPhone.
+  function haptic() {
+    if (navigator.vibrate) navigator.vibrate(12);
+    else $("hapticLabel").click();
+  }
+  $("remoteCard").addEventListener("pointerdown", (e) => { if (e.target.closest("button")) haptic(); });
+
+  // Settings sheet, and − / + as quick speed steps.
+  $("tuneOpen").onclick = () => show("tuneSheet", true);
+  $("tuneDone").onclick = () => show("tuneSheet", false);
+  const stepSpeed = (d) => {
+    tune.speed = Math.round(Math.min(3, Math.max(0.3, tune.speed + d)) * 10) / 10;
+    renderTune();
+    toast(`Pointer speed ${tune.speed.toFixed(1)}x`, 1200);
+  };
+  $("speedDown").onclick = () => stepSpeed(-0.1);
+  $("speedUp").onclick = () => stepSpeed(0.1);
+
   function remoteButton(el, name) {
     let down = false;
     const press = (pressed) => {
       el.classList.toggle("down", pressed);
       if (holding) rsock.emit("remote:button", { button: name, pressed });
-      if (pressed) navigator.vibrate?.(name === "a" ? 25 : 15);
     };
     el.addEventListener("pointerdown", (e) => { e.preventDefault(); down = true; press(true); });
     for (const t of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(t, () => { if (down) { down = false; press(false); } });
