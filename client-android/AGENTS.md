@@ -10,7 +10,7 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md), [PLAN.md](PLAN.md), and [camera-to-clie
 
 - The inspected board runs Android 8.1/API 27 with `armeabi-v7a` userspace. Keep `minSdk = 27` unless deployment requirements change.
 - Verify native dependencies contain compatible 32-bit ARM libraries. A 64-bit-capable chip does not make this firmware capable of running an arm64-only APK.
-- Camera `0` advertises Camera2 HAL 3.3, YUV, 640×480, and a 30 FPS range. Real frame delivery is verified with continuous-mode vendor setup; see [camera validation](docs/hardware/camera-compatibility.md). Short Lite CPU live tests produce approximately 2–3 results/second; sustained pose throughput remains unverified. See [live validation](docs/hardware/live-pose-validation.md).
+- Camera `0` advertises Camera2 HAL 3.3, YUV, 640×480, and a 30 FPS range. Real frame delivery is verified with continuous-mode vendor setup; see [camera validation](docs/hardware/camera-compatibility.md). The user selected GPU-only inference and libyuv-only conversion; short native GPU probes show 2 ms median conversion; sustained pose throughput remains unverified. See [live validation](docs/hardware/live-pose-validation.md).
 - See [the hardware report](docs/hardware/open-q-624a.md) for observations and remaining checks.
 
 ## Layout and dependencies

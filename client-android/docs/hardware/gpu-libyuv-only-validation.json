@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-10",
+  "api": 27,
+  "abi": "armeabi-v7a",
+  "hostTests": 8,
+  "reports": {
+    "LibyuvCompatibilityActivity": "PASS 80 fixtures; RGBA/BT.601/positions/strides/odd dimensions/rotations/truncation; maxChannelError=2",
+    "PoseCompatibilityActivity": "PASS GPU Lite: 1 pose, 33 finite landmarks; input=1000x667; loadMs=33086; inferenceMs=302; nose=(0.4649622,0.42367524,-0.1742077)",
+    "CameraCompatibilityActivity": "PASS camera=0 YUV=640x480 requestedFps=[30, 30]; frames=1799; arrivalFps=30.079512370704908; sensorFps=30.079242903536933; sensorFirstNs=10144001799057 sensorLastNs=10203777239741 nonIncreasing=0; arrivalIntervalMs=19.140312..46.816146; planeRowPixelStrides=[640/1, 640/2, 640/2]; rotation=0; no snapshot; LIVE_STREAM delegate=GPU converter=LIBYUV results=300 detected=34 empty=266 replacements=1497; conversionP50P95P99Ms=2/4/4; meanConversionMs=2; meanInferenceMs=88; maxArrivalToResultMs=186; upright=640x480 unmirrored"
+  },
+  "mainAppStream": "PASS: final APK installed, status running; 33 live pose records over approximately 3 seconds after GPU initialization; 640x480 unmirrored. Main app left running."
+}

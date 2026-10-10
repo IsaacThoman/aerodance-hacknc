@@ -4,7 +4,7 @@
 
 The Open-Q 624A captures frames and estimates poses locally with MediaPipe. A computer browser receives landmarks over a persistent LAN connection and can forward them through the game's existing backend connection. Local consumption must not wait for the backend.
 
-The repo contains `androidApp` and `shared`. Camera2 capture, Lite CPU LIVE_STREAM inference, a bounded HTTP server, common protocol, and Start/Stop UI are implemented. A local HTTP test page renders poses; deployed HTTPS validation is deferred. See [live validation](docs/hardware/live-pose-validation.md) for short board measurements and remaining acceptance checks. Synthetic production remains a debug diagnostic.
+The repo contains `androidApp` and `shared`. Camera2 capture, Lite GPU LIVE_STREAM inference, a bounded HTTP server, common protocol, and Start/Stop UI are implemented. A local HTTP test page renders poses; deployed HTTPS validation is deferred. See [live validation](docs/hardware/live-pose-validation.md) for short board measurements and remaining acceptance checks. Synthetic production remains a debug diagnostic.
 
 The device runs Android Things on Android 8.1/API 27, with 32-bit ARM userspace and low-RAM configuration. [Hardware observations](docs/hardware/open-q-624a.md) make capture and native MediaPipe loading the first compatibility gates. Google's Android Things console was retired; deployment uses existing firmware and ADB without that service. See the [official sample's retirement notice](https://github.com/androidthings/sample-googleassistant).
 
@@ -61,9 +61,12 @@ Use `ImageReader` with `YUV_420_888`, initially 640×480 and the advertised `[30
 
 Drain with `acquireLatestImage()` on a camera worker. Start with `maxImages = 3`, retaining at most one pending image and leaving headroom to discard older images. Convert using actual YUV row/pixel strides; copy into bounded inference-owned RGB storage, then close the camera image. See [ImageReader ownership rules](https://developer.android.com/reference/android/media/ImageReader#acquireLatestImage()).
 
+JNI libyuv is the sole camera converter and writes directly into the
+inference-owned bitmap at 0°. Capture snapshots use libyuv as well; see [conversion implementation and measurements](docs/libyuv-conversion.md).
+
 Use MediaPipe Tasks Pose Landmarker with `RunningMode.LIVE_STREAM` and `detectAsync()`. Start with Lite, one pose, segmentation disabled, and default confidence thresholds. Package the model for offline operation. See the [Android task guide](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/android).
 
-GPU is the default delegate; a saved UI switch allows CPU selection while stopped. CPU remains the compatibility baseline. Short board probes establish GPU callback delivery and faster mean inference, with slow initialization; real-person accuracy and sustained latency/stability still need comparison. Create, invoke, and close a GPU task on its required owning thread. Reported GLES support does not prove delegate compatibility.
+GPU is the sole delegate; CPU selection and its saved UI switch have been removed at the user’s request. Short board probes establish GPU callback delivery and faster mean inference, with slow initialization; real-person accuracy and sustained latency/stability still need comparison. Create, invoke, and close a GPU task on its required owning thread. Reported GLES support does not prove delegate compatibility.
 
 Submit strictly increasing monotonic milliseconds and correlate callbacks by task timestamp. Explicit admission keeps one task in flight; errors and a bounded watchdog recover a stuck estimator. Do not assume every submitted frame generates a callback. See the [PoseLandmarker API](https://developers.google.com/edge/api/mediapipe/java/com/google/mediapipe/tasks/vision/poselandmarker/PoseLandmarker).
 

@@ -25,8 +25,6 @@ fun App(
     frames: Long = 0,
     timings: String = "",
     synthetic: Boolean = false,
-    gpu: Boolean = true,
-    onGpuChange: (Boolean) -> Unit = {},
 ) {
     val base = Typography()
     val typography = Typography(
@@ -49,14 +47,8 @@ fun App(
     MaterialTheme(typography = typography) {
         Column(Modifier.fillMaxSize().safeContentPadding().padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Aerodance pose controller", style = MaterialTheme.typography.headlineSmall)
-            Text(if (synthetic) "Synthetic diagnostic mode" else "Camera 0 · MediaPipe Lite ${if (gpu) "GPU" else "CPU"} · unmirrored input")
-            if (!synthetic) {
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Switch(checked = gpu, onCheckedChange = onGpuChange, enabled = !running && !busy)
-                    Text("Use GPU acceleration")
-                }
-                if (gpu && running && results == 0L) Text("Initializing GPU; first start can take tens of seconds.")
-            }
+            Text(if (synthetic) "Synthetic diagnostic mode" else "Camera 0 · MediaPipe Lite GPU · unmirrored input")
+            if (!synthetic && running && results == 0L) Text("Initializing GPU; first start can take tens of seconds.")
             Text(if (running) "Streaming enabled" else "Streaming stopped")
             Text(address)
             Text(if (connected) "Browser connected" else "Browser disconnected")

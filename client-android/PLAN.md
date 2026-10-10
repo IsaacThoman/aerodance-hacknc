@@ -17,7 +17,7 @@ Keep the existing modules and follow [ARCHITECTURE.md](ARCHITECTURE.md). Canonic
 - [x] Smoke-test Camera2: camera `0`, 640×480 YUV, `[30,30]`, advancing images/timestamps.
 - [ ] Verify content, orientation, row/pixel strides, permissions, and actual capture rate.
 
-**Done when:** this APK installs, real frames arrive, and CPU inference returns plausible landmarks. Advertised settings and current zero frame counters do not satisfy this gate. If the selected Tasks artifact lacks 32-bit libraries, choose a compatible pinned release or evaluate a custom build before integrating the pipeline.
+**Done when:** this APK installs, real frames arrive, and GPU inference returns plausible landmarks. Advertised settings and current zero frame counters do not satisfy this gate. If the selected Tasks artifact lacks 32-bit libraries, choose a compatible pinned release or evaluate a custom build before integrating the pipeline.
 
 ## 2. Prove browser connectivity with synthetic poses
 
@@ -51,9 +51,10 @@ implemented allocation/scheduling fixes and short board comparisons. Sustained
 acceptance checks below remain separate from that review.
 
 - [ ] Instrument arrival, conversion, inference, serialization/write, browser receive/render.
-- [ ] Compare Lite CPU/GPU sustained performance and stability.
+- [ ] Measure Lite GPU sustained performance and stability (CPU support removed at the user’s request).
 - [ ] Compare supported capture sizes, conversion, preview on/off, and exposure behavior.
-- [ ] Benchmark native libyuv through JNI against the Kotlin YUV converter on the board: pin the source revision/license, build for API 27 and `armeabi-v7a` with ARM NEON support, read Camera2 plane buffers with their actual positions/strides, and write directly into inference-owned bitmap storage where supported. Preserve one input in flight and storage ownership through callback/task shutdown. Validate color/channel order, limited-range YUV, odd dimensions, padding and rotations against reference fixtures; measure conversion p50/p95/p99, allocations and end-to-end CPU/GPU pose rates in comparable scenes before switching the default. Current short-probe baseline is approximately 50 ms conversion; no native speedup is established yet.
+- [ ] Benchmark native libyuv through JNI against the Kotlin YUV converter on the board: pin the source revision/license, build for API 27 and `armeabi-v7a` with ARM NEON support, read Camera2 plane buffers with their actual positions/strides, and write directly into inference-owned bitmap storage where supported. Preserve one input in flight and storage ownership through callback/task shutdown. Validate color/channel order, limited-range YUV, odd dimensions, padding and rotations against reference fixtures; measure conversion p50/p95/p99, allocations and end-to-end GPU pose rates in comparable scenes. GPU/libyuv is the sole production path at the user’s request; sustained acceptance remains open. The Kotlin short-probe baseline is approximately 50 ms conversion; initial native comparisons below do not complete the sustained benchmark gate.
+  - Native backend, pinned source/license, JNI bitmap output, debug reference fixtures and GPU live probe are implemented; see [libyuv conversion](docs/libyuv-conversion.md). The Kotlin converter and CPU inference option have been removed.
 - [ ] If native CPU conversion remains material, evaluate GPU conversion feeding inference without CPU readback; verify compatibility with the pinned Tasks API before changing the pipeline. Prefer libyuv for the first benchmark; the archived RenderScript replacement toolkit requires YUV layout adaptation and is a lower-priority option.
 - [ ] Remove avoidable batching, compression buffering, and fixed sender delays.
 - [ ] Run a 30-minute thermal/memory test and deliberately slow-reader test.
@@ -201,3 +202,43 @@ short runs, mostly empty scenes, and do not prove sustained person throughput
 or browser latency. The UI now exposes a saved CPU/GPU selection, changeable
 while stopped; GPU is the default at the user’s request. See the performance follow-up in
 [live validation](docs/hardware/live-pose-validation.md).
+
+
+## Native conversion support — 2026-10-10
+
+Added opt-in libyuv through JNI, pinned source/license/checksums, API 27 builds
+for all existing ABIs including ARMv7 NEON, and direct conversion into the
+inference-owned bitmap. Kotlin remains the production default. Debug probes
+select either converter and report conversion p50/p95/p99 without changing
+one-input/one-pending-image ownership.
+
+The board passed 80 reference fixtures covering channels, signed limited-range
+BT.601, buffer positions/limits, strides/padding, odd dimensions, rotations and
+truncation rejection. All 11 host tests and APK assembly passed. Short CPU
+conversion p50/p95 fell from 49/51 ms to 3/4 ms; GPU from 50/53 ms to 2/4 ms.
+CPU completed 92 versus 107 results in 30 seconds. GPU completed 193 versus 335
+results in 60 seconds, including 139 versus 329 detected poses. GPU startup
+exceeded the first 30-second windows; those runs yielded no results and were
+repeated at 60 seconds. Scene content varied and counts include initialization.
+
+See [implementation, reproduction and measurements](docs/libyuv-conversion.md).
+Allocation profiling, controlled person-scene comparisons, sustained thermal
+runs and broader lifecycle acceptance remain open before switching the default.
+
+
+## GPU/libyuv only — 2026-10-10
+
+At the user’s request, all camera conversion now uses libyuv, and all MediaPipe
+tasks use GPU. Removed CPU delegate plumbing, the saved CPU/GPU switch and launch
+options, the Kotlin YUV-to-ARGB implementation and its obsolete host tests.
+The capture-only PNG probe also uses libyuv; native reference fixtures remain.
+Previous comparisons above are historical. Sustained, allocation and thermal
+acceptance work remains open, without blocking this requested switch.
+
+
+GPU/libyuv-only checks: all 8 remaining host tests and debug assembly passed;
+the board passed all 80 native fixtures and GPU known-image inference (one pose,
+33 finite landmarks). The 60-second live check captured 1,799 frames at 30.08 FPS
+and completed 300 results, with conversion p50/p95/p99 2/4/4 ms. See
+[validation](docs/libyuv-conversion.md). The live diagnostic now defaults to a
+60-second window to accommodate GPU startup.

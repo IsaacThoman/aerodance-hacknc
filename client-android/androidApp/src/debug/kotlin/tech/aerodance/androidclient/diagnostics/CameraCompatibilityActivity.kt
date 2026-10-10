@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageFormat
-import android.graphics.Matrix
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
@@ -22,12 +21,12 @@ import android.util.Range
 import android.widget.TextView
 import java.io.File
 import java.util.UUID
-import com.google.mediapipe.tasks.core.Delegate
 import tech.aerodance.androidclient.camera.CameraSource
 import tech.aerodance.androidclient.pose.LivePoseEstimator
+import tech.aerodance.androidclient.camera.YuvToBitmap
 import tech.aerodance.androidclient.protocol.PoseRecord
 
-/** Debug-only bounded Camera2 capture check; no preview, network output, or inference. */
+/** Debug-only bounded Camera2 capture check with optional GPU live inference. */
 class CameraCompatibilityActivity : Activity() {
     private val thread = HandlerThread("camera-probe")
     private lateinit var worker: Handler
@@ -50,7 +49,6 @@ class CameraCompatibilityActivity : Activity() {
     private var snapshotTaken = false
     private var fps = Range(30, 30)
     private var live = false
-    private var delegate = Delegate.CPU
     private var durationMs = 12_000L
     private var estimator: LivePoseEstimator? = null
     private var results = 0
@@ -58,6 +56,7 @@ class CameraCompatibilityActivity : Activity() {
     private var empty = 0
     private var latest: PoseRecord? = null
     private var conversionTotal = 0L
+    private val conversionSamples = mutableListOf<Long>()
     private var inferenceTotal = 0L
     private var maxAge = 0L
     private var destroyRequested = false
@@ -71,8 +70,8 @@ class CameraCompatibilityActivity : Activity() {
         setContentView(output)
         fps = Range(intent.getIntExtra("fpsMin", 30), intent.getIntExtra("fpsMax", 30))
         live = intent.getBooleanExtra("livePose", false)
-        delegate = if (intent.getBooleanExtra("gpu", false)) Delegate.GPU else Delegate.CPU
-        durationMs = intent.getLongExtra("durationMs", 12_000L).coerceIn(12_000L, 120_000L)
+        durationMs = intent.getLongExtra("durationMs", if (live) 60_000L else 12_000L)
+            .coerceIn(12_000L, 120_000L)
         thread.start()
         worker = Handler(thread.looper)
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -106,12 +105,13 @@ class CameraCompatibilityActivity : Activity() {
                             if (record.poses.isEmpty()) empty++ else detected++
                             latest = record
                             conversionTotal += conversion
+                            conversionSamples.add(conversion)
                             inferenceTotal += inference
                             maxAge = maxOf(maxAge, record.resultTimeMs - record.frameReceivedTimeMs)
                         }
                     } },
                     onError = { error -> worker.post { fail(Exception("LIVE_STREAM failure", error)) } },
-                    onClosed = { worker.post { closeReader() } }, delegate = delegate)
+                    onClosed = { worker.post { closeReader() } })
             }
             check(characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
                 ?.contains(fps) == true) { "$fps unavailable" }
@@ -213,32 +213,21 @@ class CameraCompatibilityActivity : Activity() {
             val b = buffers[plane]
             return b.get(b.position() + y * p.rowStride + x * p.pixelStride).toInt() and 255
         }
-        val pixels = IntArray(image.width * image.height)
         var minY = 255
         var maxY = 0
         var sumY = 0L
         for (y in 0 until image.height) for (x in 0 until image.width) {
             val luma = sample(0, x, y)
             minY = minOf(minY, luma); maxY = maxOf(maxY, luma); sumY += luma
-            val c = maxOf(0, luma - 16)
-            val u = sample(1, x / 2, y / 2) - 128
-            val v = sample(2, x / 2, y / 2) - 128
-            val r = ((298 * c + 409 * v + 128) shr 8).coerceIn(0, 255)
-            val g = ((298 * c - 100 * u - 208 * v + 128) shr 8).coerceIn(0, 255)
-            val b = ((298 * c + 516 * u + 128) shr 8).coerceIn(0, 255)
-            pixels[y * image.width + x] = (255 shl 24) or (r shl 16) or (g shl 8) or b
         }
-        val raw = Bitmap.createBitmap(pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
-        val upright = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height,
-            Matrix().apply { postRotate(orientation.toFloat()) }, false)
+        val upright = YuvToBitmap().use { it.convert(image, orientation) }
         try {
             File(filesDir, "camera-upright.png").outputStream().use {
                 check(upright.compress(Bitmap.CompressFormat.PNG, 100, it))
             }
-            content = "Y min=$minY max=$maxY mean=${sumY.toDouble() / pixels.size}; upright=${upright.width}x${upright.height} unmirrored"
+            content = "Y min=$minY max=$maxY mean=${sumY.toDouble() / (image.width * image.height)}; upright=${upright.width}x${upright.height} unmirrored"
         } finally {
-            if (upright !== raw) upright.recycle()
-            raw.recycle()
+            upright.recycle()
         }
     }
 
@@ -252,10 +241,19 @@ class CameraCompatibilityActivity : Activity() {
             "sensorFirstNs=$firstSensor sensorLastNs=$lastSensor nonIncreasing=$badTimestamps; " +
             "arrivalIntervalMs=${if (frames > 1) minInterval / 1e6 else 0.0}..${maxInterval / 1e6}; " +
             "planeRowPixelStrides=[$strides]; rotation=${if (live) CameraSource.INPUT_ROTATION_DEGREES else orientation}; $content" +
-            if (live) "; LIVE_STREAM delegate=$delegate results=$results detected=$detected empty=$empty replacements=${estimator?.replacements}; " +
+            if (live) "; LIVE_STREAM delegate=GPU converter=LIBYUV results=$results detected=$detected empty=$empty replacements=${estimator?.replacements}; " +
+                "conversionP50P95P99Ms=${conversionPercentiles()}; " +
                 "meanConversionMs=${if (results > 0) conversionTotal / results else 0}; " +
                 "meanInferenceMs=${if (results > 0) inferenceTotal / results else 0}; maxArrivalToResultMs=$maxAge; " +
                 "upright=${latest?.width}x${latest?.height} unmirrored" else "")
+    }
+
+    private fun conversionPercentiles(): String {
+        if (conversionSamples.isEmpty()) return "none"
+        val sorted = conversionSamples.sorted()
+        return listOf(0.50, 0.95, 0.99).joinToString("/") {
+            sorted[(kotlin.math.ceil(it * sorted.size).toInt() - 1).coerceAtLeast(0)].toString()
+        }
     }
 
     private fun fail(error: Exception) {

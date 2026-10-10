@@ -1,7 +1,6 @@
 package tech.aerodance.androidclient
 
 import android.os.Bundle
-import com.google.mediapipe.tasks.core.Delegate
 import android.os.Handler
 import android.os.SystemClock
 import android.os.Looper
@@ -35,7 +34,6 @@ class MainActivity : ComponentActivity() {
     private var address by mutableStateOf("No LAN address")
     private var error by mutableStateOf<String?>(null)
     private var origin by mutableStateOf("")
-    private var gpu by mutableStateOf(true)
     private var synthetic = false
     private var ratePipeline: PipelineController? = null
     private var rateTime = 0L
@@ -85,12 +83,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        gpu = getPreferences(MODE_PRIVATE).getBoolean("gpu", true)
         origin = getPreferences(MODE_PRIVATE).getString("origin", "") ?: ""
         if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             intent.getStringExtra("testOrigin")?.let { origin = it }
             synthetic = intent.getBooleanExtra("synthetic", false)
-            gpu = intent.getBooleanExtra("gpu", gpu)
         }
         // This Things image omits fonts referenced by its default family configuration.
         val fontFamily = runCatching {
@@ -99,11 +95,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(running, busy, address, connected, results, error, origin,
                 onOriginChange = { origin = it }, onStart = { start() }, onStop = { stop() }, fontFamily = fontFamily,
-                frames = frames, timings = timings, synthetic = synthetic, gpu = gpu,
-                onGpuChange = {
-                    gpu = it
-                    getPreferences(MODE_PRIVATE).edit().putBoolean("gpu", it).apply()
-                })
+                frames = frames, timings = timings, synthetic = synthetic)
         }
     }
 
@@ -138,12 +130,11 @@ class MainActivity : ComponentActivity() {
         busy = true
         error = null
         val token = ++generation
-        val delegate = if (gpu) Delegate.GPU else Delegate.CPU
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "controller-01"
         worker.execute {
             var candidate: PipelineController? = null
             val failure = runCatching {
-                candidate = PipelineController(this, deviceId, setOf(approvedOrigin), synthetic, delegate) { failure -> main.post {
+                candidate = PipelineController(this, deviceId, setOf(approvedOrigin), synthetic) { failure -> main.post {
                     if (active && token == generation) {
                         stop()
                         error = "Pose pipeline failed: ${failure.message}"

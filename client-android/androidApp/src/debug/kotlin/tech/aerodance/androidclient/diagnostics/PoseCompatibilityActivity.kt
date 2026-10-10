@@ -15,14 +15,14 @@ import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import java.io.File
 import java.util.concurrent.Executors
 
-/** Debug-only, offline CPU/native compatibility check. Does not publish synthetic or live poses. */
+/** Debug-only, offline GPU/native compatibility check. Does not publish synthetic or live poses. */
 class PoseCompatibilityActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var output: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        output = TextView(this).apply { text = "Running CPU compatibility check…" }
+        output = TextView(this).apply { text = "Running GPU compatibility check…" }
         setContentView(output)
         worker.execute {
             val report = runCatching { probe() }.fold(
@@ -45,7 +45,7 @@ class PoseCompatibilityActivity : Activity() {
             val started = SystemClock.elapsedRealtime()
             val options = PoseLandmarker.PoseLandmarkerOptions.builder()
                 .setBaseOptions(BaseOptions.builder().setModelAssetPath("pose_landmarker_lite.task")
-                    .setDelegate(Delegate.CPU).build())
+                    .setDelegate(Delegate.GPU).build())
                 .setRunningMode(RunningMode.IMAGE).setNumPoses(1)
                 .setOutputSegmentationMasks(false).build()
             PoseLandmarker.createFromOptions(this, options).use { task ->
@@ -61,7 +61,7 @@ class PoseCompatibilityActivity : Activity() {
                         "Expected upright fixture: nose above hip above ankle"
                     }
                     val nose = points[0]
-                    return "CPU Lite: 1 pose, 33 finite landmarks; input=${bitmap.width}x${bitmap.height}; " +
+                    return "GPU Lite: 1 pose, 33 finite landmarks; input=${bitmap.width}x${bitmap.height}; " +
                         "loadMs=${loaded - started}; inferenceMs=${finished - loaded}; " +
                         "nose=(${nose.x()},${nose.y()},${nose.z()})"
                 } finally { image.close() }

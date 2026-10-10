@@ -1,4 +1,9 @@
-# MediaPipe CPU compatibility
+# MediaPipe compatibility
+
+The CPU measurements below are historical. At the user’s request, all tasks now
+use GPU, including the known-image probe. GPU initialization can take tens of
+seconds; the historical CPU timing and expected PASS label below no longer
+describe the current probe.
 
 ## Artifacts
 
@@ -48,7 +53,7 @@ adb logcat -d -s PoseCompatibility:I
 Fixture SHA-256: `c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b`.
 The fixture is not redistributed in the repository or APK.
 
-The probe creates and closes one CPU task on a worker, checks one detected pose
+The current probe creates and closes one GPU task on a worker, checks one detected pose
 with 33 finite landmarks and an upright nose/hip/ankle ordering, and reports model
 load and single-image inference durations. The debug activity is absent from
 release builds. Return to `.MainActivity` to use the synthetic stream.

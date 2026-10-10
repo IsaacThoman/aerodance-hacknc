@@ -23,6 +23,7 @@ dependencies {
 android {
     namespace = "tech.aerodance.androidclient"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
+    ndkVersion = libs.versions.android.ndk.get()
 
     defaultConfig {
         applicationId = "tech.aerodance.androidclient"
@@ -30,6 +31,15 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") }
+        externalNativeBuild {
+            cmake {
+                targets += "aerodance_yuv"
+                arguments += "-DANDROID_STL=c++_static"
+                // Benchmark optimized kernels even in the debug diagnostic APK.
+                cppFlags += "-O2"
+            }
+        }
     }
     packaging {
         resources {
@@ -51,5 +61,11 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = libs.versions.android.cmake.get()
+        }
     }
 }

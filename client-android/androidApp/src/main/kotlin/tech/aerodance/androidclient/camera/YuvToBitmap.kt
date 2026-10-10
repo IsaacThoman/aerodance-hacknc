@@ -4,27 +4,21 @@ import android.graphics.Bitmap
 import android.graphics.ImageFormat
 import android.media.Image
 
-/** Bulk copy planes before conversion, avoiding a direct ByteBuffer read for every pixel. */
-class YuvToBitmap {
-    private val planeBytes = Array(3) { ByteArray(0) }
-    private var pixels = IntArray(0)
+/** Worker-confined libyuv conversion into independently owned inference bitmap storage. */
+class YuvToBitmap : AutoCloseable {
+    private var native: LibyuvBitmap? = null
 
-    /** Worker-confined scratch buffers; the returned bitmap owns a separate pixel copy. */
     fun convert(image: Image, rotation: Int): Bitmap {
         require(image.format == ImageFormat.YUV_420_888)
-        val planes = image.planes.mapIndexed { index, plane ->
-            val buffer = plane.buffer.duplicate()
-            val size = buffer.remaining()
-            // Exact lengths keep truncated-plane validation correct after a size change.
-            if (planeBytes[index].size != size) planeBytes[index] = ByteArray(size)
-            val bytes = planeBytes[index]
-            buffer.get(bytes)
-            YuvPlane(bytes, plane.rowStride, plane.pixelStride)
+        val crop = image.cropRect
+        require(crop.left == 0 && crop.top == 0 && crop.right == image.width && crop.bottom == image.height) {
+            "Cropped YUV input is unsupported"
         }
-        if (pixels.size != image.width * image.height) pixels = IntArray(image.width * image.height)
-        yuv420Argb(image.width, image.height, planes, rotation, pixels)
-        val sideways = rotation % 180 != 0
-        return Bitmap.createBitmap(pixels, if (sideways) image.height else image.width,
-            if (sideways) image.width else image.height, Bitmap.Config.ARGB_8888)
+        val converter = native ?: LibyuvBitmap().also { native = it }
+        return converter.convert(image.width, image.height, image.planes.map {
+            LibyuvBitmap.Plane(it.buffer, it.rowStride, it.pixelStride)
+        }, rotation)
     }
+
+    override fun close() { native?.close(); native = null }
 }
