@@ -1,6 +1,9 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import Scene from './Scene.jsx';
+import MainMenu from './menu/MainMenu.jsx';
+import MenuDancers from './menu/MenuDancers.jsx';
+import { loadSound, saveSound } from './menu/soundSettings.js';
 import { socket } from './socket.js';
 
 function FixedRenderResolution() {
@@ -18,6 +21,12 @@ function FixedRenderResolution() {
 export default function App() {
   const [connected, setConnected] = useState(socket.connected);
   const [stats, setStats] = useState({ online: 0 });
+  const [menuOpen, setMenuOpen] = useState(true);
+  // { mode: 'random' } or { mode: 'select', song }; the player hooks in here.
+  const [selection, setSelection] = useState(null);
+  const [sound, setSound] = useState(loadSound);
+
+  useEffect(() => { saveSound(sound); }, [sound]);
 
   useEffect(() => {
     const onConnect = () => setConnected(true);
@@ -37,6 +46,13 @@ export default function App() {
       <Canvas dpr={1} flat camera={{ fov: 66, near: 0.3, far: 6500 }}>
         <FixedRenderResolution />
         <Scene />
+        <MenuDancers visible={menuOpen} />
+        <MainMenu
+          visible={menuOpen}
+          onStart={(mode, song) => { setSelection({ mode, song }); setMenuOpen(false); }}
+          sound={sound}
+          onSoundChange={setSound}
+        />
       </Canvas>
       <div className="hud">
         <div>

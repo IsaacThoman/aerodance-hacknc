@@ -15,14 +15,16 @@
  *      aero.setPaused(true); aero.setSpeed(0.5); aero.destroy();
  *
  * Options: speed (multiplier), quality ('auto' | 'high' | 'low'), start (0..1 loop position),
+ *          (default start 0.08: low over the meadow, facing the skyline)
  *          onTelemetry(({ altitude, speedKmh, zone, progress }) => ...) called ~4x per second.
  */
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Water } from 'three/addons/objects/Water.js';
 
 const TAU = Math.PI * 2;
 
-export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 'auto', start = 0, onTelemetry = null } = {}) {
+export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 'auto', start = 0.08, onTelemetry = null } = {}) {
   const opts = { speed, quality, start, onTelemetry };
 
   /* ------------------------------------------------------------------ helpers */
@@ -34,7 +36,11 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
-  const rnd = mulberry32(20261010);
+  // The main random stream is fixed so the scene looks the same every load.
+  // Later additions use their own streams (withRng) so they never reshuffle the original layout.
+  let rng = mulberry32(20261010);
+  const rnd = () => rng();
+  function withRng(seed, fn) { const prev = rng; rng = mulberry32(seed); try { return fn(); } finally { rng = prev; } }
   const R = (a, b) => a + (b - a) * rnd();
   const RI = (a, b) => Math.floor(R(a, b + 1));
   const pick = (a) => a[Math.floor(rnd() * a.length)];
@@ -195,13 +201,15 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
   }
   const grassCanvasEl = grassCanvas();
   const grassTex = tex(grassCanvasEl, true); grassTex.repeat.set(380, 380);
+  // Flat plain in the middle, rising into rolling rim hills from ~1150 m out.
+  function groundY(x, z) {
+    const rim = sstep(1150, 2700, Math.hypot(x, z - 150));
+    return rim * (110 + 80 * Math.sin(x * 0.0021) * Math.cos(z * 0.0017) + 38 * Math.sin(x * 0.005 + z * 0.004)) - 0.02;
+  }
   {
     const g = new THREE.PlaneGeometry(9000, 9000, 200, 200); g.rotateX(-Math.PI / 2);
     const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), z = p.getZ(i), d = Math.hypot(x, z - 150), rim = sstep(1150, 2700, d);
-      p.setY(i, rim * (110 + 80 * Math.sin(x * 0.0021) * Math.cos(z * 0.0017) + 38 * Math.sin(x * 0.005 + z * 0.004)) - 0.02);
-    }
+    for (let i = 0; i < p.count; i++) p.setY(i, groundY(p.getX(i), p.getZ(i)));
     g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: grassTex }));
     m.receiveShadow = true; root.add(m);
@@ -235,9 +243,17 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     return c;
   }
   {
-    const t = tex(roadCanvas(), true); t.repeat.set(7, 7);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(490, 490), new THREE.MeshLambertMaterial({ map: t, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
-    m.rotation.x = -Math.PI / 2; m.position.y = 0.05; m.receiveShadow = true; root.add(m);
+    // One street grid (x -665..665) in two pieces: downtown + east/west districts (z -265..245)
+    // and the north district (z -735..-485). It stops at the quays so it never sits under the lake.
+    // UVs come from world position so every piece lines up with the 70 m blocks.
+    const t = tex(roadCanvas(), true);
+    const mat = new THREE.MeshLambertMaterial({ map: t, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    for (const [z0, z1] of [[-265, 245], [-735, -485]]) {
+      const g = new THREE.PlaneGeometry(1330, z1 - z0); g.rotateX(-Math.PI / 2); g.translate(0, 0.05, (z0 + z1) / 2);
+      const pos = g.attributes.position, uv = g.attributes.uv;
+      for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + 665) / 70, -(pos.getZ(i) + 735) / 70);
+      const m = new THREE.Mesh(g, mat); m.receiveShadow = true; root.add(m);
+    }
   }
 
   /* --------------------------------------------------------------- facades */
@@ -316,7 +332,8 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
   });
 
   const GEO = {};
-  const add = (k, g) => (GEO[k] || (GEO[k] = [])).push(g);
+  let sink = false; // when true, geometry is generated (to keep the random stream in step) but thrown away
+  const add = (k, g) => { if (sink) { g.dispose(); return; } (GEO[k] || (GEO[k] = [])).push(g); };
   function facadeBox(w, h, d, hs = 1) {
     const g = new THREE.BoxGeometry(w, h, d, 1, hs, 1), uv = g.attributes.uv, n = g.attributes.normal;
     for (let i = 0; i < uv.count; i++) {
@@ -344,8 +361,10 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     g.translate(x, y, z); add(k, g);
   }
   const OCC_BOXES = [];
-  const TREES = [];
-  const tree = (x, z, s, kind = 'round', y = 0) => TREES.push({ x, y, z, s, kind });
+  const TREES = [], DTREES = [];
+  let treeList = TREES;
+  const tree = (x, z, s, kind = 'round', y = 0) => { if (!sink) treeList.push({ x, y, z, s, kind }); };
+  const occ = (b) => { if (!sink) OCC_BOXES.push(b); };
 
   function antenna(x, top, z, ah) {
     cyl('dark', x, top + ah / 2, z, 0.35, ah, 6, 0.18);
@@ -442,7 +461,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       let top = h + 1.4;
       if (rnd() < 0.6) { const h2 = R(8, 22); cyl(st, x, top + h2 / 2, z, r * 0.7, h2, seg); top += h2; cyl('trim', x, top + 0.5, z, r * 0.7 + 0.5, 1, seg); top += 1; }
       if (h > 120) antenna(x, top, z, R(14, 30));
-      OCC_BOXES.push([x - r, x + r, top, z - r, z + r]);
+      occ([x - r, x + r, top, z - r, z + r]);
       return top;
     }
     const fr = (h > 110 && rnd() < 0.55) ? (rnd() < 0.5 ? [0.66, 0.34] : [0.52, 0.3, 0.18]) : [1];
@@ -466,7 +485,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     }
     let top = far ? (box('trim', x, y0 + 0.8, z, cw + 1.2, 1.6, cd + 1.2), y0 + 1.6) : crown(x, z, cw, cd, y0, h > 160);
     if (h > 150 && rnd() < 0.55) antenna(x + R(-cw / 5, cw / 5), top, z + R(-cd / 5, cd / 5), R(14, 30));
-    OCC_BOXES.push([x - w / 2, x + w / 2, top, z - d / 2, z + d / 2]);
+    occ([x - w / 2, x + w / 2, top, z - d / 2, z + d / 2]);
     return top;
   }
 
@@ -484,7 +503,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     for (let k = 0; k < 4; k++) { const g2 = new THREE.BoxGeometry(1, 22, 1); g2.translate((w / 2) * (k & 1 ? 1 : -1), 11, (w / 2) * (k & 2 ? 1 : -1)); g2.rotateY(turn); g2.translate(x, top + 2, z); add('trim', g2); }
     const lan = new THREE.BoxGeometry(w * 0.8, 18, w * 0.8); lan.rotateY(turn); lan.translate(x, top + 11, z); add('capglass', lan);
     antenna(x, top + 22, z, 34);
-    OCC_BOXES.push([x - w * 0.7, x + w * 0.7, top + 22, z - w * 0.7, z + w * 0.7]);
+    occ([x - w * 0.7, x + w * 0.7, top + 22, z - w * 0.7, z + w * 0.7]);
   }
   // Landmark 2: tiered tower with a needle spire
   function spireTower(x, z) {
@@ -500,7 +519,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     y += 10;
     cyl('trim', x, y + 40, z, 2.2, 80, 12, 0.15);
     const s = new THREE.SphereGeometry(0.9, 8, 6); s.translate(x, y + 80, z); add('red', s);
-    OCC_BOXES.push([x - 18, x + 18, y + 80, z - 18, z + 18]);
+    occ([x - 18, x + 18, y + 80, z - 18, z + 18]);
   }
 
   /* ------------------------------------------------------------------ parks */
@@ -508,7 +527,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
   const pondMat = new THREE.MeshStandardMaterial({ color: col('#3aa6e0'), metalness: 0.5, roughness: 0.05, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
   const BUBS = [];
   const parkMeshes = [];
-  function park(cx, cz) {
+  function park(cx, cz, bubbles = true) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(44, 44), parkMat);
     m.rotation.x = -Math.PI / 2; m.position.set(cx, 0.1, cz); m.receiveShadow = true; root.add(m); parkMeshes.push(m);
     const px = cx + R(-6, 6), pz = cz + R(-6, 6);
@@ -523,7 +542,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       if (dd > 9 && Math.abs(dd - 12.8) > 1.8) tree(x, z, R(1.5, 2.4), pick(['round', 'round', 'conifer', 'poplar']));
     }
     for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU + 0.4; box('podium', px + Math.cos(a) * 14.6, 0.45, pz + Math.sin(a) * 14.6, 2.2, 0.15, 0.7, -a); }
-    for (let i = 0; i < 5; i++) BUBS.push({ x: cx + R(-15, 15), y: R(3, 20), z: cz + R(-15, 15), r: R(1, 3), rise: R(1.5, 3), range: 45 });
+    if (bubbles) for (let i = 0; i < 5; i++) BUBS.push({ x: cx + R(-15, 15), y: R(3, 20), z: cz + R(-15, 15), r: R(1, 3), rise: R(1.5, 3), range: 45 });
   }
 
   /* ----------------------------------------------------------- city blocks */
@@ -555,6 +574,10 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       }
     } else for (const sx of [-1, 1]) for (const sz of [-1, 1]) tower(cx + sx * 11 + R(-1, 1), cz + sz * 11 + R(-1, 1), R(11, 16), R(11, 16), H() * R(0.7, 1));
   }
+  // The original sparse outer skyline is still generated with the main random stream so
+  // everything after it keeps its layout, but its geometry is discarded and replaced by the
+  // street-grid districts below.
+  sink = true;
   for (const sg of [-1, 1]) for (let gx = 275; gx < 720; gx += 36) for (let gz = -228; gz <= 230; gz += 36) {
     if (rnd() > 0.55) continue;
     const fall = 1 - (gx - 270) / 560;
@@ -564,6 +587,52 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     if (rnd() > 0.5) continue;
     tower(gx + R(-6, 6), gz + R(-6, 6), R(14, 26), R(14, 26), R(50, 185), true);
   }
+  sink = false;
+
+  /* --------------------------------------------- outer districts on a street grid */
+  // Grid: blocks are 70 m, centred on multiples of 70, streets on 35 + 70k (same as downtown).
+  // East/west districts: |i| 4..9, j -3..3. North district (across the lake): j -8..-10.
+  const inDistrict = (x, z) => (Math.abs(x) > 245 && Math.abs(x) < 665 && z > -245 && z < 245) || (z < -525 && z > -735 && Math.abs(x) < 665);
+  function maxTowerH(x, z, r) {
+    let lim = 1e9;
+    for (const p of pathPts) { const dx = p.x - x, dz = p.z - z; if (dx * dx + dz * dz < (r + 35) ** 2) lim = Math.min(lim, p.y - 50); }
+    return lim;
+  }
+  function districtBlock(cx, cz) {
+    const scale = clamp(1.3 - Math.hypot(cx, cz) / 650, 0.35, 1);
+    const r = rnd();
+    if (r < 0.1) { park(cx, cz, false); return; }
+    const H = () => 32 + R(25, 150) * scale + R(0, 20);
+    const place = (x, z, w, d, h0) => {
+      const h = Math.min(h0, maxTowerH(x, z, Math.max(w, d) * 0.75));
+      if (h < 16) { for (let k = 0; k < 4; k++) tree(x + R(-w / 3, w / 3), z + R(-d / 3, d / 3), R(1.4, 2.2)); return 0; }
+      tower(x, z, w, d, h, false);
+      return h;
+    };
+    if (r < 0.32) place(cx + R(-2, 2), cz + R(-2, 2), R(24, 34), R(24, 34), H() + 10);
+    else if (r < 0.68) {
+      const ax = rnd() < 0.5, dims = [], hs = [];
+      for (const sd of [-1, 1]) {
+        const w = ax ? R(13, 17) : R(24, 37), d = ax ? R(24, 37) : R(13, 17);
+        hs.push(place(cx + (ax ? sd * 11 : 0), cz + (ax ? 0 : sd * 11), w, d, H())); dims.push([w, d]);
+      }
+      const gap = ax ? 22 - (dims[0][0] + dims[1][0]) / 2 : 22 - (dims[0][1] + dims[1][1]) / 2;
+      if (gap > 1.5 && Math.min(...hs) > 40) {
+        const by = Math.min(...hs) * R(0.35, 0.6), len = gap + 1;
+        box('lobby', cx, by, cz, ax ? len : 5, 4, ax ? 5 : len);
+        box('trim', cx, by + 2.2, cz, ax ? len : 5.6, 0.4, ax ? 5.6 : len);
+        box('trim', cx, by - 2.2, cz, ax ? len : 5.6, 0.4, ax ? 5.6 : len);
+      }
+    } else for (const sx of [-1, 1]) for (const sz of [-1, 1]) place(cx + sx * 11 + R(-1, 1), cz + sz * 11 + R(-1, 1), R(11, 16), R(11, 16), H() * R(0.6, 1));
+  }
+  withRng(424242, () => {
+    treeList = DTREES;
+    for (let i = -9; i <= 9; i++) for (let j = -10; j <= 3; j++) {
+      const east = Math.abs(i) >= 4 && Math.abs(j) <= 3, north = j <= -8;
+      if (east || north) districtBlock(i * 70, j * 70);
+    }
+    treeList = TREES;
+  });
 
   /* -------------------------------------------------------- bridge + lake */
   function waterNormal() {
@@ -578,9 +647,21 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
   }
   const wNorm = waterNormal(); wNorm.repeat.set(60, 6);
   {
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(2400, 220), new THREE.MeshStandardMaterial({ color: col('#2f97da'), metalness: 0.45, roughness: 0.05, normalMap: wNorm, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.4 }));
-    water.rotation.x = -Math.PI / 2; water.position.set(0, 0.4, -375); root.add(water);
     pondMat.normalMap = wNorm;
+    // Quay walls with glass railings along both shores
+    for (const qz of [-265, -485]) {
+      box('podium', 0, 0.1, qz, 2400, 2.2, 2.6);
+      box('trim', 0, 1.25, qz, 2400, 0.1, 3);
+      box('lobby', 0, 1.85, qz + (qz > -375 ? 1.1 : -1.1), 2400, 1.1, 0.12);
+      for (let x = -1190; x <= 1190; x += 10) box('trim', x, 1.85, qz + (qz > -375 ? 1.1 : -1.1), 0.18, 1.2, 0.18);
+    }
+    // Ferry piers
+    for (const [px, qz, dir] of [[-150, -265, -1], [420, -265, -1], [-330, -485, 1], [60, -485, 1]]) {
+      box('deck', px, 0.9, qz + dir * 14, 6, 0.6, 26);
+      for (let k = 0; k < 4; k++) for (const sx of [-1, 1]) cyl('dark', px + sx * 2.6, 0.2, qz + dir * (4 + k * 7), 0.25, 2, 6);
+      box('lobby', px, 2.6, qz + dir * 24, 5, 2.8, 4);
+      box('trim', px, 4.15, qz + dir * 24, 6, 0.3, 5);
+    }
     const bx = 200, z0 = -255, z1 = -495, dy = 12;
     box('deck', bx, dy, (z0 + z1) / 2, 14, 1.6, Math.abs(z1 - z0));
     for (let z = z0 - 8; z > z1; z -= 22) box('deck', bx, dy / 2, z, 6, dy, 3);
@@ -602,6 +683,81 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     root.add(m);
   }
 
+  /* ------------------------------------------------------------------- lake */
+  function lakeNormals() {
+    // Seamless ripple normal map: a sum of waves with whole-number frequencies so it tiles.
+    const S = 512, c = cv(S, S), g = c.getContext('2d'), im = g.createImageData(S, S);
+    const waves = withRng(8080, () => Array.from({ length: 48 }, (_, i) => {
+      const k = 2 + Math.floor(R(0, 1) ** 2 * 40), a = R(0, TAU);
+      return [Math.round(Math.cos(a) * k), Math.round(Math.sin(a) * k), R(0, TAU), 1 / (k ** 1.1)];
+    }));
+    const hx = new Float32Array(S * S), hy = new Float32Array(S * S);
+    for (const [kx, ky, ph, amp] of waves) {
+      const fx = (kx * TAU) / S, fy = (ky * TAU) / S;
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        const cs = Math.cos(fx * x + fy * y + ph) * amp;
+        hx[y * S + x] += cs * kx; hy[y * S + x] += cs * ky;
+      }
+    }
+    for (let i = 0; i < S * S; i++) {
+      const nx = -hx[i] * 0.09, ny = -hy[i] * 0.09, l = Math.hypot(nx, ny, 1);
+      im.data[i * 4] = (nx / l * 0.5 + 0.5) * 255; im.data[i * 4 + 1] = (ny / l * 0.5 + 0.5) * 255; im.data[i * 4 + 2] = (1 / l * 0.5 + 0.5) * 255; im.data[i * 4 + 3] = 255;
+    }
+    g.putImageData(im, 0, 0);
+    return tex(c, true, false);
+  }
+  const lakeGeo = new THREE.PlaneGeometry(2400, 220);
+  const water = new Water(lakeGeo, {
+    textureWidth: small ? 256 : 512, textureHeight: small ? 256 : 512,
+    waterNormals: lakeNormals(), sunDirection: SUN.clone(), sunColor: 0xffffff,
+    waterColor: 0x0a5aa8, distortionScale: 1.4, fog: true,
+  });
+  water.material.uniforms.size.value = 2.2;
+  water.rotation.x = -Math.PI / 2; water.position.set(0, 0.4, -375);
+  root.add(water);
+  // Skip the reflection pass while the drone is down in the meadow, where the lake is hidden.
+  const reflect = water.onBeforeRender;
+  water.onBeforeRender = (r, sc, cam) => { if (cam.position.z < 280 || cam.position.y > 60) reflect.call(water, r, sc, cam); };
+
+  // Boats: sailboats and small motor launches drifting along the lake, each with a wake
+  const BOATS = [];
+  withRng(9090, () => {
+    const hullShape = new THREE.Shape();
+    hullShape.moveTo(0, 4.2); hullShape.quadraticCurveTo(1.5, 2, 1.3, -3.6); hullShape.lineTo(-1.3, -3.6); hullShape.quadraticCurveTo(-1.5, 2, 0, 4.2);
+    const hull = new THREE.ExtrudeGeometry(hullShape, { depth: 1.1, bevelEnabled: true, bevelSize: 0.15, bevelThickness: 0.15, bevelSegments: 2, curveSegments: 10 });
+    hull.rotateX(-Math.PI / 2); hull.rotateY(Math.PI); hull.translate(0, -0.3, 0);
+    const deck = new THREE.ShapeGeometry(hullShape, 10); deck.rotateX(-Math.PI / 2); deck.rotateY(Math.PI); deck.scale(0.9, 1, 0.9); deck.translate(0, 0.98, 0);
+    const sail = new THREE.Shape(); sail.moveTo(0, 0); sail.lineTo(0, 9); sail.lineTo(3.4, 0.4); sail.closePath();
+    const jib = new THREE.Shape(); jib.moveTo(0, 0); jib.lineTo(0, 7.5); jib.lineTo(-2.6, 0.2); jib.closePath();
+    const sailGeo = new THREE.ShapeGeometry(sail); sailGeo.rotateY(Math.PI / 2); sailGeo.translate(0, 1.6, -0.4);
+    const jibGeo = new THREE.ShapeGeometry(jib); jibGeo.rotateY(Math.PI / 2); jibGeo.translate(0, 1.4, 0.4);
+    const wc = cv(128, 256), wg = wc.getContext('2d');
+    for (let i = 0; i < 260; i++) { const t = rnd(), y = t * 256, spread = 6 + t * 54, side = rnd() < 0.5 ? -1 : 1; wg.fillStyle = `rgba(255,255,255,${(0.75 * (1 - t)).toFixed(2)})`; wg.beginPath(); wg.arc(64 + side * spread * R(0.75, 1), y, R(1.5, 3.5) * (1 - t * 0.5), 0, TAU); wg.fill(); }
+    const wakeMat = new THREE.MeshBasicMaterial({ map: tex(wc), transparent: true, depthWrite: false, fog: true });
+    const wakeGeo = new THREE.PlaneGeometry(7, 26); wakeGeo.rotateX(-Math.PI / 2); wakeGeo.translate(0, 0.08, -16);
+    const hullMats = ['#ffffff', '#e8f1fa', '#ffffff', '#1d5ec8'].map((h) => new THREE.MeshStandardMaterial({ color: col(h), roughness: 0.35, metalness: 0.05 }));
+    const deckMat = new THREE.MeshLambertMaterial({ color: col('#c89a62') });
+    const sailMats = ['#ffffff', '#fff7e6', '#ff6a3d', '#2fb3ff'].map((h) => new THREE.MeshLambertMaterial({ color: col(h), side: THREE.DoubleSide }));
+    const mastMat = new THREE.MeshLambertMaterial({ color: col('#d9dee4') }), glassMat = MAT.capglass;
+    for (let i = 0; i < 12; i++) {
+      const g = new THREE.Group(), sailing = i < 8;
+      g.add(new THREE.Mesh(hull, pick(hullMats)), new THREE.Mesh(deck, deckMat));
+      if (sailing) {
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 10, 6), mastMat); mast.position.y = 6; g.add(mast);
+        const sm = pick(sailMats);
+        g.add(new THREE.Mesh(sailGeo, sm), new THREE.Mesh(jibGeo, rnd() < 0.5 ? sm : sailMats[0]));
+      } else {
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1, 2.4), glassMat); cab.position.set(0, 1.5, 0.4); g.add(cab);
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(2, 0.15, 2.8), hullMats[0]); roof.position.set(0, 2.05, 0.3); g.add(roof);
+      }
+      const wake = new THREE.Mesh(wakeGeo, wakeMat); wake.renderOrder = 1; g.add(wake);
+      const dir = rnd() < 0.5 ? 1 : -1;
+      g.scale.setScalar(sailing ? 1 : 0.85);
+      root.add(g);
+      BOATS.push({ g, x: R(-600, 600), z: R(-450, -300), dir, v: sailing ? R(1.5, 3) : R(4, 7), ph: R(0, TAU), heel: sailing ? R(0.08, 0.16) : 0 });
+    }
+  });
+
   /* ------------------------------------------------------------ street lamps */
   const STREETS = [-175, -105, -35, 35, 105, 175];
   {
@@ -616,6 +772,16 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     for (const c of STREETS) for (let s = -238; s <= 238; s += 30) {
       if (STREETS.some((o) => Math.abs(o - s) < 14)) continue;
       pts.push([c + 9.5, s, -Math.PI / 2], [c - 9.5, s, Math.PI / 2], [s, c + 9.5, Math.PI], [s, c - 9.5, 0]);
+    }
+    // lamps along the district streets
+    const nearCross = (v) => { const m = (((v - 35) % 70) + 70) % 70; return m < 13 || m > 57; };
+    for (let c = -665; c <= 665; c += 70) for (let s = -735; s <= 245; s += 35) {
+      if (nearCross(s)) continue;
+      for (const [x, z, ry] of [[c + 9.5, s, -Math.PI / 2], [c - 9.5, s, Math.PI / 2]]) if (inDistrict(x, z)) pts.push([x, z, ry]);
+    }
+    for (let c = -735; c <= 245; c += 70) for (let s = -665; s <= 665; s += 35) {
+      if (nearCross(s)) continue;
+      for (const [x, z, ry] of [[s, c + 9.5, Math.PI], [s, c - 9.5, 0]]) if (inDistrict(x, z)) pts.push([x, z, ry]);
     }
     const lamps = new THREE.InstancedMesh(lampGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length);
     const d = new THREE.Object3D();
@@ -644,8 +810,8 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     return g;
   }
   const detail = small ? 1 : 2;
-  function blob(cx, cy, cz, r, sy, seed) {
-    let g = new THREE.IcosahedronGeometry(1, detail);
+  function blob(cx, cy, cz, r, sy, seed, det = detail) {
+    let g = new THREE.IcosahedronGeometry(1, det);
     g.deleteAttribute('uv'); g.deleteAttribute('normal');
     g = mergeVertices(g);
     const p = g.attributes.position;
@@ -739,6 +905,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     const x = clamp(Math.cos(a) * r * 1.2, -300, 300), z = clamp(Math.sin(a) * r * 1.2, -262, 300);
     if (Math.abs(x) < 250 && Math.abs(z) < 250) continue;
     tree(x, z, R(1.7, 3.2), pick(['round', 'round', 'poplar', 'conifer']));
+    if (z < 250) TREES[TREES.length - 1].hidden = true; // now covered by the street grid
   }
   for (let x = -600; x < 600; x += R(10, 18)) { tree(x, -258 + R(-3, 3), R(1.7, 2.7), rnd() < 0.4 ? 'poplar' : 'round'); tree(x, -492 + R(-3, 3), R(1.7, 2.7)); }
   for (let i = 0; i < 70; i++) {
@@ -746,24 +913,24 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     for (let k = 0; k < n; k++) tree(cx + R(-18, 18), cz + R(-18, 18), R(2.4, 4.8), rnd() < 0.2 ? 'poplar' : kind);
   }
   for (let i = 0; i < 120; i++) tree(rnd() < 0.5 ? R(-320, -230) : R(240, 360), R(300, 1100), R(2.8, 5.2), pick(['round', 'poplar', 'conifer']));
-  {
-    const keep = TREES.filter((t) => t.y > 0 || clearOfPath(t.x, 2.2 * t.s, t.z, t.s * 2.6 + 9));
+  const trunkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const canopyMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const cardMat = new THREE.MeshLambertMaterial({ map: leafMap, alphaTest: 0.45, side: THREE.DoubleSide });
+  function instanceTrees(list) {
+    const keep = list.filter((t) => t.y > 0 || clearOfPath(t.x, 2.2 * t.s, t.z, t.s * 2.6 + 9));
     const groups = new Map();
     for (const t of keep) {
       const variants = TREE_KINDS[t.kind], vi = Math.floor(rnd() * variants.length), key = t.kind + vi;
       if (!groups.has(key)) groups.set(key, { v: variants[vi], kind: t.kind, list: [] });
       groups.get(key).list.push(t);
     }
-    const trunkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    const canopyMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    const cardMat = new THREE.MeshLambertMaterial({ map: leafMap, alphaTest: 0.45, side: THREE.DoubleSide });
     const d = new THREE.Object3D();
-    for (const { v, kind, list } of groups.values()) {
-      const n = list.length;
+    for (const { v, kind, list: items } of groups.values()) {
+      const n = items.length;
       const tm = new THREE.InstancedMesh(v.trunk, trunkMat, n), cm = new THREE.InstancedMesh(v.canopy, canopyMat, n);
       const lm = v.cards ? new THREE.InstancedMesh(v.cards, cardMat, n) : null;
-      list.forEach((t, i) => {
-        const s = t.s * KIND_SCALE[kind];
+      items.forEach((t, i) => {
+        const s = t.hidden ? 0 : t.s * KIND_SCALE[kind];
         d.position.set(t.x, t.y, t.z); d.rotation.set(R(-0.04, 0.04), R(0, TAU), R(-0.04, 0.04)); d.scale.set(s * R(0.9, 1.1), s * R(0.9, 1.15), s * R(0.9, 1.1)); d.updateMatrix();
         tm.setMatrixAt(i, d.matrix); cm.setMatrixAt(i, d.matrix);
         const tint = v.tint(); cm.setColorAt(i, tint);
@@ -772,6 +939,67 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       for (const m of [tm, cm, lm]) if (m) { m.castShadow = true; m.receiveShadow = m !== tm; root.add(m); }
     }
   }
+  instanceTrees(TREES);
+  withRng(515151, () => instanceTrees(DTREES));
+
+  /* --------------------------------------------------- countryside woods */
+  // Woods, copses, hedgerows and lone trees across the plain and up the rim hills, so the
+  // countryside around the meadow isn't bare grass from altitude. These are only seen from
+  // a distance, so they use lighter variants (coarse canopies, no leaf cards).
+  function makeRoundFar(seed) {
+    const blobs = [blob(0, 3.0, 0, 1.3, 0.88, seed, 1)];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * TAU + R(-0.3, 0.3);
+      blobs.push(blob(Math.cos(a) * 0.8, R(2.5, 3.4), Math.sin(a) * 0.8, R(0.75, 0.95), 0.85, seed + i * 7.1, 1));
+    }
+    return { trunk: trunkGeo(2.2, 0.2, 0.12, []), canopy: canopyMerge(blobs), cards: null, tint: () => hsl(R(0.23, 0.32), R(0.55, 0.75), R(0.3, 0.43)) };
+  }
+  function makePoplarFar(seed) {
+    const blobs = [[2.2, 0.75], [3.4, 0.72], [4.5, 0.5]].map(([y, r], i) => blob(0, y, 0, r, 1.4, seed + i * 3.3, 1));
+    return { trunk: trunkGeo(1.6, 0.16, 0.1, []), canopy: canopyMerge(blobs), cards: null, tint: () => hsl(R(0.22, 0.28), R(0.6, 0.8), R(0.34, 0.46)) };
+  }
+  withRng(737373, () => {
+    TREE_KINDS.farRound = [makeRoundFar(4.4), makeRoundFar(8.2), makeRoundFar(12.6)];
+    TREE_KINDS.farPoplar = [makePoplarFar(6.6)];
+    Object.assign(KIND_SCALE, { farRound: 1, farPoplar: 0.9 });
+    const FTREES = [];
+    const excluded = (x, z) =>
+      (Math.abs(x) < 690 && z > -760 && z < 265) || // city and districts
+      (Math.abs(x) < 1230 && z > -505 && z < -245) || // lake and quays
+      (x > -160 && x < -30 && z > 500 && z < 790) || // tulip field
+      (x > -190 && x < -145 && z > 555 && z < 745); // windmills
+    const add = (x, z, s, kind) => {
+      if (excluded(x, z) || Math.hypot(x, z - 150) > 2400) return;
+      const y = groundY(x, z);
+      // Keep the low meadow pass open: the detailed groves own the foreground.
+      if (y < 30 && !clearOfPath(x, 2.2 * s, z, s * 2.6 + 30)) return;
+      FTREES.push({ x, y: y - 0.4, z, s, kind });
+    };
+    const woodKind = (x, z) => {
+      if (noise3(x * 0.003 + 90, 0, z * 0.003) > 0.55) return 'conifer';
+      return rnd() < 0.12 ? 'farPoplar' : 'farRound';
+    };
+    // Hedgerows: broken tree lines along field edges around the meadow.
+    const rows = [[[380, 880], [1300, 900]], [[420, 1180], [1250, 1150]], [[-370, 900], [-1300, 930]], [[-360, 1230], [-1200, 1200]], [[820, 300], [800, 1450]], [[-760, 290], [-790, 1400]], [[-300, 1400], [600, 1420]], [[760, -820], [1500, -760]], [[-760, -840], [-1500, -800]]];
+    for (const [[x0, z0], [x1, z1]] of rows) {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      for (let u = 0; u < len; u += R(8, 13)) {
+        if (noise3(u * 0.02, x0 * 0.01, z0 * 0.01) < 0.3) continue; // gaps and gates
+        const k = u / len;
+        add(x0 + (x1 - x0) * k + R(-2, 2), z0 + (z1 - z0) * k + R(-2, 2), R(2.4, 3.6), rnd() < 0.3 ? 'farPoplar' : 'farRound');
+      }
+    }
+    // Woods where a low-frequency noise field is high, copses on their fringes, lone trees elsewhere.
+    const clump = (x, z) => noise3(x * 0.0045, 0, z * 0.0045) * 0.7 + noise3(x * 0.017 + 40, 0, z * 0.017) * 0.3;
+    const target = Math.round(5200 * Q);
+    for (let i = 0; i < 60000 && FTREES.length < target; i++) {
+      const x = R(-2400, 2400), z = 150 + R(-2400, 2400), c = clump(x, z);
+      if (c > 0.64) add(x, z, R(3, 5.5), woodKind(x, z));
+      else if (c > 0.56 && rnd() < 0.18) add(x, z, R(2.6, 4.6), woodKind(x, z));
+      else if (rnd() < 0.012) add(x, z, R(3, 5), rnd() < 0.2 ? 'farPoplar' : 'farRound');
+    }
+    instanceTrees(FTREES);
+  });
 
   /* ------------------------------------------------------------------- cars */
   const CARN = Math.round(170 * Q);
@@ -793,6 +1021,29 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     cars.setColorAt(i, col(pick(carCols)));
   }
   cars.frustumCulled = false; root.add(cars);
+  // traffic on the district streets
+  const DCARS = [];
+  const dcarN = Math.round(260 * Q);
+  const dcars = new THREE.InstancedMesh(carGeo, cars.material, dcarN);
+  withRng(616161, () => {
+    for (let i = 0; i < dcarN; i++) {
+      const dir = rnd() < 0.5 ? 1 : -1, east = rnd() < 0.55;
+      let car;
+      if (east) { // east/west districts: N-S streets x = ±(315..665), or E-W streets z in -175..245 over |x| 245..665
+        const sg = rnd() < 0.5 ? -1 : 1;
+        car = rnd() < 0.5
+          ? { ax: true, c: sg * (315 + 70 * RI(0, 5)) + dir * 4, lo: -245, hi: 245 }
+          : { ax: false, c: -175 + 70 * RI(0, 6) + dir * 4, lo: sg > 0 ? 245 : -665, hi: sg > 0 ? 665 : -245 };
+      } else { // north district
+        car = rnd() < 0.5
+          ? { ax: true, c: -665 + 70 * RI(0, 19) + dir * 4, lo: -735, hi: -525 }
+          : { ax: false, c: -595 - 70 * RI(0, 2) + dir * 4, lo: -665, hi: 665 };
+      }
+      DCARS.push({ ...car, dir, s: R(car.lo, car.hi), v: R(7, 12) });
+      dcars.setColorAt(i, col(pick(carCols)));
+    }
+  });
+  dcars.frustumCulled = false; root.add(dcars);
 
   /* ------------------------------------------------------- meadow grass */
   {
@@ -820,7 +1071,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       d.position.set(x, 0, z); d.rotation.set(R(-0.2, 0.2), R(0, TAU), R(-0.2, 0.2)); d.scale.set(R(0.8, 1.7), R(0.45, 1.35), 1); d.updateMatrix(); im.setMatrixAt(i, d.matrix);
       const bb = R(0.75, 1.12); cc.setRGB(bb * R(0.9, 1.05), bb, bb * R(0.82, 1)); im.setColorAt(i, cc);
     }
-    im.frustumCulled = false; root.add(im);
+    root.add(im);
   }
 
   /* --------------------------------------------------------------- flowers */
@@ -850,12 +1101,12 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
         const h = R(0.55, 1.45), s = size * R(0.75, 1.25);
         d.position.set(x, h, z); d.rotation.set(-Math.PI / 2 + R(0.35, 1.0), R(0, TAU), 0, 'YXZ'); d.scale.set(s, s, s); d.updateMatrix(); im.setMatrixAt(i, d.matrix); STEMS.push(x, h, z);
       }
-      im.frustumCulled = false; root.add(im);
+      root.add(im);
     }
     const sg = new THREE.CylinderGeometry(0.022, 0.03, 1, 3); sg.translate(0, 0.5, 0);
     const sm = new THREE.InstancedMesh(sg, new THREE.MeshBasicMaterial({ color: col('#3f9a25') }), STEMS.length / 3);
     for (let i = 0; i < STEMS.length / 3; i++) { d.position.set(STEMS[i * 3], 0, STEMS[i * 3 + 2]); d.rotation.set(0, 0, 0); d.scale.set(1, STEMS[i * 3 + 1], 1); d.updateMatrix(); sm.setMatrixAt(i, d.matrix); }
-    sm.frustumCulled = false; root.add(sm);
+    root.add(sm);
   }
 
   /* -------------------------------------------------- tulips + windmills */
@@ -874,7 +1125,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       d.position.y = h; d.rotation.set(R(-0.15, 0.15), R(0, TAU), R(-0.15, 0.15)); d.scale.set(s, s, s); d.updateMatrix(); cm.setMatrixAt(i, d.matrix);
       c.copy(cols[b]).multiplyScalar(R(0.85, 1.1)); cm.setColorAt(i, c);
     }
-    cm.frustumCulled = st.frustumCulled = false; root.add(cm, st);
+    root.add(cm, st);
   }
   const MILLS = [];
   {
@@ -1203,6 +1454,13 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     scene.fog.density = 0.00032 + cloudAmt * 0.011; scene.fog.color.copy(FOG_BASE).lerp(FOG_WHITE, cloudAmt);
 
     wNorm.offset.set(t * 0.004, t * 0.006);
+    water.material.uniforms.time.value = t * 0.6;
+    water.material.uniforms.eye.value.copy(camera.position);
+    for (const b of BOATS) {
+      b.x += b.dir * b.v * dt; if (b.x > 640) b.x = -640; if (b.x < -640) b.x = 640;
+      b.g.position.set(b.x, 0.45 + Math.sin(t * 1.3 + b.ph) * 0.06, b.z + Math.sin(t * 0.05 + b.ph) * 6);
+      b.g.rotation.set(Math.sin(t * 1.1 + b.ph) * 0.02, b.dir > 0 ? Math.PI / 2 : -Math.PI / 2, b.dir * b.heel + Math.sin(t * 0.9 + b.ph) * 0.03);
+    }
 
     for (let i = 0; i < CARN; i++) {
       const c = CARS[i]; c.s += c.dir * c.v * dt; if (c.s > 245) c.s = -245; if (c.s < -245) c.s = 245;
@@ -1210,6 +1468,12 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       dmy.rotation.set(0, (c.ax ? 0 : Math.PI / 2) + (c.dir < 0 ? Math.PI : 0), 0); dmy.updateMatrix(); cars.setMatrixAt(i, dmy.matrix);
     }
     cars.instanceMatrix.needsUpdate = true;
+    for (let i = 0; i < dcarN; i++) {
+      const c = DCARS[i]; c.s += c.dir * c.v * dt; if (c.s > c.hi) c.s = c.lo; if (c.s < c.lo) c.s = c.hi;
+      if (c.ax) dmy.position.set(c.c, 0, c.s); else dmy.position.set(c.s, 0, c.c);
+      dmy.rotation.set(0, (c.ax ? 0 : Math.PI / 2) + (c.dir < 0 ? Math.PI : 0), 0); dmy.updateMatrix(); dcars.setMatrixAt(i, dmy.matrix);
+    }
+    dcars.instanceMatrix.needsUpdate = true;
 
     for (const b of BFLY) {
       const q = t * b.sp + b.ph, y = b.ay + Math.sin(q * 1.7) * 0.6;

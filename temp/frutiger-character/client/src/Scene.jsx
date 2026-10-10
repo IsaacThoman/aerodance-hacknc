@@ -1,9 +1,8 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import Character from "./Character.jsx";
-import { movementInput } from "./movement.js";
 
 function Environment() {
   const { gl, scene } = useThree();
@@ -126,7 +125,7 @@ function World() {
         <meshStandardMaterial color="#83cd69" roughness={0.8} />
       </mesh>
       <mesh receiveShadow position={[0, 0.035, 0]}>
-        <cylinderGeometry args={[2.15, 2.22, 0.12, 80]} />
+        <cylinderGeometry args={[4.6, 4.7, 0.12, 80]} />
         <meshPhysicalMaterial
           color="#e3fbff"
           metalness={0.3}
@@ -135,11 +134,11 @@ function World() {
         />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.101, 0]}>
-        <ringGeometry args={[1.99, 2.045, 96]} />
+        <ringGeometry args={[4.4, 4.45, 96]} />
         <meshBasicMaterial color="#38d7ed" />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.102, 0]}>
-        <ringGeometry args={[1.71, 1.72, 96]} />
+        <ringGeometry args={[4.1, 4.12, 96]} />
         <meshBasicMaterial color="#b6e4e8" />
       </mesh>
       <group position={[0, 0, -5.3]}>
@@ -205,172 +204,53 @@ function World() {
     </>
   );
 }
-const PICKUPS = [
-  [3, 1, 1],
-  [-3, 1, -1],
-  [1, 1, -4],
-  [-4, 1, 3],
-  [4, 1, -3],
-  [-1, 1, 5],
-];
-function Pickup({ position, index }) {
-  const ref = useRef();
-  useFrame(({ clock }) => {
-    if (ref.current)
-      ref.current.position.y =
-        position[1] + Math.sin(clock.elapsedTime * 2 + index) * 0.15;
-  });
-  return (
-    <group ref={ref} position={position}>
-      <Orb scale={0.27} color="#f5ffb7" />
-      <mesh rotation={[0, 0, Math.PI / 4]} scale={0.1}>
-        <octahedronGeometry />
-        <meshBasicMaterial color="#ffffff" />
-      </mesh>
-    </group>
+export default function Scene({ motion }) {
+  const fixedTime = new URLSearchParams(window.location.search).get("t");
+  const playback = useRef(
+    fixedTime !== null && Number.isFinite(Number(fixedTime))
+      ? Number(fixedTime)
+      : 0,
   );
-}
-export default function Scene({
-  appearance,
-  animation,
-  playing,
-  controls,
-  collected,
-  onCollect,
-  resetKey,
-  onMotion,
-}) {
-  const actor = useRef();
-  const keys = useRef(new Set());
-  const moving = useRef(false);
-  const heading = useRef(0.22);
-  const { camera, gl, size } = useThree();
-  const [walk, setWalk] = useState(false);
-  const drag = useRef(null);
-  const orbit = useRef(0.22);
-  const position = useMemo(() => new THREE.Vector3(), []);
+  const paused = useRef(
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
   useEffect(() => {
-    const down = (e) => {
-      if (/INPUT|TEXTAREA|SELECT/.test(e.target?.tagName)) return;
-      if (
-        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)
-      )
-        e.preventDefault();
-      keys.current.add(e.key.toLowerCase());
+    const key = (event) => {
+      if (event.code === "Space") {
+        event.preventDefault();
+        paused.current = !paused.current;
+      }
     };
-    const up = (e) => keys.current.delete(e.key.toLowerCase());
-    const blur = () => keys.current.clear();
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    window.addEventListener("blur", blur);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      window.removeEventListener("blur", blur);
-    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
   }, []);
+  const { camera } = useThree();
   useEffect(() => {
-    const canvas = gl.domElement;
-    const down = (e) => {
-      drag.current = e.clientX;
-      canvas.setPointerCapture(e.pointerId);
-    };
-    const move = (e) => {
-      if (drag.current !== null && !playing) {
-        orbit.current += (e.clientX - drag.current) * 0.008;
-        drag.current = e.clientX;
-      }
-    };
-    const up = () => {
-      drag.current = null;
-    };
-    canvas.addEventListener("pointerdown", down);
-    canvas.addEventListener("pointermove", move);
-    canvas.addEventListener("pointerup", up);
-    canvas.addEventListener("pointercancel", up);
-    return () => {
-      canvas.removeEventListener("pointerdown", down);
-      canvas.removeEventListener("pointermove", move);
-      canvas.removeEventListener("pointerup", up);
-      canvas.removeEventListener("pointercancel", up);
-    };
-  }, [gl, playing]);
-  useEffect(() => {
-    position.set(0, 0.11, 0);
-    keys.current.clear();
-  }, [playing, resetKey, position]);
-  useFrame((_, rawDelta) => {
-    const dt = Math.min(rawDelta, 0.05);
-    const k = keys.current;
-    let x = 0,
-      z = 0;
-    if (playing) {
-      [x, z] = movementInput(k, controls.current);
-      if (x || z) {
-        position.x += x * dt * 2.8;
-        position.z += z * dt * 2.8;
-        const radius = Math.hypot(position.x, position.z);
-        if (radius > 7.1) {
-          position.x *= 7.1 / radius;
-          position.z *= 7.1 / radius;
-        }
-        heading.current = Math.atan2(x, z);
-      }
-      PICKUPS.forEach((p, i) => {
-        if (
-          !collected.includes(i) &&
-          Math.hypot(position.x - p[0], position.z - p[2]) < 0.65
-        )
-          onCollect(i);
-      });
-    }
-    const isMoving = !!(x || z);
-    if (isMoving !== moving.current) {
-      moving.current = isMoving;
-      setWalk(isMoving);
-      onMotion(isMoving);
-    }
-    if (actor.current) {
-      actor.current.position.copy(position);
-      const target = playing ? heading.current : orbit.current;
-      actor.current.rotation.y +=
-        Math.atan2(
-          Math.sin(target - actor.current.rotation.y),
-          Math.cos(target - actor.current.rotation.y),
-        ) *
-        (1 - Math.exp(-dt * 10));
-    }
-    const portrait = size.width / size.height < 0.9;
-    const desired = playing
-      ? new THREE.Vector3(
-          position.x * 0.6,
-          portrait ? 8.5 : 6.4,
-          position.z * 0.6 + (portrait ? 14.5 : 10),
-        )
-      : new THREE.Vector3(0, 3.8, portrait ? 10.7 : 10.2);
-    camera.position.lerp(desired, 1 - Math.exp(-dt * 4));
-    camera.lookAt(
-      playing ? position.x * 0.6 : 0,
-      playing ? 0.5 : portrait ? 1.05 : 1.5,
-      playing ? position.z * 0.6 : 0,
-    );
-  });
+    camera.lookAt(0, 1.7, 0);
+  }, [camera]);
+  useFrame((_, delta) => {
+    if (fixedTime === null && !paused.current)
+      playback.current += Math.min(delta, 0.1);
+  }, -1);
   return (
     <>
       <World />
-      <group ref={actor} position={[0, 0.11, 0]}>
-        <Suspense fallback={null}>
-          <Character
-            appearance={appearance}
-            animation={walk ? "Walk" : animation}
-          />
-        </Suspense>
-      </group>
-      {playing &&
-        PICKUPS.map(
-          (p, i) =>
-            !collected.includes(i) && <Pickup key={i} position={p} index={i} />,
-        )}
+      <Suspense fallback={null}>
+        {[0, 1].map((person) => (
+          <group key={person} position={[person === 0 ? -2 : 2, 0.11, 0]}>
+            <Character
+              motion={motion}
+              person={person}
+              playback={playback}
+              appearance={{
+                color: person === 0 ? "#078fff" : "#b86bff",
+                gloss: 85,
+                accessory: "None",
+              }}
+            />
+          </group>
+        ))}
+      </Suspense>
     </>
   );
 }
