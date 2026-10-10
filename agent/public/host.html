@@ -249,7 +249,7 @@
           ${finished && battle.winnerSeat === seat ? '<span class="chip gold">🏆 winner</span>' : ""}
         </div>
         <div class="name">${p.name ? esc(p.name) : '<span class="empty">waiting for a phone…</span>'}</div>
-        <div class="muted">📣 ${p.hype.count} hype · ${p.hype.sol} SOL${p.wallet ? ` · <a href="https://explorer.solana.com/address/${esc(p.wallet)}?cluster=devnet" target="_blank" rel="noopener">wallet</a>` : ""}</div>
+        <div class="muted">📣 ${p.hype.count} hype · ${p.hype.sol} SOL${Object.entries(p.hype.stickers || {}).filter(([, n]) => n).map(([k, n]) => ` · ${{ bubble: "🫧", koi: "🐠", rainbow: "🌈" }[k]}×${n}`).join("")}${p.wallet ? ` · <a href="https://explorer.solana.com/address/${esc(p.wallet)}?cluster=devnet" target="_blank" rel="noopener">wallet</a>` : ""}</div>
         ${p.result
           ? `<div class="score">${p.result.score}</div><div class="muted">pops ${p.result.pops} · sync ${p.result.sync} · flair ${p.result.flair}</div>`
           : battle.status === "open"

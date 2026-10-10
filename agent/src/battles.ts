@@ -1,8 +1,8 @@
 // Battle lifecycle: seats, spectators, hype, results and on-chain receipts.
 import { Keypair } from "@solana/web3.js";
-import { battles, playerToken, profiles, shortId, type Battle, type Profile, type Result } from "./store.ts";
+import { battles, playerToken, profiles, shortId, type Battle, type Hype, type Profile, type Result, type Sticker } from "./store.ts";
 import { buildMemo, explorerAddress, explorerTx, memoStatus, sendHype, sendMemo } from "./solana.ts";
-import { mintTrophy } from "./nft.ts";
+import { mintAsset, mintTrophy } from "./nft.ts";
 import { publicUrl } from "./urls.ts";
 import { fundPendingWallets, getProfile, notify, walletOf } from "./players.ts";
 
@@ -10,6 +10,14 @@ export const BATTLE_BASE_URL = (process.env.BATTLE_BASE_URL || "http://localhost
 const RESULT_GRACE_MS = 90_000;
 const RECEIPT_RETRY_MS = 30_000;
 export const HYPE_SOL = 0.005;
+export const STICKERS: Record<Sticker, { label: string; emoji: string }> = {
+  bubble: { label: "Bubble Hype", emoji: "🫧" },
+  koi: { label: "Koi Hype", emoji: "🐠" },
+  rainbow: { label: "Rainbow Hype", emoji: "🌈" },
+};
+export const isSticker = (s: unknown): s is Sticker => typeof s === "string" && s in STICKERS;
+const hypeSol = (hype: Hype[]) => round(hype.reduce((sum, h) => sum + h.sol, 0));
+const stickerCount = (hype: Hype[]) => hype.filter((h) => h.sticker).length;
 
 const log = (...args: unknown[]) => console.log("[battles]", ...args);
 
@@ -51,7 +59,11 @@ export function publicBattle(b: Battle) {
         name: profile?.name ?? null,
         wallet: profile ? walletOf(profile)?.address ?? null : null,
         result: p.result ?? null,
-        hype: { count: hype.length, sol: round(hype.reduce((sum, h) => sum + h.sol, 0)) },
+        hype: {
+          count: hype.length,
+          sol: hypeSol(hype),
+          stickers: Object.fromEntries(Object.keys(STICKERS).map((k) => [k, hype.filter((h) => h.sticker === k).length])),
+        },
       };
     }),
     spectators: (b.spectators ?? []).length,
@@ -109,8 +121,7 @@ export function joinBattle(battleId: string, profile: Profile): { role: "dancer"
   return free >= 0 ? { role: "dancer", seat: free } : { role: "spectator", seat: null };
 }
 
-// A spectator tips a dancer real devnet SOL from their own wallet.
-export async function hypeDancer(battleId: string, from: Profile, seat: number) {
+function hypeTarget(battleId: string, from: Profile, seat: number) {
   const battle = battles.data[battleId];
   if (!battle) throw new BattleError(404, "battle not found");
   if (battle.status === "finished") throw new BattleError(409, "battle already finished");
@@ -120,18 +131,74 @@ export async function hypeDancer(battleId: string, from: Profile, seat: number) 
   if (!to) throw new BattleError(409, "that seat is empty");
   const fromWallet = walletOf(from);
   if (!fromWallet) throw new BattleError(409, "no wallet yet");
+  return { battle, to, fromWallet };
+}
 
+function hypeError(from: Profile, err: unknown): BattleError {
+  const msg = (err as Error).message;
+  log(`hype from ${from.id} failed:`, msg.split("\n")[0]);
+  return /insufficient|debit|no record/i.test(msg)
+    ? new BattleError(402, "out of hype SOL")
+    : new BattleError(503, "Solana is slow, try again");
+}
+
+// A spectator tips a dancer real devnet SOL from their own wallet.
+export async function hypeDancer(battleId: string, from: Profile, seat: number) {
+  const { battle, to, fromWallet } = hypeTarget(battleId, from, seat);
   let signature: string;
   try {
     signature = await sendHype(fromWallet.secretKey, to.address, HYPE_SOL, JSON.stringify({ app: "aerodance", battleId, hype: seat }));
   } catch (err) {
-    const msg = (err as Error).message;
-    log(`hype from ${from.id} failed:`, msg.split("\n")[0]);
-    throw new BattleError(/insufficient|debit|no record/i.test(msg) ? 402 : 503, /insufficient|debit|no record/i.test(msg) ? "out of hype SOL" : "Solana is slow, try again");
+    throw hypeError(from, err);
   }
   (battle.hype ??= []).push({ from: from.id, seat, sol: HYPE_SOL, signature, at: new Date().toISOString() });
   await battles.save();
   return { signature, explorer: explorerTx(signature) };
+}
+
+// A spectator sends a dancer a sticker NFT, minted from (and paid by) the spectator's wallet.
+export async function stickerHype(battleId: string, from: Profile, seat: number, sticker: Sticker) {
+  const { battle, to, fromWallet } = hypeTarget(battleId, from, seat);
+  const id = shortId(8);
+  let minted;
+  try {
+    minted = await mintAsset({
+      payerSecret: fromWallet.secretKey,
+      assetSecret: Array.from(Keypair.generate().secretKey),
+      owner: to.address,
+      name: `${STICKERS[sticker].label} #${battle.id}`,
+      uri: `${publicUrl()}/nft/hype/${battle.id}/${id}.json`,
+    });
+  } catch (err) {
+    throw hypeError(from, err);
+  }
+  (battle.hype ??= []).push({ from: from.id, seat, sol: 0, signature: minted.signature, at: new Date().toISOString(), id, sticker, asset: minted.asset });
+  await battles.save();
+  return { asset: minted.asset, explorer: explorerAddress(minted.asset) };
+}
+
+// Off-chain metadata for a sticker NFT. Wallet addresses only: names and phones stay private.
+export function stickerMetadata(battle: Battle, hypeId: string) {
+  const h = (battle.hype ?? []).find((x) => x.id === hypeId && x.sticker);
+  if (!h?.sticker) return undefined;
+  const { label, emoji } = STICKERS[h.sticker];
+  const image = `${publicUrl()}/app/stickers/${h.sticker}.png`;
+  const sender = getProfile(h.from);
+  const fromWallet = sender && walletOf(sender);
+  return {
+    name: `${label} #${battle.id}`,
+    symbol: "AERO",
+    description: `${emoji} A ${label.toLowerCase()} sticker from the crowd in aerodance battle ${battle.id}.`,
+    image,
+    external_url: publicUrl(),
+    attributes: [
+      { trait_type: "sticker", value: label },
+      { trait_type: "battle", value: battle.id },
+      { trait_type: "from", value: fromWallet?.address ?? "a fan" },
+      { trait_type: "date", value: h.at.slice(0, 10) },
+    ],
+    properties: { category: "image", files: [{ uri: image, type: "image/png" }] },
+  };
 }
 
 // Label used on-chain: the player's devnet wallet if they have one (phone → wallet),
@@ -181,7 +248,8 @@ async function settle(battle: Battle): Promise<void> {
         p.result
           ? `Your score: ${p.result.score} (pops ${p.result.pops} · sync ${p.result.sync} · flair ${p.result.flair})`
           : "We didn't get a score from you this round.",
-        ...(hype.length ? [`📣 The crowd hyped you ${hype.length}× (+${round(hype.length * HYPE_SOL)} devnet SOL)`] : []),
+        ...(hype.length ? [`📣 The crowd hyped you ${hype.length}× (+${hypeSol(hype)} devnet SOL)`] : []),
+        ...(stickerCount(hype) ? [`🎁 ${stickerCount(hype)} hype sticker NFT${stickerCount(hype) === 1 ? "" : "s"} landed in your wallet`] : []),
         landed
           ? `On-chain receipt 🔗 ${explorerTx(battle.receipt!.signature!)}`
           : "On-chain receipt is pending 🫧 I'll text you the link once it lands.",
@@ -265,7 +333,7 @@ function recordStats(battle: Battle): void {
     s.bestScore = Math.max(s.bestScore, p.result?.score ?? 0);
     s.pops += p.result?.pops ?? 0;
     s.hypeCount += hype.length;
-    s.hypeSol = round(s.hypeSol + hype.length * HYPE_SOL);
+    s.hypeSol = round(s.hypeSol + hypeSol(hype));
   });
   void profiles.save();
 }

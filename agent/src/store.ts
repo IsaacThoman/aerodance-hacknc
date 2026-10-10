@@ -71,7 +71,19 @@ export type Player = {
   result?: Result;
 };
 
-export type Hype = { from: string; seat: number; sol: number; signature: string; at: string };
+export type Sticker = "bubble" | "koi" | "rainbow";
+
+// A tip from a spectator: devnet SOL, or a sticker NFT minted into the dancer's wallet.
+export type Hype = {
+  from: string; // profile id
+  seat: number;
+  sol: number; // 0 for stickers
+  signature: string | null;
+  at: string;
+  id?: string; // stickers: metadata lives at /nft/hype/<battleId>/<id>.json
+  sticker?: Sticker;
+  asset?: string;
+};
 
 export type Receipt = {
   status: "pending" | "confirmed";

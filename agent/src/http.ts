@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import { join } from "node:path";
 import { battles } from "./store.ts";
 import { publicUrl } from "./urls.ts";
-import { BATTLE_BASE_URL, BattleError, battleUrl, createBattle, hypeDancer, joinBattle, publicBattle, reportResult, trophyMetadata } from "./battles.ts";
+import { BATTLE_BASE_URL, BattleError, battleUrl, createBattle, hypeDancer, isSticker, joinBattle, publicBattle, reportResult, stickerHype, stickerMetadata, trophyMetadata } from "./battles.ts";
 import { RPC_URL, loadTreasury } from "./solana.ts";
 import { cleanName, normalizePhone, profileByDevice, selfView, upsertProfile } from "./players.ts";
 
@@ -78,6 +78,14 @@ export function createHttp(port: number) {
 
   app.get(["/join", "/join/:id"], (_req, res) => res.sendFile(join(PUBLIC_DIR, "join.html")));
 
+  // Metadata for a hype sticker NFT.
+  app.get("/nft/hype/:id/:hypeId.json", (req, res) => {
+    const battle = battles.data[req.params.id];
+    const meta = battle && stickerMetadata(battle, req.params.hypeId);
+    if (!meta) return void res.status(404).json({ error: "no such sticker" });
+    res.json(meta);
+  });
+
   // Metadata for a battle's trophy NFT (the asset's on-chain uri points here).
   app.get("/nft/:id.json", (req, res) => {
     const battle = battles.data[req.params.id];
@@ -109,7 +117,10 @@ export function createHttp(port: number) {
   app.post("/battles/:id/hype", async (req, res) => {
     const seat = Number(req.body?.seat);
     if (!Number.isInteger(seat) || seat < 0) return void res.status(400).json({ error: "seat required" });
-    res.json(await hypeDancer(req.params.id, requireProfile(req), seat));
+    // { seat } tips devnet SOL; { seat, sticker } mints a sticker NFT into the dancer's wallet.
+    const sticker = req.body?.sticker;
+    if (sticker !== undefined && !isSticker(sticker)) return void res.status(400).json({ error: "unknown sticker" });
+    res.json(sticker ? await stickerHype(req.params.id, requireProfile(req), seat, sticker) : await hypeDancer(req.params.id, requireProfile(req), seat));
   });
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

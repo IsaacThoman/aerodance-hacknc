@@ -80,6 +80,13 @@
   .dancer .score { font-size: 26px; font-weight: 800; margin: 4px 0; }
   .dancer .hype { font-size: 13px; color: var(--ink-soft); }
   .dancer .btn { font-size: 15px; padding: 11px 8px; margin-top: 10px; }
+  .stickers { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+  .sticker { font-size: 24px; width: 44px; height: 44px; border-radius: 50%; border: 1px solid #fff; cursor: pointer;
+    background: radial-gradient(circle at 35% 30%, #fff, rgba(143,220,251,.8) 60%, rgba(19,168,232,.6)); box-shadow: 0 3px 8px rgba(11,61,107,.2); }
+  .sticker:disabled { filter: grayscale(.7) opacity(.5); }
+  .sticker:active:not(:disabled) { transform: scale(.9); }
+  .dancer .got { font-size: 13px; margin-top: 2px; min-height: 18px; }
+  .stickerHint { text-align: center; font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
   .stats b { display: block; font-size: 22px; }
   .stats span { font-size: 12px; color: var(--ink-soft); font-weight: 700; }
@@ -289,12 +296,26 @@
       d.innerHTML = `
         <div class="name">${p.name ? esc(p.name) : '<span class="empty">open seat</span>'}</div>
         <div class="score">${p.result ? esc(p.result.score) : "–"}</div>
-        <div class="hype">📣 ${p.hype.count} hype · ${p.hype.sol} SOL</div>`;
+        <div class="hype">📣 ${p.hype.count} hype · ${p.hype.sol} SOL</div>
+        <div class="got">${Object.entries(p.hype.stickers || {}).filter(([, n]) => n).map(([k, n]) => `${STICKERS[k]}×${n}`).join(" ")}</div>`;
       if (role === "spectator" && b.status !== "finished") {
         const btn = document.createElement("button");
         btn.className = "btn"; btn.textContent = "Hype 🫧"; btn.disabled = !p.name || hyping;
         btn.onclick = (ev) => hype(p.seat, ev);
         d.appendChild(btn);
+        const row = document.createElement("div");
+        row.className = "stickers";
+        for (const [k, emoji] of Object.entries(STICKERS)) {
+          const s = document.createElement("button");
+          s.className = "sticker"; s.textContent = emoji; s.title = `Send a ${k} sticker NFT`;
+          s.disabled = !p.name || hyping;
+          s.onclick = (ev) => hype(p.seat, ev, k);
+          row.appendChild(s);
+        }
+        d.appendChild(row);
+        const hint = document.createElement("div");
+        hint.className = "stickerHint"; hint.textContent = "or send a sticker NFT";
+        d.appendChild(hint);
       }
       $("dancers").appendChild(d);
     });
@@ -313,19 +334,25 @@
     lastStatus = b.status;
   }
 
-  async function hype(s, ev) {
+  const STICKERS = { bubble: "🫧", koi: "🐠", rainbow: "🌈" };
+
+  async function hype(s, ev, sticker) {
     if (hyping) return;
     hyping = true;
+    poll(); // re-render with the buttons disabled while this one is in flight
     const x = ev.clientX, y = ev.clientY;
     for (let i = 0; i < 5; i++) {
-      const p = document.createElement("div"); p.className = "pop"; p.textContent = ["🫧", "✨", "🐠"][i % 3];
+      const p = document.createElement("div"); p.className = "pop"; p.textContent = sticker ? STICKERS[sticker] : ["🫧", "✨", "🐠"][i % 3];
       Object.assign(p.style, { left: x - 13 + (Math.random() * 60 - 30) + "px", top: y - 13 + "px", animationDelay: i * 60 + "ms" });
       document.body.appendChild(p); setTimeout(() => p.remove(), 1400);
     }
     navigator.vibrate?.(30);
     try {
-      const r = await api("POST", `/battles/${battleId}/hype`, { seat: s });
-      toast(`+0.005 SOL hype sent 🫧 <a href="${esc(r.explorer)}" target="_blank" rel="noopener">view</a>`);
+      if (sticker) toast(`${STICKERS[sticker]} Minting your sticker NFT…`, 8000);
+      const r = await api("POST", `/battles/${battleId}/hype`, sticker ? { seat: s, sticker } : { seat: s });
+      toast(sticker
+        ? `${STICKERS[sticker]} Sticker NFT sent! <a href="${esc(r.explorer)}" target="_blank" rel="noopener">view</a>`
+        : `+0.005 SOL hype sent 🫧 <a href="${esc(r.explorer)}" target="_blank" rel="noopener">view</a>`);
       refreshMe();
     } catch (e) {
       toast("🐠 " + esc(e.message));
