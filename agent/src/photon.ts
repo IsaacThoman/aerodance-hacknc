@@ -10,7 +10,14 @@ export async function registerPhotonUser(phone: string, name: string): Promise<v
   const res = await fetch(`${API_HOST}/api/projects/${process.env.PROJECT_ID}/spectrum/users`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${process.env.PHOTON_TOKEN}` },
-    body: JSON.stringify({ firstName: name, lastName: "aerodance", phoneNumber: phone, sendInvite: false }),
+    // email is required by the API; sendInvite is false so nothing is ever sent to it.
+    body: JSON.stringify({
+      firstName: name,
+      lastName: "aerodance",
+      email: `player+${phone.replace(/\D/g, "")}@aerodance.tech`,
+      phoneNumber: phone,
+      sendInvite: false,
+    }),
     signal: AbortSignal.timeout(10_000),
   });
   const body = await res.text();
