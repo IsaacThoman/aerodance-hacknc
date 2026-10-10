@@ -22,7 +22,7 @@ const DANCERS = [
 ];
 const PUCK = { r: 3.1, h: 0.26 };
 // Stage placement in front of the fixed camera (looking down -Z), then turned to face it.
-const STAGE = { x: 5.1, y: -3.05, z: -19, tilt: 0.2, turn: -0.22 };
+const STAGE = { x: 4.3, y: -2.6, z: -19, tilt: 0.2, turn: -0.22 };
 const SLIDE = 12;
 
 function Environment({ scene }) {
@@ -53,7 +53,7 @@ function Puck() {
           metalness={0.2}
           clearcoat={1}
           transparent
-          opacity={0.42}
+          opacity={0.6}
           depthWrite={false}
           envMapIntensity={1.6}
         />
