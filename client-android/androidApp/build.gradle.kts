@@ -12,6 +12,7 @@ kotlin {
 }
 dependencies {
     implementation(project(":shared"))
+    implementation(libs.mediapipe.tasks.vision)
 
     implementation(libs.androidx.activity.compose)
 

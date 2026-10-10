@@ -34,6 +34,16 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md), [PLAN.md](PLAN.md), and [camera-to-clie
 
 ## Device operations
 
+If the board is absent from `adb devices`, run these in order, then verify `adb devices -l`:
+
+```bash
+curl --request PUT --url http://192.168.43.1:8080/api/v1/system/adb/enable
+adb connect 192.168.43.1
+adb devices -l
+```
+
+This is the user-provided reconnect procedure for this board. On 2026-10-10 the PUT returned `{"status":"adb connected"}`, and ADB confirmed a connection to `192.168.43.1:5555`.
+
 Use read-only ADB diagnostics first. [scripts/release-camera.sh](scripts/release-camera.sh) lists current camera owners by default; `--stop` force-stops those packages. The user has authorized stopping competing camera apps for this project. Do not disable, uninstall, root, flash, or modify vendor drivers as part of ordinary camera setup.
 
 ## Verification

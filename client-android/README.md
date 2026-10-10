@@ -2,7 +2,7 @@
 
 A small Android Things app for the Open-Q 624A: camera input → local MediaPipe pose estimation → fresh landmarks streamed to a computer browser over the LAN.
 
-The app currently streams synthetic poses over LAN HTTP on port **1337**, with Start/Stop, an editable origin allowlist, connection status, and result counters. Camera capture and MediaPipe inference are the next milestone. Synthetic mode is explicitly identified in the UI and status capabilities.
+The app currently streams synthetic poses over LAN HTTP on port **1337**, with Start/Stop, an editable origin allowlist, connection status, and result counters. MediaPipe Lite has passed a debug-only CPU compatibility check on the board; camera capture and live inference integration are next. Synthetic mode is explicitly identified in the UI and status capabilities.
 
 ## Project documents
 
@@ -11,6 +11,7 @@ The app currently streams synthetic poses over LAN HTTP on port **1337**, with S
 - [camera-to-client-streaming.md](camera-to-client-streaming.md): endpoints, pose schema, browser integration.
 - [AGENTS.md](AGENTS.md): guidance for future changes.
 - [Open-Q 624A inspection](docs/hardware/open-q-624a.md): observed firmware/camera baseline.
+- [MediaPipe compatibility](docs/hardware/mediapipe-compatibility.md): pinned artifacts, board CPU result, and probe instructions.
 
 ## Existing modules
 
@@ -24,6 +25,14 @@ The app currently streams synthetic poses over LAN HTTP on port **1337**, with S
 The wrapper requests JDK 21; configure the Android SDK locally. Native loading, capture, and performance must be checked on the board.
 
 ## Release a competing camera app
+
+If the board is disconnected, enable ADB before reconnecting:
+
+```bash
+curl --request PUT --url http://192.168.43.1:8080/api/v1/system/adb/enable
+adb connect 192.168.43.1
+adb devices -l
+```
 
 ```bash
 ./scripts/release-camera.sh                 # list owners; no mutation

@@ -1,4 +1,5 @@
 [versions]
+mediapipe = "0.10.21"
 agp = "9.1.1"
 android-compileSdk = "37"
 android-minSdk = "27"
@@ -15,6 +16,7 @@ kotlin = "2.4.20"
 material3 = "1.12.0-alpha03"
 
 [libraries]
+mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "mediapipe" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }

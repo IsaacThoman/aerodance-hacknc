@@ -12,8 +12,8 @@ Keep the existing modules and follow [ARCHITECTURE.md](ARCHITECTURE.md). Canonic
 - [x] Add a script to list/stop current camera owners.
 - [ ] Release the competing owner with `scripts/release-camera.sh --stop` during capture setup; check for restart.
 - [x] Assemble/install the starter and verify Compose on the API 27 low-RAM image.
-- [ ] Choose a pinned MediaPipe version supporting API 27 and `armeabi-v7a`. Inspect AAR/APK libraries and load it on the board.
-- [ ] Add Lite with source, version, license, and checksum; run CPU inference on a known image.
+- [x] Choose a pinned MediaPipe version supporting API 27 and `armeabi-v7a`. Inspect AAR/APK libraries and load it on the board.
+- [x] Add Lite with source, version, license, and checksum; run CPU inference on a known image.
 - [ ] Smoke-test Camera2: camera `0`, 640×480 YUV, `[30,30]`, advancing images/timestamps.
 - [ ] Verify content, orientation, row/pixel strides, permissions, and actual capture rate.
 
@@ -87,3 +87,11 @@ Website implementation belongs in the web-client repository. This repo defines i
 ## Progress — 2026-10-10
 
 The synthetic streaming slice is installed and tested on the board. Port is **1337**. See [device validation](docs/hardware/synthetic-stream-validation.md) for measured delivery and remaining acceptance checks. The app requires the exact game origin before Start and stops when the activity leaves the foreground. Camera/MediaPipe work and the deployed HTTPS browser test remain open.
+
+MediaPipe `0.10.21` and Lite float16 version 1 now pass native loading and
+known-image CPU inference on the API 27 `armeabi-v7a` board: one pose, 33 finite
+landmarks, 1,575 ms load and 491 ms first inference. See
+[compatibility validation](docs/hardware/mediapipe-compatibility.md) for artifacts,
+checksums, license, and the debug-only probe. Camera capture, LIVE_STREAM, and
+sustained throughput remain unverified; milestone 1 is still open. Reconnect
+instructions now enable ADB through the board's HTTP API before `adb connect`.
