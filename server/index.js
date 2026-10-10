@@ -13,6 +13,11 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 
+// Where the display finds the agent (phone remote relay). Same default as the agent's port.
+app.get('/api/config', (_req, res) => {
+  res.json({ agentUrl: (process.env.AGENT_URL || 'http://localhost:4000').replace(/\/$/, '') });
+});
+
 app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');

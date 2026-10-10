@@ -23,12 +23,14 @@ function requireProfile(req: Request) {
 
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const allowedOrigins = new Set([new URL(BATTLE_BASE_URL).origin]);
+// The game (BATTLE_BASE_URL) and local dev may call the API and connect remotes.
+export const allowOrigin = (origin: string | undefined) => !origin || LOCAL_ORIGIN.test(origin) || allowedOrigins.has(origin);
 
 export function createHttp(port: number) {
   const joinBase = publicUrl(port);
   const app = express();
   app.use(
-    cors({ origin: (origin, cb) => cb(null, !origin || LOCAL_ORIGIN.test(origin) || allowedOrigins.has(origin)) }),
+    cors({ origin: (origin, cb) => cb(null, allowOrigin(origin)) }),
   );
   app.use(express.json({ limit: "16kb" }));
   app.use("/app", express.static(PUBLIC_DIR));

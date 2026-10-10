@@ -100,6 +100,27 @@
   .pop { position: fixed; pointer-events: none; font-size: 26px; z-index: 9; animation: popup 1s ease-out forwards; }
   @keyframes popup { to { transform: translateY(-120px) scale(1.4); opacity: 0; } }
   a.btn { text-align: center; text-decoration: none; }
+  /* Phone remote: a white Wii-style controller inside the card. */
+  .wii { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 10px; padding: 16px 14px 14px; border-radius: 34px;
+    background: linear-gradient(90deg, #e9eef2, #ffffff 30%, #ffffff 70%, #e3e9ee);
+    box-shadow: 0 12px 28px rgba(11,61,107,.25), inset 0 2px 0 #fff, inset 0 -3px 8px rgba(11,61,107,.12); }
+  .wii .pad { width: 100%; min-height: 150px; border-radius: 22px; display: grid; place-items: center; text-align: center; padding: 12px; touch-action: none;
+    background: radial-gradient(circle at 50% 35%, #f6fbff, #dfe9f0); border: 1px solid #d3dee6; color: #8aa0b2; font-size: 13px; font-weight: 700;
+    box-shadow: inset 0 3px 8px rgba(11,61,107,.12); }
+  .wii .pad.live { color: var(--aqua-deep); }
+  .wii .a { width: 112px; height: 112px; border-radius: 50%; border: 0; font: 900 44px/1 -apple-system, system-ui, sans-serif; color: #5d6e7c; touch-action: none;
+    background: radial-gradient(circle at 40% 30%, #ffffff, #dfe7ed 70%, #c7d3dc); box-shadow: 0 8px 18px rgba(11,61,107,.25), inset 0 -4px 8px rgba(11,61,107,.15); }
+  .wii .keys { display: flex; gap: 12px; align-items: center; justify-content: center; width: 100%; }
+  .wii .b, .wii .small { border: 0; font: 800 14px -apple-system, system-ui, sans-serif; color: #5d6e7c; border-radius: 999px; padding: 12px 14px; touch-action: none;
+    background: linear-gradient(180deg, #ffffff, #dfe7ed); box-shadow: 0 5px 12px rgba(11,61,107,.2); }
+  .wii .b { width: 70px; height: 70px; border-radius: 50%; font-size: 24px; font-weight: 900; }
+  .wii .small.on { color: #fff; background: linear-gradient(180deg, #7fdcff, var(--aqua-deep)); }
+  .wii .tune { width: 100%; font-size: 13px; color: #5d6e7c; }
+  .wii .tune summary { text-align: center; font-weight: 800; cursor: pointer; padding: 4px; }
+  .wii .tune label { display: block; margin: 10px 4px 0; color: #5d6e7c; }
+  .wii .tune input[type=range] { width: 100%; padding: 0; box-shadow: none; border: 0; background: none; accent-color: var(--aqua); }
+  .wii .tune .keys { margin-top: 10px; flex-wrap: wrap; }
+  .wii .down { transform: scale(.93); box-shadow: 0 3px 8px rgba(11,61,107,.25), inset 0 3px 8px rgba(11,61,107,.2); }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -129,6 +150,40 @@
     <p class="sub" id="status"></p>
     <div class="dancers" id="dancers"></div>
     <p class="sub hidden" id="receipt" style="margin-top:12px"></p>
+  </section>
+
+  <!-- phone remote for the menu screen (QR on the screen opens /join?remote=CODE) -->
+  <section class="card hidden" id="remoteCard">
+    <div class="row">
+      <h2 style="margin:0">🎮 You're the remote!</h2>
+      <button class="link" id="remoteRelease" type="button">Hand off</button>
+    </div>
+    <div class="wii">
+      <div class="pad" id="pad">Drag here to move the cursor<br />or tap 🎯 to point with your phone</div>
+      <button class="a" id="remoteA" type="button">A</button>
+      <div class="keys">
+        <button class="b" id="remoteB" type="button" aria-label="Back">B</button>
+        <button class="small" id="remoteMotion" type="button">🎯 Point</button>
+        <button class="small" id="remoteCenter" type="button">⊙ Center</button>
+      </div>
+      <details class="tune">
+        <summary>⚙️ Tune pointing</summary>
+        <label>Speed <b id="tuneSpeedVal"></b><input type="range" id="tuneSpeed" min="0.3" max="3" step="0.1" /></label>
+        <label>Steadiness <b id="tuneDeadVal"></b><input type="range" id="tuneDead" min="0" max="10" step="0.5" /></label>
+        <div class="keys">
+          <button class="small" id="tuneFlipX" type="button">⇆ Flip left/right</button>
+          <button class="small" id="tuneFlipY" type="button">⇅ Flip up/down</button>
+        </div>
+        <div class="keys"><button class="small" id="tuneSwap" type="button">↻ Swap axes</button><button class="small" id="tuneReset" type="button">Reset</button></div>
+      </details>
+    </div>
+    <p class="hint" id="remoteStatus" style="text-align:center"></p>
+  </section>
+
+  <section class="card hidden" id="remoteTaken">
+    <h2>🎮 The remote is taken</h2>
+    <p style="margin:0"><b id="remoteHolder"></b> already has the remote for this screen. Your stats are below ✨</p>
+    <button class="btn" id="remoteRetry" type="button">Try again</button>
   </section>
 
   <!-- no battle: how to join -->
@@ -166,6 +221,7 @@
 </main>
 <div class="toast" id="toast"></div>
 
+<script src="/socket.io/socket.io.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -260,6 +316,7 @@
       device = res.deviceToken; store.set("aero.device", device); me = res.me;
       show("formCard", false); renderMe();
       if (battleId && role == null) await joinBattle();
+      startRemote();
     } catch (err) {
       toast("🐠 " + esc(err.message));
     } finally { btn.disabled = false; }
@@ -369,11 +426,156 @@
   show("installCard", isIOS && !standalone && !store.get("aero.installDismissed"));
   $("dismissInstall").onclick = () => { store.set("aero.installDismissed", "1"); show("installCard", false); };
 
+  // ---------- phone remote ----------
+  // The first player to open /join?remote=CODE holds the remote for that screen. Motion
+  // comes from the gyroscope (Wii-style pointing) or from dragging on the pad.
+  const remoteCode = (new URLSearchParams(location.search).get("remote") || "").toUpperCase() || null;
+  const GYRO_GAIN = 42;   // menu design units (1600 wide) per degree turned, at speed 1
+  const TOUCH_GAIN = 2.6; // per CSS pixel dragged, at speed 1
+
+  // Per-phone tuning, saved on this device: speed, deadzone (deg/s a still hand may
+  // wobble without moving the cursor), axis flips and swap.
+  const TUNE_DEFAULT = { speed: 1, dead: 2.5, flipX: false, flipY: false, swap: false };
+  let tune = { ...TUNE_DEFAULT };
+  try { tune = { ...tune, ...JSON.parse(store.get("aero.remoteTune") || "{}") }; } catch {}
+  function renderTune() {
+    $("tuneSpeed").value = tune.speed; $("tuneSpeedVal").textContent = `${tune.speed.toFixed(1)}×`;
+    $("tuneDead").value = tune.dead; $("tuneDeadVal").textContent = `${tune.dead}°/s`;
+    $("tuneFlipX").classList.toggle("on", tune.flipX);
+    $("tuneFlipY").classList.toggle("on", tune.flipY);
+    $("tuneSwap").classList.toggle("on", tune.swap);
+    store.set("aero.remoteTune", JSON.stringify(tune));
+  }
+  $("tuneSpeed").oninput = () => { tune.speed = Number($("tuneSpeed").value); renderTune(); };
+  $("tuneDead").oninput = () => { tune.dead = Number($("tuneDead").value); renderTune(); };
+  for (const k of ["FlipX", "FlipY", "Swap"]) {
+    const key = k[0].toLowerCase() + k.slice(1);
+    $("tune" + k).onclick = () => { tune[key] = !tune[key]; renderTune(); };
+  }
+  $("tuneReset").onclick = () => { tune = { ...TUNE_DEFAULT }; renderTune(); };
+  renderTune();
+  let rsock = null, holding = false, pending = { dx: 0, dy: 0 };
+
+  function startRemote() {
+    if (!remoteCode || !device || rsock) return;
+    rsock = io();
+    rsock.on("connect", claimRemote); // also re-claims after a reconnect
+    rsock.on("disconnect", () => { if (holding) $("remoteStatus").textContent = "Reconnecting…"; });
+    rsock.on("remote:ended", ({ reason }) => {
+      holding = false;
+      show("remoteCard", false);
+      toast(reason === "moved" ? "🎮 The remote moved to your other device" : "🎮 That screen turned off");
+    });
+    requestAnimationFrame(sendMoves);
+  }
+
+  function claimRemote() {
+    rsock.emit("remote:claim", { code: remoteCode, deviceToken: device }, (r) => {
+      holding = !!r?.ok;
+      show("remoteCard", holding);
+      show("remoteTaken", r?.reason === "taken");
+      show("scanCard", false);
+      if (holding) { $("remoteStatus").textContent = `Controlling screen ${remoteCode}`; keepAwake(); }
+      else if (r?.reason === "taken") $("remoteHolder").textContent = r.holder || "Someone";
+      else if (r?.reason === "gone") { toast("🎮 " + esc(r.error)); show("scanCard", !battleId); }
+    });
+  }
+  $("remoteRetry").onclick = claimRemote;
+  $("remoteRelease").onclick = () => {
+    rsock?.emit("remote:release");
+    holding = false;
+    show("remoteCard", false);
+    toast("🎮 Remote handed off");
+  };
+
+  // Gyro pointing. Yaw is the spin around the world's vertical axis, so it works held
+  // flat like a Wii remote or upright; pitch is tilting the top edge up and down.
+  let motionOn = false, upVec = null, lastMotion = 0;
+  const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  function onMotion(e) {
+    const g = e.accelerationIncludingGravity, r = e.rotationRate;
+    if (!g || !r || g.x == null || r.alpha == null) return;
+    // Rotation rate around the phone's own x / y / z axes. Safari on iOS reports
+    // alpha/beta/gamma as x/y/z; the spec (and Android) uses alpha=z, beta=x, gamma=y.
+    const rx = iOS ? r.alpha : r.beta, ry = iOS ? r.beta : r.gamma, rz = iOS ? r.gamma : r.alpha;
+    const sgn = iOS ? -1 : 1; // iOS reports gravity with the opposite sign to Android
+    const gx = g.x * sgn, gy = g.y * sgn, gz = g.z * sgn;
+    upVec = upVec ? { x: upVec.x * 0.9 + gx * 0.1, y: upVec.y * 0.9 + gy * 0.1, z: upVec.z * 0.9 + gz * 0.1 } : { x: gx, y: gy, z: gz };
+    const now = performance.now();
+    const dt = lastMotion ? Math.min((now - lastMotion) / 1000, 0.1) : 0;
+    lastMotion = now;
+    if (!dt) return;
+    const len = Math.hypot(upVec.x, upVec.y, upVec.z) || 1;
+    let yaw = (rx * upVec.x + ry * upVec.y + rz * upVec.z) / len;
+    let pitch = rx;
+    if (tune.swap) [yaw, pitch] = [pitch, yaw];
+    const k = dt * GYRO_GAIN * tune.speed;
+    if (Math.abs(yaw) > tune.dead) pending.dx -= yaw * k * (tune.flipX ? -1 : 1);
+    if (Math.abs(pitch) > tune.dead) pending.dy -= pitch * k * (tune.flipY ? -1 : 1);
+  }
+  async function toggleMotion() {
+    if (motionOn) {
+      window.removeEventListener("devicemotion", onMotion);
+      motionOn = false;
+    } else {
+      try {
+        if (typeof DeviceMotionEvent === "undefined") throw new Error("unsupported");
+        // iOS only grants motion from inside a tap, so this runs from the 🎯 button.
+        if (typeof DeviceMotionEvent.requestPermission === "function" && (await DeviceMotionEvent.requestPermission()) !== "granted") throw new Error("denied");
+        window.addEventListener("devicemotion", onMotion);
+        motionOn = true;
+        lastMotion = 0;
+      } catch { toast("🎯 Motion isn't available. Drag on the pad instead"); }
+    }
+    $("remoteMotion").classList.toggle("on", motionOn);
+    $("pad").classList.toggle("live", motionOn);
+    $("pad").innerHTML = motionOn ? "Point your phone at the screen 🎯<br />or drag here" : "Drag here to move the cursor<br />or tap 🎯 to point with your phone";
+  }
+  $("remoteMotion").onclick = toggleMotion;
+
+  let padDrag = null;
+  $("pad").addEventListener("pointerdown", (e) => { padDrag = { x: e.clientX, y: e.clientY }; $("pad").setPointerCapture(e.pointerId); });
+  $("pad").addEventListener("pointermove", (e) => {
+    if (!padDrag) return;
+    pending.dx += (e.clientX - padDrag.x) * TOUCH_GAIN * tune.speed;
+    pending.dy += (e.clientY - padDrag.y) * TOUCH_GAIN * tune.speed;
+    padDrag = { x: e.clientX, y: e.clientY };
+  });
+  for (const t of ["pointerup", "pointercancel"]) $("pad").addEventListener(t, () => { padDrag = null; });
+
+  function remoteButton(el, name) {
+    let down = false;
+    const press = (pressed) => {
+      el.classList.toggle("down", pressed);
+      if (holding) rsock.emit("remote:button", { button: name, pressed });
+      if (pressed) navigator.vibrate?.(name === "a" ? 25 : 15);
+    };
+    el.addEventListener("pointerdown", (e) => { e.preventDefault(); down = true; press(true); });
+    for (const t of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(t, () => { if (down) { down = false; press(false); } });
+  }
+  remoteButton($("remoteA"), "a");
+  remoteButton($("remoteB"), "b");
+  remoteButton($("remoteCenter"), "center");
+
+  // At most one move per frame; volatile so a slow network drops stale moves.
+  function sendMoves() {
+    if (holding && (pending.dx || pending.dy)) {
+      rsock.volatile.emit("remote:move", { dx: Math.round(pending.dx * 10) / 10, dy: Math.round(pending.dy * 10) / 10 });
+    }
+    pending = { dx: 0, dy: 0 };
+    requestAnimationFrame(sendMoves);
+  }
+
+  let wakeLock = null;
+  async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && holding && (!wakeLock || wakeLock.released)) keepAwake(); });
+
   // ---------- boot ----------
   (async () => {
     if (device) await refreshMe();
     if (!me) return openForm(false);
-    if (battleId) await joinBattle(); else show("scanCard", true);
+    if (remoteCode) startRemote();
+    if (battleId) await joinBattle(); else if (!remoteCode) show("scanCard", true);
   })();
   setInterval(() => { if (battleId && role && !document.hidden) poll(); }, 2000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && battleId && role) poll(); });

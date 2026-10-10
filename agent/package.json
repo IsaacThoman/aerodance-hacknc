@@ -19,6 +19,7 @@
     "cors": "^2.8.6",
     "express": "^5.3.0",
     "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
     "spectrum-ts": "^12.10.1"
   },
   "devDependencies": {

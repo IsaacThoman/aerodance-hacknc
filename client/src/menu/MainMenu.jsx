@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { remote } from '../remote/remoteLink.js';
 
 /**
  * Title menu drawn in-engine: a 2D canvas the size of the render buffer is laid out
@@ -10,6 +11,9 @@ import * as THREE from 'three';
  *
  * Screens: main (Start + settings), start (random / select song), songs (song list),
  * settings (sound).
+ *
+ * Input comes from the mouse/touch on the canvas or from a paired phone remote
+ * (remoteLink.js), whose cursor is drawn here in the menu's own pixels.
  *
  * <MainMenu visible onStart={(mode, song) => ...} sound={sound} onSoundChange={setSound} />
  */
@@ -372,6 +376,36 @@ function drawHeader(g, label, hover) {
   g.restore();
 }
 
+// The phone remote's pointer: a glossy aqua arrow with a soft glow, like a Wii cursor.
+function drawRemoteCursor(g, { x, y }, press) {
+  const s = 1 - press * 0.12;
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  g.rotate(-0.42);
+  g.shadowColor = 'rgba(0, 40, 90, 0.55)';
+  g.shadowBlur = 12;
+  g.shadowOffsetY = 4;
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(22, 54);
+  g.lineTo(0, 44);
+  g.lineTo(-22, 54);
+  g.closePath();
+  const body = g.createLinearGradient(0, 0, 0, 54);
+  body.addColorStop(0, '#ffffff');
+  body.addColorStop(0.5, '#8fe3ff');
+  body.addColorStop(1, '#13a8e8');
+  g.fillStyle = body;
+  g.fill();
+  g.shadowColor = 'transparent';
+  g.lineWidth = 4;
+  g.lineJoin = 'round';
+  g.strokeStyle = '#0c2f52';
+  g.stroke();
+  g.restore();
+}
+
 function drawSoundPanel(g, sound, hover) {
   const { x, y, w, h } = PANEL;
   const base = g.globalAlpha;
@@ -485,7 +519,7 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
   }, []);
 
   const state = useRef({
-    pointer: null, hover: {}, press: 0, spin: 0, gearAngle: 0, alpha: 0,
+    pointer: null, remote: null, hover: {}, press: 0, spin: 0, gearAngle: 0, alpha: 0,
     screen: 'main', next: 'main', swap: 1, drag: null, drawnSound: null, dirty: true,
   });
   const props = useRef({});
@@ -507,36 +541,47 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
       cb?.({ ...cur, ...patch });
     };
 
-    const onMove = (e) => {
-      s.pointer = toDesign(e);
-      if (s.drag) setSound({ [s.drag]: sliderValue(s.pointer.x) });
-      el.style.cursor = s.drag || widgetAt(s.pointer) ? 'pointer' : '';
+    // Shared by the mouse and the phone remote; p is in design units.
+    const pointerMove = (p) => {
+      s.pointer = p;
+      if (s.drag) setSound({ [s.drag]: sliderValue(p.x) });
     };
-    const onLeave = () => { s.pointer = null; el.style.cursor = ''; };
     // Buttons fire on release when the press started on the same button, so a
     // press anywhere on the bubble counts even if the pointer wobbles a little.
-    const onDown = (e) => {
-      if (e.button !== 0) return;
-      const p = toDesign(e);
+    const pointerDown = (p) => {
       s.pointer = p;
       const wdg = widgetAt(p);
-      if (!wdg) return;
-      el.setPointerCapture(e.pointerId);
+      if (!wdg) return false;
       if (wdg.slider) {
         s.drag = wdg.id;
         setSound({ [wdg.id]: sliderValue(p.x) });
       } else {
         s.pressed = wdg.id;
       }
+      return true;
     };
-    const onUp = (e) => {
-      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    const pointerUp = (p) => {
       if (s.drag) { s.drag = null; return; }
       const id = s.pressed;
       s.pressed = null;
       if (!id) return;
-      const wdg = widgetAt(toDesign(e));
+      const wdg = widgetAt(p);
       if (wdg?.id === id) activate(wdg);
+    };
+    const back = () => { if (active() && PARENT[s.screen]) go(PARENT[s.screen]); };
+
+    const onMove = (e) => {
+      pointerMove(toDesign(e));
+      el.style.cursor = s.drag || widgetAt(s.pointer) ? 'pointer' : '';
+    };
+    const onLeave = () => { s.pointer = null; el.style.cursor = ''; };
+    const onDown = (e) => {
+      if (e.button !== 0) return;
+      if (pointerDown(toDesign(e))) el.setPointerCapture(e.pointerId);
+    };
+    const onUp = (e) => {
+      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      pointerUp(toDesign(e));
     };
     const onCancel = (e) => {
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
@@ -556,7 +601,14 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
         default:
       }
     };
-    const onKey = (e) => { if (e.key === 'Escape' && active() && PARENT[s.screen]) go(PARENT[s.screen]); };
+    const onKey = (e) => { if (e.key === 'Escape') back(); };
+
+    const onRemoteMove = (e) => { s.remote = e.detail; pointerMove(e.detail); s.dirty = true; };
+    const onRemoteDown = (e) => { s.remote = e.detail; pointerDown(e.detail); s.dirty = true; };
+    const onRemoteUp = (e) => { pointerUp(e.detail); s.dirty = true; };
+    const onRemoteLeave = () => { s.remote = null; s.pointer = null; s.drag = null; s.pressed = null; s.dirty = true; };
+    const remoteHandlers = { move: onRemoteMove, down: onRemoteDown, up: onRemoteUp, back, leave: onRemoteLeave };
+    for (const [type, fn] of Object.entries(remoteHandlers)) remote.addEventListener(type, fn);
 
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerleave', onLeave);
@@ -579,6 +631,7 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
       el.removeEventListener('pointerup', onUp);
       el.removeEventListener('pointercancel', onCancel);
       window.removeEventListener('keydown', onKey);
+      for (const [type, fn] of Object.entries(remoteHandlers)) remote.removeEventListener(type, fn);
       el.style.cursor = '';
     };
   }, [gl]);
@@ -672,6 +725,7 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
         drawSoundPanel(g, snd, h);
       }
       g.restore();
+      if (s.remote) drawRemoteCursor(g, s.remote, s.pressed || s.drag ? 1 : 0);
       ui.texture.needsUpdate = true;
     }
 

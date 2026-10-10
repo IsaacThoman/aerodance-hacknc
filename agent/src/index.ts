@@ -2,7 +2,8 @@
 import { loadTreasury } from "./solana.ts"; // importing this runs the devnet guard
 import { startSweeper } from "./battles.ts";
 import { setNotifier } from "./players.ts";
-import { createHttp, publicUrl } from "./http.ts";
+import { allowOrigin, createHttp, publicUrl } from "./http.ts";
+import { attachRemote } from "./remote.ts";
 import { startBot } from "./bot.ts";
 import { PORT } from "./urls.ts";
 
@@ -14,9 +15,10 @@ const bot = await startBot();
 setNotifier(bot.notify);
 startSweeper();
 
-createHttp(PORT).listen(PORT, () => {
+const server = createHttp(PORT).listen(PORT, () => {
   console.log(`🫧 aerodance agent: http://localhost:${PORT}`);
   console.log(`📱 phones join at: ${publicUrl(PORT)}/join/<battleId>`);
 });
+attachRemote(server, allowOrigin);
 
 await bot.run();
