@@ -4,7 +4,7 @@
   "description": "React + three.js canvas served by Express, realtime via Socket.IO, backed by TimescaleDB",
   "scripts": {
     "dev": "concurrently -n server,client -c blue,magenta \"node --watch server/index.js\" \"vite\"",
-    "build": "vite build",
+    "build": "vite build && vite build --config temp/frutiger-character/vite.config.js --base=/dance/ --outDir=../../../dist/dance",
     "start": "NODE_ENV=production node server/index.js"
   },
   "type": "module",

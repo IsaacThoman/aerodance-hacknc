@@ -8,11 +8,25 @@ import {
   BufferAttribute,
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { createRetargeter } from "./motion.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 
-export default function Character({ appearance, animation = "Idle" }) {
-  const gltf = useLoader(GLTFLoader, "/models/aero-character.glb");
+export default function Character({
+  appearance,
+  animation = "Idle",
+  motion,
+  person = 0,
+  playback,
+}) {
+  const gltf = useLoader(
+    GLTFLoader,
+    `${import.meta.env.BASE_URL}models/aero-character.glb`,
+  );
   const model = useMemo(() => clone(gltf.scene), [gltf]);
+  const retarget = useMemo(
+    () => (motion ? createRetargeter(model, motion, person) : null),
+    [model, motion, person],
+  );
   const mixer = useMemo(() => new AnimationMixer(model), [model]);
   const ink = useMemo(() => new MeshBasicMaterial({ color: "#020611" }), []);
   const gel = useMemo(() => {
@@ -98,13 +112,17 @@ export default function Character({ appearance, animation = "Idle" }) {
     });
   }, [appearance, model, gel]);
   useEffect(() => {
+    if (retarget) return;
     const clip = gltf.animations.find((c) => c.name === animation);
     if (!clip) return;
     const action = mixer.clipAction(clip).reset().fadeIn(0.25).play();
     return () => {
       action.fadeOut(0.25);
     };
-  }, [animation, gltf, mixer]);
-  useFrame((_, delta) => mixer.update(Math.min(delta, 0.05)));
+  }, [animation, gltf, mixer, retarget]);
+  useFrame((_, delta) => {
+    if (retarget) retarget(playback.current);
+    else mixer.update(Math.min(delta, 0.05));
+  });
   return <primitive object={model} dispose={null} />;
 }

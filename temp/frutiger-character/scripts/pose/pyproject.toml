@@ -1,0 +1,8 @@
+[project]
+name = "aerodance-pose"
+version = "1.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["mediapipe==0.10.21", "opencv-contrib-python-headless==4.11.0.86", "numpy==1.26.4", "scipy==1.17.1"]
+
+[tool.uv]
+exclude-dependencies = ["opencv-contrib-python"]
