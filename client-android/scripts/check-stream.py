@@ -65,15 +65,17 @@ while time.monotonic() - started < 11:
     line = response.readline(16386)
     assert line.endswith(b"\n") and len(line) <= 16385
     record = json.loads(line)
-    assert record["protocolVersion"] == 1 and record["sessionId"] == session
+    assert record["protocolVersion"] == 2 and record["sessionId"] == session
     if record["type"] != "pose":
         continue
     assert record["seq"] > previous
     previous = record["seq"]
     assert record["resultTimeMs"] >= record["frameReceivedTimeMs"]
     assert record["input"] == {"width": 480, "height": 640, "mirrored": False}
+    assert record["playerCount"] == 1
     assert len(record["poses"]) <= 1
     for pose in record["poses"]:
+        assert pose["playerId"] == 0
         assert len(pose["landmarks"]) == 33
     empty |= not record["poses"]
     arrivals.append(time.monotonic())

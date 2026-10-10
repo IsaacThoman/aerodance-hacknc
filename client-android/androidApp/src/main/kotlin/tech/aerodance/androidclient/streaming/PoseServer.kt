@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /** Small HTTP/1.1 server: fixed workers, no request queue, one conflated result, one stream. */
-class PoseServer(private val deviceId: String, private val origins: Set<String>, private val synthetic: Boolean = true) : AutoCloseable {
+class PoseServer(private val deviceId: String, private val origins: Set<String>, private val synthetic: Boolean = true, initialPlayerCount: Int = 1) : AutoCloseable {
     val sessionId: String = UUID.randomUUID().toString()
     private val listener = ServerSocket()
     private val running = AtomicBoolean(false)
@@ -22,7 +22,8 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
     private val workers = ThreadPoolExecutor(4, 4, 0, TimeUnit.SECONDS, SynchronousQueue())
     private val producer = Executors.newSingleThreadScheduledExecutor()
     private val watchdog = Executors.newSingleThreadScheduledExecutor()
-    private var seq = 0L
+    private val output = PlayerOutput(sessionId, initialPlayerCount)
+    val playerCount: Int get() = synchronized(signal) { output.playerCount }
     @Volatile var state = PipelineState.starting
     val connected: Boolean get() = stream.get()
     val resultCount: Long get() = latest.get()?.seq ?: 0
@@ -34,7 +35,10 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
             running.set(true)
             if (synthetic) producer.scheduleAtFixedRate({
                 val now = SystemClock.elapsedRealtime()
-                publish(syntheticPose(sessionId, ++seq, now))
+                synchronized(signal) {
+                    val fixture = syntheticPose(sessionId, 1, now, output.playerCount)
+                    publish(InferenceResult(now, now, fixture.width, fixture.height, fixture.poses))
+                }
             }, 0, 33, TimeUnit.MILLISECONDS)
             if (synthetic) state = PipelineState.running
             watchdog.scheduleAtFixedRate({
@@ -73,7 +77,6 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
                 bytes.write(b)
                 tail = (tail shl 8) or b
             }
-            deadline.set(0)
             val lines = bytes.toString("US-ASCII").split("\r\n")
             val request = lines.first().split(' ')
             if (request.size != 3 || request[2] != "HTTP/1.1") return
@@ -90,16 +93,63 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
                 write(socket, deadline, "HTTP/1.1 $code\r\n${cors}Connection: close\r\nCache-Control: no-store\r\nContent-Type: application/json\r\n${extra}Content-Length: ${data.size}\r\n\r\n".toByteArray() + data)
             }
             if (!allowed) { respond("403 Forbidden", "{\"error\":\"Origin not allowed\"}"); return }
-            if (request[1] !in setOf("/v1/status", "/v1/stream")) { respond("404 Not Found", "{}"); return }
+            if (request[1] !in setOf("/v1/status", "/v1/stream", "/v1/config")) { respond("404 Not Found", "{}"); return }
+            val control = request[1] == "/v1/config"
+            val method = if (control) "POST" else "GET"
+            if (control && origin == null) { respond("403 Forbidden", "{\"error\":\"Configured Origin required\"}"); return }
             if (request[0] == "OPTIONS") {
-                if (headers["access-control-request-method"]?.let { it != "GET" } == true || !headers["access-control-request-headers"].isNullOrEmpty()) {
+                val requestedHeaders = headers["access-control-request-headers"].orEmpty()
+                    .split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+                if (headers["access-control-request-method"]?.let { it != method } == true ||
+                    requestedHeaders.any { !control || it != "content-type" }) {
                     respond("403 Forbidden", "{}"); return
                 }
-                respond("204 No Content", "", "Access-Control-Allow-Methods: GET, OPTIONS\r\n")
+                respond("204 No Content", "", "Access-Control-Allow-Methods: $method, OPTIONS\r\n" +
+                    if (control) "Access-Control-Allow-Headers: Content-Type\r\n" else "")
                 return
             }
-            if (request[0] != "GET") { respond("405 Method Not Allowed", "{}", "Allow: GET, OPTIONS\r\n"); return }
-            if (request[1] == "/v1/status") { respond("200 OK", status(deviceId, sessionId, state, synthetic)); return }
+            if (request[0] != method) { respond("405 Method Not Allowed", "{}", "Allow: $method, OPTIONS\r\n"); return }
+            if (control) {
+                if (headers.containsKey("transfer-encoding") || headers.containsKey("content-encoding") || headers.containsKey("expect")) {
+                    respond("400 Bad Request", "{\"error\":\"Unsupported request framing\"}"); return
+                }
+                if (headers["content-type"]?.lowercase()?.matches(Regex("application/json(?:;\\s*charset=utf-8)?")) != true) {
+                    respond("415 Unsupported Media Type", "{}"); return
+                }
+                val lengthText = headers["content-length"]
+                val length = lengthText?.takeIf { it.matches(Regex("[0-9]+")) }?.toLongOrNull()
+                if (length == null) { respond("400 Bad Request", "{}"); return }
+                if (length > 1024) { respond("413 Payload Too Large", "{}"); return }
+                val body = ByteArray(length.toInt())
+                var offset = 0
+                while (offset < body.size) {
+                    val n = input.read(body, offset, body.size - offset)
+                    if (n < 0) { respond("400 Bad Request", "{}"); return }
+                    offset += n
+                }
+                if (socket.isClosed || SystemClock.elapsedRealtime() >= deadline.get()) return
+                val count = try {
+                    val decoder = Charsets.UTF_8.newDecoder()
+                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    parsePlayerCount(decoder.decode(java.nio.ByteBuffer.wrap(body)).toString())
+                } catch (_: Exception) { respond("400 Bad Request", "{}"); return }
+                // The lock holds only mapping/publication, never GPU work or socket writes.
+                val applied = synchronized(signal) {
+                    if (!running.get() || socket.isClosed || SystemClock.elapsedRealtime() >= deadline.get()) return@synchronized null
+                    output.configure(count, SystemClock.elapsedRealtime()).also {
+                        latest.set(output.latest)
+                        signal.notifyAll()
+                    }
+                }
+                if (applied == null) return
+                respond("200 OK", applied.json())
+                return
+            }
+            deadline.set(0)
+            if (request[1] == "/v1/status") {
+                respond("200 OK", status(deviceId, sessionId, state, synthetic, playerCount)); return
+            }
             if (!stream.compareAndSet(false, true)) { respond("409 Conflict", "{\"error\":\"A browser is already connected\"}"); return }
             ownsStream = true
             write(socket, deadline, "HTTP/1.1 200 OK\r\n${cors}Content-Type: application/x-ndjson\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".toByteArray())
@@ -130,11 +180,10 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
         }
     }
 
-    fun publish(record: PoseRecord) {
-        require(record.sessionId == sessionId)
-        if (!running.get()) return
-        latest.set(record)
-        synchronized(signal) { signal.notifyAll() }
+    fun publish(result: InferenceResult) = synchronized(signal) {
+        if (!running.get()) return@synchronized
+        latest.set(output.publish(result))
+        signal.notifyAll()
     }
 
     private fun write(socket: Socket, deadline: AtomicLong, bytes: ByteArray) {

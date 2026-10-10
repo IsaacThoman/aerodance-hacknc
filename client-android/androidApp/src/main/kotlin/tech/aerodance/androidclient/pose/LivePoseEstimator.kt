@@ -17,14 +17,13 @@ import tech.aerodance.androidclient.pipeline.LatestFrameMailbox
 import tech.aerodance.androidclient.pipeline.TaskTimestamps
 import tech.aerodance.androidclient.protocol.Landmark
 import tech.aerodance.androidclient.protocol.Pose
-import tech.aerodance.androidclient.protocol.PoseRecord
+import tech.aerodance.androidclient.protocol.InferenceResult
 
 /** GPU inference: one input in flight, one replaceable camera image, no per-frame runnable queue. */
 class LivePoseEstimator(
     context: Context,
-    private val sessionId: String,
     private val rotation: Int,
-    private val onResult: (PoseRecord, Long, Long) -> Unit,
+    private val onResult: (InferenceResult, Long, Long) -> Unit,
     private val onError: (Throwable) -> Unit,
     private val onClosed: () -> Unit = {},
 ) : AutoCloseable {
@@ -43,7 +42,6 @@ class LivePoseEstimator(
     private val converter = YuvToBitmap()
     private var task: PoseLandmarker? = null
     private var input: Input? = null
-    private var seq = 0L
     val replacements: Long get() = synchronized(lock) { mailbox.replacements }
     private val watchdog = Runnable { fail(IllegalStateException("No inference callback within 5 seconds")) }
 
@@ -56,7 +54,7 @@ class LivePoseEstimator(
                     PoseLandmarker.PoseLandmarkerOptions.builder()
                         .setBaseOptions(BaseOptions.builder().setModelAssetPath("pose_landmarker_lite.task")
                             .setDelegate(Delegate.GPU).build())
-                        .setRunningMode(RunningMode.LIVE_STREAM).setNumPoses(1)
+                        .setRunningMode(RunningMode.LIVE_STREAM).setNumPoses(2)
                         .setOutputSegmentationMasks(false)
                         .setResultListener { result, _ ->
                             val completed = SystemClock.elapsedRealtime()
@@ -115,7 +113,7 @@ class LivePoseEstimator(
         if (timestamp != admitted.timestamp) return fail(IllegalStateException("Mismatched task timestamp"))
         worker.removeCallbacks(watchdog)
         try {
-            val record = PoseRecord(sessionId, ++seq, admitted.arrival, completed,
+            val record = InferenceResult(admitted.arrival, completed,
                 admitted.bitmap.width, admitted.bitmap.height, poses)
             onResult(record, admitted.conversionMs, completed - admitted.submitted)
         } catch (error: Exception) { fail(error); return }

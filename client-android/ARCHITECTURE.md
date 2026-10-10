@@ -1,5 +1,12 @@
 # Architecture
 
+> Current planning update (2026-10-10): the user accepts the GPU/libyuv performance
+> baseline; extended performance benchmarks are deferred. Game-selected one/two-player
+> capture with fixed-side player IDs is implemented. See
+> [the feature plan](PLAN.md#next-feature-game-selected-one--or-two-player-capture).
+> The implemented protocol is version 2, with game-selected one/two-player
+> output and one persistent two-pose GPU task.
+
 ## Goal and current state
 
 The Open-Q 624A captures frames and estimates poses locally with MediaPipe. A computer browser receives landmarks over a persistent LAN connection and can forward them through the game's existing backend connection. Local consumption must not wait for the backend.
@@ -64,7 +71,7 @@ Drain with `acquireLatestImage()` on a camera worker. Start with `maxImages = 3`
 JNI libyuv is the sole camera converter and writes directly into the
 inference-owned bitmap at 0°. Capture snapshots use libyuv as well; see [conversion implementation and measurements](docs/libyuv-conversion.md).
 
-Use MediaPipe Tasks Pose Landmarker with `RunningMode.LIVE_STREAM` and `detectAsync()`. Start with Lite, one pose, segmentation disabled, and default confidence thresholds. Package the model for offline operation. See the [Android task guide](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/android).
+Use MediaPipe Tasks Pose Landmarker with `RunningMode.LIVE_STREAM` and `detectAsync()`. Use Lite, a detection limit of two poses in both game modes, segmentation disabled, and default confidence thresholds. Package the model for offline operation. See the [Android task guide](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/android).
 
 GPU is the sole delegate; CPU selection and its saved UI switch have been removed at the user’s request. Short board probes establish GPU callback delivery and faster mean inference, with slow initialization; real-person accuracy and sustained latency/stability still need comparison. Create, invoke, and close a GPU task on its required owning thread. Reported GLES support does not prove delegate compatibility.
 
@@ -87,7 +94,14 @@ Sequence gaps are normal. Pose state needs no acknowledgment or replay. Game eve
 
 ## Lifecycle and UI
 
-A `PipelineController` owns the camera, estimator, server, workers, and shutdown. Start once, stop idempotently, and handle camera contention, model errors, Wi-Fi changes, and disconnects without leaks.
+A `PipelineController` owns the camera, estimator, server, workers, and shutdown.
+`LivePoseEstimator` delivers immutable common `InferenceResult` values without wire
+sequence allocation. `PoseServer` serializes `PlayerOutput` publication and config
+under one short lock: select players, allocate sequences, replace the snapshot and
+notify the writer. Mode changes publish an empty snapshot, preserving the camera,
+GPU task, session and open stream. No socket write or native inference holds that
+lock. `MainActivity` preserves the selected count in process memory across activity
+recreation; a fresh process defaults to one player. Start once, stop idempotently, and handle camera contention, model errors, Wi-Fi changes, and disconnects without leaks.
 
 Initially run while the activity is active; stop on leaving that lifecycle and restart automatically on launch/return using the saved origin after initial setup. Manual Stop pauses streaming until Start or the next foreground entry. A service and boot launch are a later milestone: verify this image's launcher/permissions, using an appropriate foreground service if continuous capture is required. Capture lifetime is independent of browser connections.
 

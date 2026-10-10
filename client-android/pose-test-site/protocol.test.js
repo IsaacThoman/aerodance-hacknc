@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {MAX_BYTES, NdjsonDecoder, PoseState, validate, deviceEndpoint} from './dist/protocol.js';
-const pose = (seq = 1, sessionId = 'session') => ({protocolVersion:1,type:'pose',sessionId,seq,frameReceivedTimeMs:10,resultTimeMs:20,input:{width:480,height:640,mirrored:false},poses:[{landmarks:Array.from({length:33},()=>({x:.5,y:.4,z:-.1,visibility:.99,presence:null}))}]});
-const heartbeat = {protocolVersion:1,type:'heartbeat',sessionId:'session',producerTimeMs:30,lastPoseSeq:1,pipelineState:'running'};
+const pose = (seq = 1, sessionId = 'session') => ({protocolVersion:2,type:'pose',sessionId,seq,frameReceivedTimeMs:10,resultTimeMs:20,playerCount:1,input:{width:480,height:640,mirrored:false},poses:[{playerId:0,landmarks:Array.from({length:33},()=>({x:.5,y:.4,z:-.1,visibility:.99,presence:null}))}]});
+const heartbeat = {protocolVersion:2,type:'heartbeat',sessionId:'session',producerTimeMs:30,lastPoseSeq:1,pipelineState:'running'};
 const bytes = value => new TextEncoder().encode(value);
 test('arbitrary byte splits, multiple records and multibyte session names', () => {
   const source = bytes(JSON.stringify(pose(1,'测试'))+'\n'+JSON.stringify(heartbeat)+'\n');
@@ -24,7 +24,7 @@ test('reject malformed landmarks and preserve finite out-of-image coordinates', 
   const record=pose(); record.poses[0].landmarks[0].x=1.2; assert.equal(validate(record),record);
   record.poses[0].landmarks[0].z=Infinity; assert.throws(()=>validate(record));
   assert.throws(()=>validate({...pose(),seq:0}));
-  assert.throws(()=>validate({...pose(),poses:[{landmarks:[]}]}));
+  assert.throws(()=>validate({...pose(),poses:[{playerId:0,landmarks:[]}]}));
 });
 test('empty results clear immediately, heartbeat does not extend freshness', () => {
   const state=new PoseState(); state.accept(pose(),100);
@@ -45,4 +45,23 @@ test('heartbeat session restart clears old skeleton before first result', () => 
 test('device input cannot inject paths, ports, credentials or hostnames', () => {
   assert.equal(deviceEndpoint(' 192.168.43.1 '),'http://192.168.43.1:1337');
   for(const input of ['192.168.43.1:1337','example.com','999.1.2.3','1.2.3.4/x','1.2.3.04','http://1.2.3.4']) assert.throws(()=>deviceEndpoint(input));
+});
+
+test('two-player snapshots, omissions and live mode boundaries', () => {
+  const right = {...pose(),playerCount:2,poses:[{...pose().poses[0],playerId:1}]};
+  assert.equal(validate(right),right);
+  const both = {...right,poses:[pose().poses[0],right.poses[0]]};
+  assert.equal(validate(both),both);
+  const state = new PoseState(); state.accept(both,1);
+  state.accept({...right,seq:2},2); assert.deepEqual(state.current(2).poses.map(p=>p.playerId),[1]);
+  state.accept({...pose(3),poses:[]},3); assert.equal(state.current(3).poses.length,0);
+  state.accept(pose(4),4); assert.deepEqual(state.current(4).poses.map(p=>p.playerId),[0]);
+  for (const invalid of [{...right,playerCount:1},{...both,poses:[...both.poses].reverse()},
+      {...both,poses:[pose().poses[0],pose().poses[0]]},{...pose(),playerCount:3},
+      {...pose(),protocolVersion:1},{...pose(),poses:[{...pose().poses[0],playerId:.5}]}]) assert.throws(()=>validate(invalid));
+});
+test('full two-person record fits byte budget', () => {
+  const record = {...pose(),playerCount:2,poses:[pose().poses[0],{...pose().poses[0],playerId:1}]};
+  assert.ok(bytes(JSON.stringify(record)).length <= MAX_BYTES);
+  new NdjsonDecoder(()=>{}).push(bytes(JSON.stringify(record)+'\n'));
 });

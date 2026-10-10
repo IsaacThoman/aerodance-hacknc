@@ -1,5 +1,12 @@
 # Camera-to-client streaming plan
 
+> Current planning update (2026-10-10): the user accepts the GPU/libyuv performance
+> baseline; extended performance benchmarks are deferred. Game-selected one/two-player
+> capture with fixed-side player IDs is implemented. See
+> [the feature plan](PLAN.md#next-feature-game-selected-one--or-two-player-capture).
+> Protocol version 2 is implemented below; real two-person board acceptance
+> remains an explicit validation step.
+
 This is the connection and protocol specification for the Open-Q 624A Android Things pose app. See [PLAN.md](PLAN.md) for implementation order, [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries, and [the hardware inspection](docs/hardware/open-q-624a.md) for device constraints. The endpoints below deliver live camera Lite GPU results on port 1337. A [local HTTP test page](pose-test-site/README.md) is implemented in this repo at the user’s request. Deployed HTTPS browser validation is deferred.
 
 ## Proposed design
@@ -32,19 +39,22 @@ Agree on this before implementing either side.
 |---|---|
 | `GET /v1/status` | Identify the device and verify connectivity |
 | `GET /v1/stream` | Open the continuous data stream |
+| `POST /v1/config` | Select one or two players, including during an open stream |
 
 Example status response:
 
 ```json
 {
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "deviceId": "controller-01",
   "sessionId": "session-abc",
   "deviceName": "Open-Q 624A Pose Controller",
   "pipelineState": "running",
+  "playerCount": 1,
   "capabilities": {
+    "supportedPlayerCounts": [1, 2],
     "poseModel": "pose_landmarker_lite",
-    "maxPoses": 1,
+    "maxPoses": 2,
     "landmarksPerPose": 33,
     "worldLandmarks": false,
     "sensorTimestampSource": "unknown"
@@ -57,15 +67,15 @@ Example status response:
 Use **newline-delimited JSON (NDJSON)**: one JSON object per line.
 
 ```jsonl
-{"protocolVersion":1,"type":"pose","sessionId":"session-abc","seq":1,"frameReceivedTimeMs":1250,"resultTimeMs":1284,"input":{"width":480,"height":640,"mirrored":false},"poses":[]}
-{"protocolVersion":1,"type":"pose","sessionId":"session-abc","seq":2,"frameReceivedTimeMs":1283,"resultTimeMs":1318,"input":{"width":480,"height":640,"mirrored":false},"poses":[]}
-{"protocolVersion":1,"type":"heartbeat","sessionId":"session-abc","producerTimeMs":6320,"lastPoseSeq":2,"pipelineState":"running"}
+{"protocolVersion":2,"type":"pose","sessionId":"session-abc","seq":1,"frameReceivedTimeMs":1250,"resultTimeMs":1284,"playerCount":1,"input":{"width":480,"height":640,"mirrored":false},"poses":[]}
+{"protocolVersion":2,"type":"pose","sessionId":"session-abc","seq":2,"frameReceivedTimeMs":1283,"resultTimeMs":1318,"playerCount":1,"input":{"width":480,"height":640,"mirrored":false},"poses":[]}
+{"protocolVersion":2,"type":"heartbeat","sessionId":"session-abc","producerTimeMs":6320,"lastPoseSeq":2,"pipelineState":"running"}
 ```
 
 Rules:
 
 - Each message ends with `\n`.
-- `sessionId` changes whenever the producer restarts, including camera/model configuration changes. Reconnecting the browser alone does not change it.
+- `sessionId` changes whenever the producer restarts, including camera/model configuration changes. Player-count changes preserve the session, camera, model and stream. Reconnecting the browser alone does not change it.
 - Assign `seq` to completed pose results before publishing; it increases within a session. Replacement may create gaps. Heartbeats use `lastPoseSeq` (null before the first result), without consuming pose sequence numbers.
 - On reconnect, a fresh snapshot may repeat the latest sequence. Reset per-connection duplicate handling, then ignore out-of-order/duplicate poses within that connection.
 - Send a heartbeat after five seconds without a record. It proves transport liveness, not successful camera capture or pose freshness.
@@ -73,13 +83,13 @@ Rules:
 
 ### Pose payload
 
-The two example pose records above demonstrate **no person detected**, not a working skeleton. A detected pose contains one element in `poses`, with exactly 33 landmarks in MediaPipe index order. Each landmark has this shape:
+The two example pose records above demonstrate **no person detected**, not a working skeleton. A detected pose contains exactly 33 landmarks in MediaPipe index order. Every pose record carries `playerCount: 1` or `2`; `poses` contains at most that many entries, each with an explicit integer `playerId`. Each landmark has this shape:
 
 ```json
 {"x":0.52,"y":0.31,"z":-0.08,"visibility":0.99,"presence":0.98}
 ```
 
-`poses` therefore contains objects shaped as `{ "landmarks": [33 landmark objects] }`. The text in that shape description is explanatory, not JSON to transmit. The codec includes a complete 33-landmark detected-person fixture in [Protocol.kt](shared/src/commonMain/kotlin/tech/aerodance/androidclient/protocol/Protocol.kt). Synthetic mode advertises `poseModel: "synthetic"` in status; the Lite capability applies after camera/model integration.
+`poses` therefore contains objects shaped as `{ "playerId": 0, "landmarks": [33 landmark objects] }`. The text in that shape description is explanatory, not JSON to transmit. The codec includes a complete 33-landmark detected-person fixture in [Protocol.kt](shared/src/commonMain/kotlin/tech/aerodance/androidclient/protocol/Protocol.kt). Synthetic mode advertises `poseModel: "synthetic"` in status; the Lite capability applies after camera/model integration.
 
 - Coordinates refer to the upright inference input after rotation, with dimensions given by `input`. Start unmirrored even though this board's sensor orientation is 90 degrees. UI mirroring is a separate display transform; anatomical left/right labels keep MediaPipe's meaning.
 - `x`/`y` are image-normalized coordinates; preserve finite out-of-image estimates rather than clamping. `z` is relative depth, not meters. If negotiated through status, optional `worldLandmarks` uses the same index order with meter-valued coordinates. See [MediaPipe output coordinates](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/android).
@@ -88,12 +98,82 @@ The two example pose records above demonstrate **no person detected**, not a wor
 - `frameReceivedTimeMs` is arrival at the Android capture callback; `resultTimeMs` is callback completion from inference. Both use the same Android monotonic clock. They are not wall-clock timestamps or proven sensor exposure times.
 - This sensor reports an unknown clock source. Optional `sensorTimestampNs`, if added, must be a decimal string to avoid JavaScript integer precision loss, with its clock relationship explicitly documented.
 - Status/heartbeat `pipelineState` is one of `starting`, `running`, `error`, or `stopping`. A running pipeline can legitimately return no pose.
-- Protocol version 1 is implemented by the synthetic Android producer. Keep these field names stable during browser integration.
+- Protocol version 2 is required for both live and synthetic output. Reject other versions explicitly; route names retain `/v1`.
 
 **Pose results are state; delivery favors freshness:**
 
 - **State**, such as the latest pose: replace older samples when a consumer falls behind.
 - **Events**, such as a button press: delivery may need acknowledgment, replay, and deduplication. An open HTTP stream alone does not guarantee end-to-end delivery.
+
+### Player assignment and live configuration
+
+Create one Lite GPU LIVE_STREAM task with `setNumPoses(2)` for both modes. The
+selected count controls output selection; it never recreates the task.
+
+Single-player output contains at most one pose, always ID `0` anywhere in frame.
+Select the highest mean of available visibility/presence scores, with zero when
+all scores are absent. Break ties by usable torso X, or mean landmark X when
+no torso is usable. No torso confidence filter applies in single-player mode.
+
+For two players, use the unmirrored inference image: torso X `<0.5` gives ID `0`,
+otherwise ID `1`. Torso X is the midpoint of hips 23/24 if both have visibility
+and presence at least `0.5`; otherwise use shoulders 11/12 with the same checks.
+Omit detections without either usable pair. Arms crossing the center do not
+change assignment. When detections share a half, choose the torso nearest that
+half’s center (`0.25`/`0.75`), then highest mean torso visibility/presence, then
+lowest torso X. Remaining exact ties use landmark geometry for deterministic
+selection independent of result order. Never fill the opposite slot from the
+same half. IDs describe regions: a person crossing center changes IDs.
+
+Send ordinary CORS JSON:
+
+```http
+POST /v1/config HTTP/1.1
+Origin: https://game.example.com
+Content-Type: application/json
+Content-Length: 17
+
+{"playerCount":2}
+```
+
+Example `200` response:
+
+```json
+{"playerCount":2,"sessionId":"session-abc","effectiveFromSeq":42}
+```
+
+The control grammar accepts exactly the `playerCount` field with integer literal
+`1` or `2`, and whitespace. Unknown/duplicate fields, other values, malformed JSON
+and unsupported request framing receive `400`. Require JSON (optional UTF-8
+charset), explicit Content-Length, no Transfer-Encoding/Content-Encoding/Expect,
+a body at most 1 KiB (`413` otherwise), and a two-second total header/body budget.
+Unsupported media types receive `415`; wrong methods receive `405`; missing or
+unapproved origins receive `403`. Invalid controls do not mutate configuration.
+HTTP work uses four fixed workers with no queued requests; concurrent valid
+updates serialize under a short publication lock. Requests exceeding worker
+capacity are closed and can be retried.
+
+A changed count publishes an empty new-mode snapshot at `effectiveFromSeq`.
+An identical request returns the existing mode boundary without publishing or
+consuming a sequence number. The launch default has boundary `1`. Startup accepts
+controls while status is `starting`; browser disconnection does not reset mode.
+Activity foreground return preserves mode within the process; a new process
+starts at one player.
+
+Publication owns sequence allocation, mode selection and the empty switch snapshot
+under one lock. Subsequent inference completions map using the current mode,
+including callbacks for inputs submitted before the switch. A single stream writer
+writes records in sequence order. A previously selected old-mode record may arrive
+before the boundary even after the HTTP control reply. Use sequence and record
+`playerCount`, never response timing, to recognize the transition. Replaceable
+snapshots can skip the empty boundary record; every later record is still a
+complete new-mode snapshot and clears any omitted player.
+
+For a right-only result, `playerCount` is `2` and the sole pose has `playerId: 1`.
+Look up players by ID, never array index. IDs must be unique, valid for the selected
+count and serialized in ascending order. Every record replaces all current player
+state: `[0,1]`, `[0]`, `[1]` or `[]`. Omission clears immediately; stale timeout
+clears both. Keep both side labels and skeletons aligned when mirroring a display.
 
 ## 2. Website implementation
 
@@ -123,8 +203,10 @@ When the user clicks **Connect**:
 1. Validate the IP and use a fixed port, such as `1337`.
 2. Fetch `http://<android-ip>:1337/v1/status`.
 3. Let Chrome display its local-network permission prompt.
-4. Check `protocolVersion`.
-5. Open `/v1/stream` with a separate AbortController-managed lifetime.
+4. Require `protocolVersion: 2` and the advertised player-count capability.
+5. POST the game’s selected count to `/v1/config`. Reapply it on every connection.
+6. Poll status until `running`, permitting up to 90 seconds for initial camera/GPU startup with cancellation and explicit errors.
+7. Open `/v1/stream` with an AbortController-managed lifetime. Later count changes use POST on this same open stream.
 
 Use ordinary CORS requests, with cookies omitted. Do **not** use `mode: "no-cors"`; JavaScript would be unable to read the response.
 
@@ -138,7 +220,7 @@ Use `fetch()` and a streaming response reader:
 - Validate each message.
 - Update latest local pose immediately; rendering can use `requestAnimationFrame` without pacing stream reads.
 - Forward to the backend through a separate bounded path.
-- Clear the pose immediately on `poses: []`, and after 500 ms without a fresh pose result. Make this initial stale threshold configurable.
+- Replace both player states on every pose snapshot, clearing omitted IDs immediately, and after 500 ms without a fresh pose result. Make this initial stale threshold configurable.
 - Treat 12 seconds without any record as a stalled connection and reconnect. An ongoing heartbeat must not reset the pose-age timer.
 - Track receipt with browser `performance.now()`. Compare device durations on the device clock; do not subtract Android uptime from browser time without clock calibration.
 
@@ -229,7 +311,7 @@ Cache-Control: no-store
 
 If you add custom request headers or other preflight-triggering behavior, support `OPTIONS` with the corresponding allowed methods and headers.
 
-Initially support `OPTIONS` for `GET` and the approved origin without credentials or custom headers. Apply CORS headers to errors for approved origins as well. Validate the request origin against a configured allowlist; never reflect arbitrary origins. The example origin must be replaced by the actual game's origin before browser testing.
+Support route-specific `OPTIONS`: `GET` for status/stream and `POST` with `Content-Type` for config, without credentials. Config mutations require a configured allowed Origin; a missing Origin is rejected. Read-only status/stream remain usable by native LAN diagnostics without Origin. Apply CORS headers to errors for approved origins as well. Validate the request origin against a configured allowlist; never reflect arbitrary origins. The example origin must be replaced by the actual game's origin before browser testing.
 
 **Browser local-network permission and CORS are separate:** both must permit the request.
 
@@ -303,7 +385,7 @@ The IP can change when Wi-Fi changes, so update the display and restart/rebind t
 - Slow readers, thermal throttling, and backend outages do not grow a stale backlog.
 - A changed session resets sequence handling; dropped pose sequences and reconnect snapshots are handled correctly.
 - Rotated input and anatomical left/right match the actual camera view.
-- Record sustained FPS, p50/p95/p99 stage timings, and browser freshness over 30 minutes. Performance goals in the architecture remain provisional until measured.
+- Extended sustained-performance checks are deferred by user acceptance. Use a short real-board two-person and live-switch check for this feature; performance goals remain provisional until measured.
 
 ## 6. Minimal security boundary
 

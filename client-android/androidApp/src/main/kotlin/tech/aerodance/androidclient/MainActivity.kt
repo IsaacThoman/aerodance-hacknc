@@ -35,6 +35,10 @@ class MainActivity : ComponentActivity() {
     private var error by mutableStateOf<String?>(null)
     private var origin by mutableStateOf("")
     private var synthetic = false
+    companion object {
+        // Process memory survives activity recreation; a fresh process starts with one player.
+        private var selectedPlayerCount = 1
+    }
     private var ratePipeline: PipelineController? = null
     private var rateTime = 0L
     private var rateFrames = 0L
@@ -45,6 +49,7 @@ class MainActivity : ComponentActivity() {
         override fun run() {
             if (!active) return
             connected = server?.connected == true
+            server?.let { selectedPlayerCount = it.playerCount }
             results = server?.resultCount ?: 0
             frames = pipeline?.frameCount ?: 0
             pipeline?.let {
@@ -95,7 +100,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(running, busy, address, connected, results, error, origin,
                 onOriginChange = { origin = it }, onStart = { start() }, onStop = { stop() }, fontFamily = fontFamily,
-                frames = frames, timings = timings, synthetic = synthetic)
+                frames = frames, timings = "$timings\nPlayers: $selectedPlayerCount", synthetic = synthetic)
         }
     }
 
@@ -134,7 +139,7 @@ class MainActivity : ComponentActivity() {
         worker.execute {
             var candidate: PipelineController? = null
             val failure = runCatching {
-                candidate = PipelineController(this, deviceId, setOf(approvedOrigin), synthetic) { failure -> main.post {
+                candidate = PipelineController(this, deviceId, setOf(approvedOrigin), synthetic, selectedPlayerCount) { failure -> main.post {
                     if (active && token == generation) {
                         stop()
                         error = "Pose pipeline failed: ${failure.message}"
@@ -171,6 +176,7 @@ class MainActivity : ComponentActivity() {
     private fun stop() {
         ++generation
         val old = pipeline
+        old?.server?.let { selectedPlayerCount = it.playerCount }
         pipeline = null
         server = null
         running = false

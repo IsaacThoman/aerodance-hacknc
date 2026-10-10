@@ -46,7 +46,7 @@ class PoseCompatibilityActivity : Activity() {
             val options = PoseLandmarker.PoseLandmarkerOptions.builder()
                 .setBaseOptions(BaseOptions.builder().setModelAssetPath("pose_landmarker_lite.task")
                     .setDelegate(Delegate.GPU).build())
-                .setRunningMode(RunningMode.IMAGE).setNumPoses(1)
+                .setRunningMode(RunningMode.IMAGE).setNumPoses(2)
                 .setOutputSegmentationMasks(false).build()
             PoseLandmarker.createFromOptions(this, options).use { task ->
                 val loaded = SystemClock.elapsedRealtime()

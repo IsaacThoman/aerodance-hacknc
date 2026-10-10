@@ -13,23 +13,25 @@ data class Landmark(val x: Float, val y: Float, val z: Float, val visibility: Fl
     }
 }
 
-data class Pose(val landmarks: List<Landmark>) {
+data class Pose(val landmarks: List<Landmark>, val playerId: Int = 0) {
     init { require(landmarks.size == 33) }
 }
 
 data class PoseRecord(
     val sessionId: String, val seq: Long, val frameReceivedTimeMs: Long,
     val resultTimeMs: Long, val width: Int, val height: Int,
-    val poses: List<Pose>, val mirrored: Boolean = false,
+    val poses: List<Pose>, val mirrored: Boolean = false, val playerCount: Int = 1,
 ) {
     init {
         require(sessionId.isNotBlank() && seq > 0)
         require(frameReceivedTimeMs >= 0 && resultTimeMs >= frameReceivedTimeMs)
-        require(width > 0 && height > 0 && poses.size <= 1)
+        require(width > 0 && height > 0 && playerCount in 1..2 && poses.size <= playerCount)
+        require(poses.all { it.playerId in 0 until playerCount })
+        require(poses.map { it.playerId } == poses.map { it.playerId }.distinct().sorted())
     }
 
-    fun json(): String = checkedRecord("""{"protocolVersion":1,"type":"pose","sessionId":${quote(sessionId)},"seq":$seq,"frameReceivedTimeMs":$frameReceivedTimeMs,"resultTimeMs":$resultTimeMs,"input":{"width":$width,"height":$height,"mirrored":$mirrored},"poses":[${poses.joinToString { pose ->
-        "{\"landmarks\":[" + pose.landmarks.joinToString { l ->
+    fun json(): String = checkedRecord("""{"protocolVersion":2,"type":"pose","sessionId":${quote(sessionId)},"seq":$seq,"frameReceivedTimeMs":$frameReceivedTimeMs,"resultTimeMs":$resultTimeMs,"playerCount":$playerCount,"input":{"width":$width,"height":$height,"mirrored":$mirrored},"poses":[${poses.joinToString { pose ->
+        "{\"playerId\":${pose.playerId},\"landmarks\":[" + pose.landmarks.joinToString { l ->
             """{"x":${l.x},"y":${l.y},"z":${l.z},"visibility":${l.visibility},"presence":${l.presence}}"""
         } + "]}"
     }}]}""")
@@ -37,18 +39,18 @@ data class PoseRecord(
 
 fun heartbeat(sessionId: String, nowMs: Long, seq: Long?, state: PipelineState): String {
     require(nowMs >= 0 && (seq == null || seq > 0))
-    return checkedRecord("""{"protocolVersion":1,"type":"heartbeat","sessionId":${quote(sessionId)},"producerTimeMs":$nowMs,"lastPoseSeq":$seq,"pipelineState":"$state"}""")
+    return checkedRecord("""{"protocolVersion":2,"type":"heartbeat","sessionId":${quote(sessionId)},"producerTimeMs":$nowMs,"lastPoseSeq":$seq,"pipelineState":"$state"}""")
 }
 
-fun status(deviceId: String, sessionId: String, state: PipelineState, synthetic: Boolean = true): String =
-    """{"protocolVersion":1,"deviceId":${quote(deviceId)},"sessionId":${quote(sessionId)},"deviceName":"Open-Q 624A Pose Controller${if (synthetic) " (synthetic)" else ""}","pipelineState":"$state","capabilities":{"poseModel":"${if (synthetic) "synthetic" else "pose_landmarker_lite"}","maxPoses":1,"landmarksPerPose":33,"worldLandmarks":false,"sensorTimestampSource":"unknown"}}"""
+fun status(deviceId: String, sessionId: String, state: PipelineState, synthetic: Boolean = true, playerCount: Int = 1): String =
+    """{"protocolVersion":2,"deviceId":${quote(deviceId)},"sessionId":${quote(sessionId)},"deviceName":"Open-Q 624A Pose Controller${if (synthetic) " (synthetic)" else ""}","pipelineState":"$state","playerCount":$playerCount,"capabilities":{"supportedPlayerCounts":[1,2],"poseModel":"${if (synthetic) "synthetic" else "pose_landmarker_lite"}","maxPoses":2,"landmarksPerPose":33,"worldLandmarks":false,"sensorTimestampSource":"unknown"}}"""
 
 private fun checkedRecord(json: String): String {
     require(json.encodeToByteArray().size <= MAX_RECORD_BYTES)
     return "$json\n"
 }
 
-private fun quote(value: String): String = buildString {
+internal fun quote(value: String): String = buildString {
     append('"')
     value.forEach { c ->
         when (c) {
@@ -61,7 +63,7 @@ private fun quote(value: String): String = buildString {
 }
 
 /** Anatomical index order; sway makes delivery and animation visible without camera hardware. */
-fun syntheticPose(sessionId: String, seq: Long, nowMs: Long): PoseRecord {
+fun syntheticPose(sessionId: String, seq: Long, nowMs: Long, playerCount: Int = 1): PoseRecord {
     val points = listOf(
         .50f to .15f, .47f to .13f, .45f to .13f, .43f to .14f,
         .53f to .13f, .55f to .13f, .57f to .14f, .40f to .16f, .60f to .16f,
@@ -77,5 +79,8 @@ fun syntheticPose(sessionId: String, seq: Long, nowMs: Long): PoseRecord {
     val poses = if (nowMs / 1000 % 10 == 9L) emptyList() else listOf(
         Pose(points.map { (x, y) -> Landmark(x + sway, y, 0f, 1f, 1f) })
     )
-    return PoseRecord(sessionId, seq, nowMs, nowMs, 480, 640, poses)
+    val selected = if (playerCount == 1) poses else poses.flatMap { pose ->
+        listOf(0, 1).map { id -> Pose(pose.landmarks.map { it.copy(x = it.x * .45f + id * .5f) }, id) }
+    }
+    return PoseRecord(sessionId, seq, nowMs, nowMs, 480, 640, selected, playerCount = playerCount)
 }

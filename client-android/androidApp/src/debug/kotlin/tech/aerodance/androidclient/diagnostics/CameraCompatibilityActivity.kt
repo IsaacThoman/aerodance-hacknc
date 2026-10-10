@@ -25,6 +25,7 @@ import tech.aerodance.androidclient.camera.CameraSource
 import tech.aerodance.androidclient.pose.LivePoseEstimator
 import tech.aerodance.androidclient.camera.YuvToBitmap
 import tech.aerodance.androidclient.protocol.PoseRecord
+import tech.aerodance.androidclient.protocol.PlayerOutput
 
 /** Debug-only bounded Camera2 capture check with optional GPU live inference. */
 class CameraCompatibilityActivity : Activity() {
@@ -55,6 +56,7 @@ class CameraCompatibilityActivity : Activity() {
     private var detected = 0
     private var empty = 0
     private var latest: PoseRecord? = null
+    private val playerOutput = PlayerOutput(UUID.randomUUID().toString(), 2)
     private var conversionTotal = 0L
     private val conversionSamples = mutableListOf<Long>()
     private var inferenceTotal = 0L
@@ -98,12 +100,12 @@ class CameraCompatibilityActivity : Activity() {
             orientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
             if (live) {
                 File(filesDir, "camera-live-pose.json").delete()
-                estimator = LivePoseEstimator(this, UUID.randomUUID().toString(), CameraSource.INPUT_ROTATION_DEGREES,
+                estimator = LivePoseEstimator(this, CameraSource.INPUT_ROTATION_DEGREES,
                     onResult = { record, conversion, inference -> worker.post {
                         if (!finished) {
                             results++
                             if (record.poses.isEmpty()) empty++ else detected++
-                            latest = record
+                            latest = playerOutput.publish(record)
                             conversionTotal += conversion
                             conversionSamples.add(conversion)
                             inferenceTotal += inference

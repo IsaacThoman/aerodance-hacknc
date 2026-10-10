@@ -7,6 +7,6 @@
 - License evidence/model card: https://storage.googleapis.com/mediapipe-assets/Model%20Card%20BlazePose%20GHUM%203D.pdf
 - Runtime: pinned `com.google.mediapipe:tasks-vision:0.10.21`.
 
-The model is packaged for offline use. The compatibility probe uses GPU, one
-pose, IMAGE mode, and no segmentation. Production uses GPU LIVE_STREAM with
-one inference input in flight and native libyuv camera conversion.
+The model is packaged for offline use. The compatibility probe uses GPU, up to two
+poses, IMAGE mode, and no segmentation. Production uses GPU LIVE_STREAM with a two-pose detection limit in both
+game modes, one inference input in flight and native libyuv camera conversion.

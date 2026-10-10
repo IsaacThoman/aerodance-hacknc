@@ -44,25 +44,171 @@ This can proceed independently of camera work after the starter runs.
 
 **Done when:** the browser follows real movement with correct rotation/left-right, absence clears poses, and capture/inference continue independently of a slow/disconnected browser.
 
-## 4. Measure and tune sustained latency
+## 4. Performance baseline accepted — 2026-10-10
 
-The [performance review](docs/performance-review.md) maps reviewed bottlenecks,
-implemented allocation/scheduling fixes and short board comparisons. Sustained
-acceptance checks below remain separate from that review.
+The user accepts current GPU/libyuv performance as good enough. Extended stage
+profiling, controlled converter comparisons, GPU conversion experiments and the
+30-minute thermal/memory benchmark are deferred and do not gate the next feature.
+This is acceptance of the current behavior, not a claim that the previous
+latency targets were measured or achieved. Keep existing bounded queues,
+watchdogs and slow-reader handling.
 
-- [ ] Instrument arrival, conversion, inference, serialization/write, browser receive/render.
-- [ ] Measure Lite GPU sustained performance and stability (CPU support removed at the user’s request).
-- [ ] Compare supported capture sizes, conversion, preview on/off, and exposure behavior.
-- [ ] Benchmark native libyuv through JNI against the Kotlin YUV converter on the board: pin the source revision/license, build for API 27 and `armeabi-v7a` with ARM NEON support, read Camera2 plane buffers with their actual positions/strides, and write directly into inference-owned bitmap storage where supported. Preserve one input in flight and storage ownership through callback/task shutdown. Validate color/channel order, limited-range YUV, odd dimensions, padding and rotations against reference fixtures; measure conversion p50/p95/p99, allocations and end-to-end GPU pose rates in comparable scenes. GPU/libyuv is the sole production path at the user’s request; sustained acceptance remains open. The Kotlin short-probe baseline is approximately 50 ms conversion; initial native comparisons below do not complete the sustained benchmark gate.
-  - Native backend, pinned source/license, JNI bitmap output, debug reference fixtures and GPU live probe are implemented; see [libyuv conversion](docs/libyuv-conversion.md). The Kotlin converter and CPU inference option have been removed.
-- [ ] If native CPU conversion remains material, evaluate GPU conversion feeding inference without CPU readback; verify compatibility with the pinned Tasks API before changing the pipeline. Prefer libyuv for the first benchmark; the archived RenderScript replacement toolkit requires YUV layout adaptation and is a lower-priority option.
-- [ ] Remove avoidable batching, compression buffering, and fixed sender delays.
-- [ ] Run a 30-minute thermal/memory test and deliberately slow-reader test.
-- [ ] Record achieved FPS, p50/p95/p99 age/stage timings, replacements, and bytes/result.
+The latest short board check captured at 30.08 FPS and completed 300 results in
+60 seconds including GPU startup, with conversion p50/p95/p99 of 2/4/4 ms.
+See [libyuv validation](docs/libyuv-conversion.md) and the historical
+[performance review](docs/performance-review.md).
 
-**Initial goals:** approach 30 FPS capture; produce as many usable results as the board sustains; aim for p95 callback-arrival-to-browser receipt <100 ms and p95 result-to-write completion <10 ms on a healthy LAN. Calibrate clocks or use external visual measurement before claiming capture-to-browser latency. Adjust targets from measurements if this board cannot meet them.
+## Next feature: game-selected one- or two-player capture
 
-**Done when:** chosen settings/limitations are documented, queues stay bounded, and throttling reduces fresh-result rate rather than building delay.
+**Status:** implemented; host/browser and board validation pass. The user
+confirmed it works on 2026-10-10. Detailed human-confirmed departure/reentry and
+camera-side checks are not separately recorded.
+Extended performance testing is not a prerequisite.
+See [the code implementation and validation notes](docs/two-player-capture.md).
+
+**Outcome:** the game selects one or two players over the LAN. One-player mode
+publishes all selected pose data as player `0` anywhere in frame; it never emits
+player `1` in single-player mode. Two-player mode publishes player `0`
+from the left half and player `1` from the right half of the unmirrored inference
+image. A missing player never causes the remaining player to be renumbered.
+
+MediaPipe exposes `setNumPoses()` in LIVE_STREAM options. The estimator now
+configures one task with `setNumPoses(2)` at startup in both game modes, then
+selects output according to the requested player count.
+This makes live mode changes independent of the slow GPU task initialization.
+One-player mode may incur the cost of detecting two people; confirm usability
+in the short board check.
+Keep the pinned MediaPipe `0.10.21`, Lite model, GPU delegate, libyuv conversion,
+640×480 input, 0° rotation and existing frame ownership rules. Verify two-person
+output on this exact board as part of feature validation. See the
+[official Android task guide](https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker/android).
+
+### Player assignment
+
+- Use absolute horizontal position relative to the fixed image center `x=0.5`,
+  rather than sorting detections or using MediaPipe result indices as identity.
+- Calculate torso X from the midpoint of hips (landmarks 23/24). Require both
+  hips to have visibility and presence at least `0.5`; if unavailable, use the
+  midpoint of shoulders (11/12) with the same checks. If neither pair is usable,
+  omit the pose for that result rather than guessing a player's side.
+- In two-player mode, torso X `<0.5` maps to `0`; torso X `>=0.5` maps to `1`.
+  Arms reaching across the line do not change the side while the torso stays put.
+  Start with this stateless rule; center-line jitter can be addressed later if
+  observed, without delaying the first implementation.
+- If both detections occupy the same half, publish at most one for that player:
+  choose the torso nearest that half's center (`0.25` or `0.75`), break ties by
+  torso confidence, then torso X. Never put a same-side detection in the vacant
+  opposite slot. Explain that players should occupy separate halves.
+- In one-player mode, all emitted pose data must carry `playerId: 0`, including
+  a person standing on the right or moving across the center. Publish at most
+  one detected pose; never emit `playerId: 1` in this mode. Side assignment
+  and the torso confidence filter are unnecessary. If the task detects two poses,
+  select the one with the highest mean available landmark visibility/presence,
+  breaking ties by torso X (or mean landmark X if torso is unavailable). Never
+  rely on MediaPipe result order. This is per-result selection, not identity tracking.
+- IDs identify playing regions, not persistent human identities. Crossing the
+  center changes the player's ID. Retaining personal identity through crossing
+  or occlusion would be a separate tracking feature. Missing or undetected
+  players have no pose; never replay their previous pose.
+- Left/right means the unmirrored camera image, not anatomical left/right or a
+  person's own left/right while facing the camera. Label the viewer accordingly;
+  a display mirror must transform both labels and skeletons consistently.
+
+### Protocol and game control
+
+Plan protocol version `2`, with the existing `/v1` route names retained. Explicit
+version checking prevents old clients, which assume a single pose, from silently
+misreading two-player output. Upgrade the local viewer alongside Android; the
+production game must adopt version 2 before using the feature.
+
+- Add `POST /v1/config` with JSON body `{"playerCount":1}` or
+  `{"playerCount":2}`. It must work while `/v1/stream` is already open and poses
+  are arriving, as well as before connection. No manual Start/Stop, app restart,
+  stream reconnect or GPU task recreation is required to switch modes.
+  Default to one player on app launch; the game reapplies its mode on each
+  connection. A browser disconnect alone leaves the mode unchanged.
+- Status advertises `capabilities.maxPoses: 2` and supported player counts
+  `[1,2]`, separately from the active `playerCount`. The MediaPipe detection
+  limit stays at two; the game-selected count controls assignment/output.
+- A valid mode change returns `200` with the applied count, session ID and a
+  stream sequence boundary `effectiveFromSeq`. An identical request is an
+  idempotent no-op. Serialize application with result publication; do not block
+  HTTP workers on GPU initialization or native inference.
+- At the switch boundary, publish an empty pose snapshot in the new mode to
+  clear the previous state, then map subsequent completions using that mode.
+  Keep the same stream/session and increasing sequence numbers: this changes
+  output selection, not camera/model configuration. Once a new-mode record is
+  written, no old-mode record may follow it. A previous record already being
+  written can arrive before the boundary; the client uses record sequence and
+  `playerCount`, not HTTP response timing, to recognize the switch.
+- Bound concurrent control work; conflicting simultaneous requests may receive
+  `409` for retry. Sequential requests can switch 1→2→1 immediately, without a
+  model-startup cooldown. On initial startup only, status may still be `starting`;
+  accept the selected count while the GPU initializes. Initial connection may
+  wait up to 90 seconds with explicit errors/cancellation; later mode changes
+  must not repeat that initialization delay.
+- Every pose record includes `playerCount`; each pose includes integer `playerId`
+  and its existing 33 `landmarks`. IDs must be unique, valid for the mode, and
+  serialized in ID order. For example, a right-only result is
+  `"playerCount":2,"poses":[{"playerId":1,"landmarks":[...]}]` (shape illustration).
+  The game looks up `playerId`, never the array index.
+- Every record is a complete current snapshot: `[0,1]`, `[0]`, `[1]`, or `[]`.
+  Omitted IDs clear that player's state immediately; stale timeout clears both.
+  Preserve timestamps, sequence rules, heartbeat behavior and the 16 KiB limit;
+  verify full two-person records fit the limit.
+- Apply the existing exact-origin policy to the control endpoint. Support
+  route-specific `OPTIONS` for POST with `Content-Type`; require a configured
+  allowed Origin for mutations. Bound JSON bodies to 1 KiB and body reads to the
+  existing two-second request budget. Reject malformed/unknown fields, noninteger
+  counts, unsupported values, oversized bodies and unsupported transfer framing
+  with appropriate `400`/`413`/`415`/`405` responses; invalid requests cannot mutate
+  configuration. CORS remains a LAN origin boundary, not authentication.
+
+### Implementation order
+
+1. [x] Update the canonical [streaming specification](camera-to-client-streaming.md)
+   with the version-2 schema, control responses and assignment semantics. Update
+   common models, status, synthetic fixtures and validation for explicit player IDs.
+2. [x] Add a pure common player-assignment function and tests for sides, confidence
+   fallback, missing players, shuffled detections, same-side collisions and center
+   boundary. Keep all Android/MediaPipe types outside common code.
+3. [x] Configure `LivePoseEstimator` to detect up to two poses, with live output
+   mode selection applied before publishing immutable results. Keep one input in flight, one latest pending
+   image and one GPU task at a time; diagnostics receive the same configuration.
+4. [x] Add serialized mode updates to `PipelineController` and result publication.
+   Retain the same camera, GPU task, listener, session and open stream during a
+   mode change. Atomically clear latest output and publish the new-mode empty
+   snapshot at the sequence boundary, then apply the selected mode to subsequent
+   results. Keep capture/inference running; discard any mapped result that would
+   violate the boundary. Preserve the selected mode on foreground return within
+   the same app process; a fresh process defaults to one.
+5. [x] Implement bounded `POST /v1/config`, preflight and transition handling.
+   Report active mode in Android UI; mode changes must not require a manual
+   Android Start/Stop or reconnect. Report initial task creation failures explicitly.
+6. [x] Upgrade the local test viewer with a one/two-player selector, center divider,
+   distinct colors and labels for IDs 0/1, and configuration-before-stream flow.
+   The selector sends configuration while streaming and keeps the same connection.
+   Reconnect reapplies the chosen mode; await readiness on initial startup. Clear
+   skeletons on session/mode change, player omission, empty result and stale data.
+7. [x] Run relevant host/browser tests and assemble the debug APK; perform a short
+   real-board two-person check and repeat mode switches. Record observed usability
+   and errors; an extended performance benchmark is not required.
+8. [x] Document the production-game request/response contract and integration steps.
+   Actual production-game changes require its repository and remain separate from
+   implementing Android plus the temporary viewer here.
+
+**Done when:** two visible players receive IDs 0/1; either can leave and return
+without changing the other's ID; a lone right-side player receives only ID 1;
+empty/missing players clear immediately; result ordering does not affect IDs;
+same-side detections never fill the opposite slot; and switching 1→2→1 works
+during an open stream without app restart, stream reconnect, GPU reinitialization,
+stale-mode output after the switch boundary, leaked images/tasks or growing queues.
+Test repeated live changes, idempotent requests and a callback racing a mode change.
+Explicitly verify single-player output always uses ID 0 on both sides of the
+frame, including immediately after switching from a right-only two-player result
+(ID 1) to single-player mode (ID 0).
+Use fixture tests for exact center/confidence edge cases and a short board check
+for actual detection, player departure/reentry and camera-view side labels.
 
 ## 5. Browser integration and recovery
 
@@ -87,11 +233,15 @@ acceptance checks below remain separate from that review.
 
 ## Verification and scope
 
-Host tests cover schema, session/sequence rules, timestamp correlation, bounded replacement, and shutdown. Browser checks cover partial/multiple NDJSON records, size limits, and stale state. Device checks cover native loading, live capture, release, delegates, and sustained performance. Run relevant tests and `:androidApp:assembleDebug` after implementation changes.
+Host tests cover schema, session/sequence rules, timestamp correlation, bounded replacement, and shutdown. Browser checks cover partial/multiple NDJSON records, size limits, and stale state. Device checks cover native loading, live capture, release, GPU inference, and one/two-player behavior. Extended sustained-performance checks are deferred by user acceptance. Run relevant tests and `:androidApp:assembleDebug` after implementation changes.
 
-Production game integration belongs in the web-client repository and requires its code and deployed configuration. The user authorized a temporary local HTTP test website in this repo on 2026-10-10, deferring HTTPS tests. Raw video, multi-person tracking, smoothing, and backend redesign are outside the initial scope.
+Production game integration belongs in the web-client repository and requires its code and deployed configuration. The user authorized a temporary local HTTP test website in this repo on 2026-10-10, deferring HTTPS tests. Two-player detection and fixed-side player assignment are now in scope. Raw video, persistent personal identity tracking across sides, smoothing, and backend redesign remain outside scope.
 
-## Progress — 2026-10-10
+## Historical progress — 2026-10-10
+
+The entries below record earlier stages chronologically. Later entries supersede
+earlier defaults and open-work statements. The current priorities and accepted
+performance scope are defined above.
 
 The synthetic streaming slice is installed and tested on the board. Port is **1337**. See [device validation](docs/hardware/synthetic-stream-validation.md) for measured delivery and remaining acceptance checks. Initial setup requires the exact game origin and Start; later launches and foreground returns start automatically with the saved origin. Streaming stops when the activity leaves the foreground. Camera/MediaPipe work and the deployed HTTPS browser test remain open.
 
