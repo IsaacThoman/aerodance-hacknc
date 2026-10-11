@@ -73,6 +73,11 @@ export function RenderPipeline({ hudScene, hudCamera }) {
       samples: 4,
     });
     const composer = new EffectComposer(gl, target);
+    // RenderPass draws the scene into rt2 with 4x MSAA and depth. Grade writes
+    // only a fullscreen quad into rt1; grade + output swap twice, so the scene
+    // keeps rt2 every frame. rt1 needs neither MSAA nor a depth attachment.
+    composer.renderTarget1.samples = 0;
+    composer.renderTarget1.depthBuffer = false;
     composer.setPixelRatio(1);
     composer.setSize(RENDER_WIDTH, RENDER_HEIGHT);
     const render = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { Vector3 } from "three";
+import { Group, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import {
@@ -77,4 +77,32 @@ test("cloned skeletons move independently, remain finite and keep feet above the
     maxX - minX > 0.5,
     "the recording must produce substantial hand motion",
   );
+});
+
+test("retargeting preserves the pose under moving, rotated and nonuniformly scaled parents", () => {
+  const names = ["Root", "Body", "Head", "ArmL", "ArmR", "FootL", "FootR"];
+  for (const person of [0, 1]) {
+    const local = clone(asset.scene), transformed = clone(asset.scene);
+    const parent = new Group(), grandparent = new Group();
+    parent.add(transformed);
+    grandparent.add(parent);
+    const applyLocal = createRetargeter(local, data, person);
+    const applyTransformed = createRetargeter(transformed, data, person);
+    for (let t = -0.1; t < data.duration + 0.1; t += 1 / 30) {
+      parent.position.set(Math.sin(t), 0.4, 3);
+      parent.rotation.set(0.2, Math.sin(t) * 0.7, -0.1);
+      parent.scale.set(1.3, 0.8, 0.9);
+      grandparent.rotation.y = t * 0.1;
+      grandparent.position.y = Math.cos(t);
+      // Deliberately leave the ancestor matrices stale, as they are between
+      // frame callbacks and the renderer's scene update.
+      applyLocal(t);
+      applyTransformed(t);
+      for (const name of names) {
+        const a = local.getObjectByName(name), b = transformed.getObjectByName(name);
+        assert.ok(a.position.distanceTo(b.position) < 1e-10, `${name} position at ${t}`);
+        assert.ok(a.quaternion.toArray().every((n, i) => Math.abs(n - b.quaternion.toArray()[i]) < 1e-10));
+      }
+    }
+  }
 });
