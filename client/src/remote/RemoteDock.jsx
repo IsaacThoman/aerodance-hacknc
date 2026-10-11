@@ -11,13 +11,14 @@ import { useRemoteStatus } from './remoteLink.js';
  *   card    QR to /join?remote=<code>, with an X that whooshes it into the button
  *   button  a Wii remote in the bottom-right corner that brings the card out
  *   fullscreen  a matching bubble above the remote button
- *   cursors the Wii hand (ui/wiiCursor.js) for the remote and the mouse, over every other overlay
+ *   cursors the Wii hand (ui/wiiCursor.js) for the remote and (with wiiCursor) the mouse, over
+ *           every other overlay
  * The card starts tucked into the button and hides while a remote is connected. When the
  * remote drops it comes back for 15 seconds, then whooshes away on its own; opened by hand
  * it stays until closed. Corner controls slide off to the right outside the main menu; the
  * cursors stay available on other screens for navigation.
  *
- * <RemoteDock visible={() => isMainScreen} />
+ * <RemoteDock visible={() => isMainScreen} wiiCursor />
  */
 
 const ICON = { x: 1516, y: 836, r: 42 };
@@ -30,9 +31,10 @@ const SLIDE_SECONDS = 0.3;
 
 const smooth = (k) => k * k * (3 - 2 * k);
 
-// The remote's pointer, and the mouse's while the mouse moved last (see useCanvasUI).
-function drawCursors(g, s) {
-  if (s.mouse) drawWiiCursor(g, s.mouse);
+// The remote's pointer, and the mouse's while the mouse moved last (see useCanvasUI) unless
+// Settings keeps the system cursor for the mouse.
+function drawCursors(g, s, wiiCursor) {
+  if (s.mouse && wiiCursor) drawWiiCursor(g, s.mouse);
   if (s.remote) drawWiiCursor(g, s.remote);
 }
 
@@ -83,13 +85,13 @@ function drawClose(g, c, hover) {
   g.stroke();
 }
 
-export default function RemoteDock({ visible = () => true }) {
+export default function RemoteDock({ visible = () => true, wiiCursor = true }) {
   const status = useRemoteStatus();
   const fullscreen = useFullscreen();
   const props = useRef({});
-  props.current = { status, fullscreen, visible };
+  props.current = { status, fullscreen, visible, wiiCursor };
   // open: where the card is heading; k: how far out it is (0 tucked into the button, 1 out).
-  const st = useRef({ open: false, k: 0, slide: 0, hideAt: null, holder: null, drawn: null, visible: null, drawnFullscreen: null }).current;
+  const st = useRef({ open: false, k: 0, slide: 0, hideAt: null, holder: null, drawn: null, visible: null, drawnFullscreen: null, drawnWii: null }).current;
 
   const qr = useMemo(() => (status.joinUrl ? QRCode.create(status.joinUrl, { errorCorrectionLevel: 'M' }).modules : null), [status.joinUrl]);
   const qrRef = useRef(qr);
@@ -133,13 +135,15 @@ export default function RemoteDock({ visible = () => true }) {
       const at = [s.remote, s.mouse].map((p) => (p ? `${p.x},${p.y}` : '')).join('|');
       if (at !== st.drawn) { st.drawn = at; s.invalidate(); }
       if (props.current.fullscreen !== st.drawnFullscreen) s.invalidate();
+      if (props.current.wiiCursor !== st.drawnWii) s.invalidate();
     },
     draw: (g, s) => {
       const { holder, error } = props.current.status;
       const fs = props.current.fullscreen;
       st.drawnFullscreen = fs;
+      st.drawnWii = props.current.wiiCursor;
       if (st.slide === 1) {
-        drawCursors(g, s);
+        drawCursors(g, s, st.drawnWii);
         return;
       }
       const h = s.hover;
@@ -189,7 +193,7 @@ export default function RemoteDock({ visible = () => true }) {
       }
       g.restore();
 
-      drawCursors(g, s);
+      drawCursors(g, s, st.drawnWii);
     },
   });
 
