@@ -1,6 +1,6 @@
 # Thumbnails
 
-27 thumbnails of the six dance stages, each **with** the "aerodance." wordmark (`with-logo/`) and **without** it (`no-logo/`). All are **2160×1440 (3:2)** lossless PNGs, rendered in-engine from the real stages, dancers and post-processing in [`temp/frutiger-character`](../frutiger-character).
+27 thumbnails of the six dance stages, each **with** the "aerodance." wordmark (`with-logo/`) and **without** it (`no-logo/`). All are **2160×1440 (3:2)** lossless PNGs, rendered in-engine from the real stages, dancers and post-processing in [`packages/stages`](../../packages/stages).
 
 ## Pixel perfect
 

@@ -133,5 +133,5 @@ for b in rig.pose.bones: b.location=(0,0,0); b.rotation_euler=(0,0,0)
 bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(ROOT,'assets/aero-character.blend'))
 for track in rig.animation_data.nla_tracks: track.mute=False
-bpy.ops.export_scene.gltf(filepath=os.path.join(ROOT,'client/public/models/aero-character.glb'),export_format='GLB',export_animations=True,export_animation_mode='NLA_TRACKS',export_force_sampling=True,export_yup=True)
+bpy.ops.export_scene.gltf(filepath=os.path.join(ROOT,'../../packages/character/assets/aero-character.glb'),export_format='GLB',export_animations=True,export_animation_mode='NLA_TRACKS',export_force_sampling=True,export_yup=True)
 print('Aero character built successfully')

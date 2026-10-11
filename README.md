@@ -6,6 +6,14 @@ Dance battles: the display shows a QR code, the first phones to scan it take the
 
 The server still records `spin` events in the `spins` hypertable, but the current client no longer sends them.
 
+See [the Android/game integration plan](docs/android-game-integration-plan.md) for pairing, player selection, live character animation, latency-aware scoring, and choreography recording/editing work.
+
+See [the song and dance authoring workflow](docs/song-dance-authoring-workflow.md) for the proposed Docker-hosted editor, Android-compatible pose format, raw landmark editing, Frutiger playback, and portable song bundle contract.
+
+The editor is implemented as [Dance Studio](tools/choreography/README.md).
+Run `docker compose -f tools/choreography/compose.yaml up --build -d` and open
+http://localhost:8082 to record/import, edit, preview, save, and export song bundles.
+
 ## Aero background
 
 The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, hot-air balloons, gulls, flower meadow). The display is one letterboxed 16:9 frame rendered at a fixed 640x480 buffer and scaled up with `image-rendering: pixelated`; the HUD sits inside the frame. The phone view (`/join`) is a portrait frame filling the screen, 360 px wide with a height that follows the screen.
@@ -22,9 +30,29 @@ The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, ho
 
 Every in-game button (menus, battle screens, the phone view, the debug strip) makes Wii-menu-style sounds through `useCanvasUI`: a soft tick when the mouse or remote cursor reaches a button, a bubbly pop on press, a falling pop for back, chimes for switches, and ticks as a slider moves. They're synthesised in `client/src/audio/uiSounds.js` rather than recorded, and a widget can override its press sound with `sound`.
 
+## Main UI flow
+
+**Start → One Player / Two Players → Song Select → song preview**, all drawn in-engine. Back (or Escape, or the phone remote's B) from Song Select returns to the player count, and every screen works with the mouse, touch, the keyboard (arrows and Enter) and the phone remote.
+
+- **Connect Client** (`client/src/connect/`): the status pill in the top-right corner opens a card for the pose input. **Android Client** takes the board's IP on an on-screen keypad (or the keyboard), defaulting to `192.168.43.1` and remembering the last address that connected; the card shows the origin to set as Android's allowed origin and every connection message, and connects, cancels or disconnects. **Webcam (dummy)** lets both player modes be tested without Android: it skips pairing and doesn't use the camera or tracking yet. The server HUD (top left) is the separate backend connection.
+- **Android:** the game reads Android protocol v2 directly (`client/src/pose/`), applies the player count at the stream's sequence boundary and clears missing or stale tracking. Connecting starts the board's camera and pose tracker; Song Select shows **Camera starting…** until the first pose, allowing up to 90 seconds on each connection or reconnect, then each player's slot turns **Detected**. Disconnecting releases the camera to save battery. Browsers block the board's plain-http stream from an https page, so pair from a local http deploy for now.
+- **Song Select** (`client/src/game/SongSelect.jsx`) lists the published songs four to a page with each player's readiness. Extract Dance Studio's song ZIPs into `client/public/songs/`: Song Select finds the exported folders without manifest edits (`server/songCatalog.js`), and builds generate the catalog for static hosting, so rebuild or redeploy to publish changes. The repo ships Austin's “Rockefeller Street Bad Test” routine. Bundles are fully verified before they play ([game song bundles](docs/game-song-bundles.md)).
+- **Preview:** a song's music plays through the mixer (the menu music ducks) with its reference dancers on the song's **dance stage**, rendered inside the game canvas (`client/src/stage/StageView.jsx`, stages from `packages/stages`). Each song picks its stage in Dance Studio and defaults to Open Reef; the stage card on the preview tries any of the six. Countdown, live player characters, calibrated timing, scoring and results are still to come ([integration plan](docs/android-game-integration-plan.md)).
+
+Containerized build, unit and browser-flow checks (use `podman` in place of `docker`
+when using Podman):
+
+```sh
+docker build --target test -t aerodance-ui-test .
+docker build --target ui-test -t aerodance-ui-browser-test .
+docker run --rm aerodance-ui-browser-test
+```
+
+The browser flow (`client/tests/ui-flow.browser.mjs`) clicks the canvas in design units and reads the state each overlay reports on its `data-*` attributes. It skips GPU rasterization in software-only containers; set `UI_RENDER=1` for a full rendered check on a capable GPU.
+
 ## Captured dance demo
 
-The menu-free two-character Frutiger demo is served at `/dance/` in production and PR previews. It replays pose tracking from the supplied dance video at the same fixed resolution and letterboxing as the main app, on six switchable in-engine stages: Skyline Sanctuary, Coral Dome, Open Reef, Emerald Falls, Club Aquarium and Sugarsand Sunset. Switch with ← / →, 1–6, or a hash such as `/dance/#club`. See [the capture guide](temp/frutiger-character/README.md) for the locked, reusable tracking script, diagnostics, retargeting details, and validation.
+The menu-free two-character Frutiger demo is served at `/dance/` in production and PR previews. It replays pose tracking from the supplied dance video at the same fixed resolution and letterboxing as the main app, on six switchable in-engine stages: Skyline Sanctuary, Coral Dome, Open Reef, Emerald Falls, Club Aquarium and Sugarsand Sunset. Switch with ← / →, 1–6, or a hash such as `/dance/#club`. The stages live in [`packages/stages`](packages/stages) and the glass character in [`packages/character`](packages/character), shared by the game, `/dance/` and `/win-screens/`. See [the capture guide](temp/frutiger-character/README.md) for the locked, reusable tracking script, diagnostics, retargeting details, and validation.
 
 ## Main menu mocks
 
@@ -61,7 +89,7 @@ To make a devnet treasury for funding wallets and signing receipts, run `npm run
 
 ### In-engine UI
 
-All menus and battle screens are drawn on 2D canvases that share the render buffer, so they get the same pixels and stretch as the world. `client/src/ui/useCanvasUI.js` handles the overlay (canvas texture, design-unit layout, hit testing, press/hover/drag, scrolling) and `client/src/ui/draw.js` holds the aero drawing kit (bubble pills, glass panels, headers, the title, icons, a pixel-snapped QR code).
+All menus, Song Select, Connect Client and battle screens are drawn on 2D canvases that share the render buffer, so they get the same pixels and stretch as the world. `client/src/ui/useCanvasUI.js` handles the overlay (canvas texture, design-unit layout, hit testing, press/hover/drag, scrolling, opt-in arrow-key navigation) and `client/src/ui/draw.js` holds the aero drawing kit (bubble pills, glass panels, headers, the title, icons, text fields, chips, links, status lights, progress bars, a pixel-snapped QR code).
 
 - **Corner controls:** The main menu shows a fullscreen bubble above the Wii remote bubble; both controls slide off the right edge on submenus and battle screens, and slide back in on return to the main menu. The remote pairing card hides on those screens. A paired remote's cursor still works there. Click the fullscreen bubble on the display itself (phone remote input cannot activate browser fullscreen), or press Esc to exit. Safari on macOS is supported, and the existing 16:9 letterboxing and fixed render resolution are preserved.
 - **Display:** Battle on the main menu opens the lobby (`client/src/battle/BattleScreen.jsx`): a QR code to `/join/<id>`, seat tags over the dancers, the crowd count, and hype rising as bubbles from the dancer it was sent to. Start hands off to the dance; the results screen shows the winner, scores, hype, the on-chain receipt and the winner's trophy NFT. `/battle/<id>?p=<token>`, the link the bot texts, opens the same lobby with that seat's token.
@@ -70,6 +98,20 @@ All menus and battle screens are drawn on 2D canvases that share the render buff
 - Phones can't open `localhost`. To try the phone view from a real phone in dev, run `node --watch server/index.js` and `npx vite --host` instead of `npm run dev`, then open the display by the LAN address Vite prints (or use a tunnel). The QR code uses whatever address the display was opened with.
 
 ## Run locally with Docker Compose
+
+To rebuild and deploy the main app locally in the background:
+
+```sh
+./deploy.sh
+```
+
+The script runs from any working directory, uses Podman when available (otherwise
+Docker), starts the database and agent, and checks app/database health after startup. Create `.env` from
+`.env.example` before the first run. Set `CONTAINER_ENGINE=docker` or
+`CONTAINER_ENGINE=podman` to choose the runtime explicitly. Existing database
+data is retained. Each deployment rebuilds the app image and replaces the app
+container so Podman Compose serves the new build. This script deploys locally;
+public hosting uses Coolify below.
 
 ```sh
 cp .env.example .env

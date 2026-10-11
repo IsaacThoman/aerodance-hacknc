@@ -8,13 +8,17 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { createLakeNormalPixels } from '../client/src/aero/lakeNormals.js';
 import { lakeWaves, referenceLakeNormalPixels } from '../client/tests/helpers/lakeNormalsReference.js';
-import { createRetargeter } from '../temp/frutiger-character/client/src/motion.js';
+import { createRetargeter } from '../packages/character/motion.js';
 
 const baseline = process.argv[2] ?? 'f766e1f';
 const source = execFileSync('git', ['show', `${baseline}:temp/frutiger-character/client/src/motion.js`], { encoding: 'utf8' });
 const reference = await import(`data:text/javascript;base64,${Buffer.from(source.replace('from "three"', `from ${JSON.stringify(import.meta.resolve('three'))}`)).toString('base64')}`);
-const data = JSON.parse(await readFile(new URL('../temp/frutiger-character/client/public/motion/dance.json', import.meta.url)));
-const bytes = await readFile(new URL('../temp/frutiger-character/client/public/models/aero-character.glb', import.meta.url));
+// The capture moved to the aerodance.take format after the baseline; each retargeter reads its own.
+const motionPath = 'temp/frutiger-character/client/public/motion/dance.json';
+const baselineData = JSON.parse(execFileSync('git', ['show', `${baseline}:${motionPath}`], { encoding: 'utf8', maxBuffer: 64 << 20 }));
+const data = JSON.parse(await readFile(new URL(`../${motionPath}`, import.meta.url)));
+const dataFor = (factory) => (factory === createRetargeter ? data : baselineData);
+const bytes = await readFile(new URL('../packages/character/assets/aero-character.glb', import.meta.url));
 const asset = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
 
 const median = (values) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
@@ -40,8 +44,8 @@ let maxMatrixError = 0;
 for (const person of [0, 1]) {
   const models = [clone(asset.scene), clone(asset.scene)];
   const parents = models.map((model) => { const parent = new Group(); parent.add(model); parent.scale.set(1.3, 0.8, 0.9); return parent; });
-  const apply = [reference.createRetargeter(models[0], data, person), createRetargeter(models[1], data, person)];
-  for (let time = -0.1; time < data.duration + 0.1; time += 1 / 60) {
+  const apply = [reference.createRetargeter(models[0], baselineData, person), createRetargeter(models[1], data, person)];
+  for (let time = -0.1; time < data.durationMs / 1000 + 0.1; time += 1 / 60) {
     parents.forEach((parent) => { parent.position.set(Math.sin(time), 0.4, 3); parent.rotation.set(0.2, Math.sin(time) * 0.7, -0.1); });
     apply.forEach((fn) => fn(time));
     models.forEach((model) => model.updateMatrixWorld(true));
@@ -54,11 +58,11 @@ for (const person of [0, 1]) {
 assert.ok(maxMatrixError < 1e-10, `Pose matrix error: ${maxMatrixError}`);
 function benchmarkRetarget(factory) {
   const model = clone(asset.scene), parent = new Group(); parent.add(model);
-  const apply = factory(model, data, 0);
+  const apply = factory(model, dataFor(factory), 0);
   return benchmark((iterations) => { for (let i = 0; i < iterations; i++) apply(i / 60); }, 20000);
 }
 function countCompositions(factory) {
-  const model = clone(asset.scene), apply = factory(model, data, 0);
+  const model = clone(asset.scene), apply = factory(model, dataFor(factory), 0);
   let compositions = 0;
   const original = Object3D.prototype.updateMatrix;
   Object3D.prototype.updateMatrix = function () { compositions++; return original.call(this); };

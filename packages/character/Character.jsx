@@ -9,7 +9,9 @@ import {
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createRetargeter } from "./motion.js";
+import { createPoseApplier } from "./retarget.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
+import modelUrl from "./assets/aero-character.glb?url";
 
 export default function Character({
   appearance,
@@ -17,7 +19,9 @@ export default function Character({
   motion,
   person = 0,
   playback,
-  url = `${import.meta.env.BASE_URL}models/aero-character.glb`,
+  poseRef,
+  calibration,
+  url = modelUrl,
 }) {
   const gltf = useLoader(GLTFLoader, url);
   const model = useMemo(() => clone(gltf.scene), [gltf]);
@@ -25,6 +29,7 @@ export default function Character({
     () => (motion ? createRetargeter(model, motion, person) : null),
     [model, motion, person],
   );
+  const applyPose = useMemo(() => calibration ? createPoseApplier(model, calibration) : null, [model, calibration]);
   const mixer = useMemo(() => new AnimationMixer(model), [model]);
   const ink = useMemo(() => new MeshBasicMaterial({ color: "#020611" }), []);
   const gel = useMemo(() => {
@@ -111,16 +116,17 @@ export default function Character({
     });
   }, [appearance, model, gel]);
   useEffect(() => {
-    if (retarget) return;
+    if (retarget || applyPose) return;
     const clip = gltf.animations.find((c) => c.name === animation);
     if (!clip) return;
     const action = mixer.clipAction(clip).reset().fadeIn(0.25).play();
     return () => {
       action.fadeOut(0.25);
     };
-  }, [animation, gltf, mixer, retarget]);
+  }, [animation, gltf, mixer, retarget, applyPose]);
   useFrame((_, delta) => {
-    if (retarget) retarget(playback.current);
+    if (applyPose) applyPose(poseRef.current);
+    else if (retarget) retarget(playback.current);
     else mixer.update(Math.min(delta, 0.05));
   });
   return <primitive object={model} dispose={null} />;

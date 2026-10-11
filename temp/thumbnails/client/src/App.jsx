@@ -2,10 +2,10 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { advance, Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { PCFShadowMap } from 'three';
-import { validateMotion } from '../../../frutiger-character/client/src/motion.js';
-import { STAGES } from '../../../frutiger-character/client/src/stages/index.js';
-import Dancers from '../../../frutiger-character/client/src/stages/shared/Dancers.jsx';
-import { RenderPipeline, resetPost } from '../../../frutiger-character/client/src/stages/shared/post.jsx';
+import { validateMotion } from '../../../../packages/character/motion.js';
+import { STAGES } from '../../../../packages/stages/index.js';
+import Dancers from '../../../../packages/stages/shared/Dancers.jsx';
+import { RenderPipeline, resetPost } from '../../../../packages/stages/shared/post.jsx';
 import { drawTitle, titleWidth } from '../../../../client/src/ui/draw.js';
 import { BUFFER, DESIGN, SHOTS } from './shots.js';
 

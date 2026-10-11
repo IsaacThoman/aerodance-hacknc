@@ -12,9 +12,11 @@ import { createAeroWorld } from './aeroBackground.js';
  * the last frame is reused from a texture, so overlays can still redraw at full rate.
  * Pair it with <Canvas frameloop="demand"> and something that invalidates at that rate.
  *
- * <AeroWorld speed={1} quality="auto" fps={15} onTelemetry={(t) => ...} />
+ * paused stops it updating and rendering (a dance stage has the screen; stage/StageView.jsx).
+ *
+ * <AeroWorld speed={1} quality="auto" fps={15} paused={false} onTelemetry={(t) => ...} />
  */
-export default function AeroWorld({ speed = 1, quality = 'auto', fps, onTelemetry }) {
+export default function AeroWorld({ speed = 1, quality = 'auto', fps, paused = false, onTelemetry }) {
   const gl = useThree((state) => state.gl);
   const scene = useThree((state) => state.scene);
   const camera = useThree((state) => state.camera);
@@ -22,6 +24,8 @@ export default function AeroWorld({ speed = 1, quality = 'auto', fps, onTelemetr
   const shownRef = useRef(false);
   const teleRef = useRef(onTelemetry);
   teleRef.current = onTelemetry;
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -65,7 +69,7 @@ export default function AeroWorld({ speed = 1, quality = 'auto', fps, onTelemetr
 
   useFrame((_, delta) => {
     const world = worldRef.current;
-    if (!world) return;
+    if (!world || pausedRef.current) return;
     if (!cache) {
       world.update(delta);
       world.render();

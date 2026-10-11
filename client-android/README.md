@@ -26,6 +26,40 @@ The app streams live camera poses over LAN HTTP on port **1337**, using MediaPip
 
 The wrapper requests JDK 21; configure the Android SDK locally. Native loading, capture, and performance must be checked on the board.
 
+## Set up, build, and deploy in one command
+
+From the repository root:
+
+```bash
+./client-android/scripts/deploy.sh              # preview; no changes
+./client-android/scripts/deploy.sh --apply      # build and deploy this checkout
+./client-android/scripts/deploy.sh --apply --origin https://game.example.com
+```
+
+Install Java (JDK 21 recommended) and Android SDK command-line tools once. The
+script uses `--sdk PATH`, `ANDROID_HOME`/`ANDROID_SDK_ROOT`, `local.properties`,
+or `~/Android/Sdk`, in that order. It installs missing platform-tools, the
+compile SDK, NDK, and CMake versions from the Gradle version catalog using
+`sdkmanager`, prompting for SDK licenses when needed. Gradle provisions its
+pinned JDK and resolves build tools and dependencies. Package downloads need
+network access; the SDK must be writable. The selected SDK is saved in the
+ignored `local.properties` without removing other settings.
+
+The script runs host tests and builds the debug APK before changing the board.
+It reconnects ADB through the board's enable API if needed, stops the previous
+Aerodance activity, releases camera owners with the existing root helper,
+configures continuous capture and the 30 ms indoor exposure ceiling, installs
+the APK while preserving app data, grants CAMERA, and checks activity launch.
+Use `--outdoor` to preserve the existing exposure ceiling. `--serial DEVICE`
+selects a different ADB device; `--board-host HOST` selects its reconnect API.
+See `--help` for all options.
+
+“Latest” means the current checkout, including uncommitted changes. The script
+does not fetch Git changes. `--origin` sets and saves the exact website origin
+through the debug app's existing launch extra. Otherwise the saved origin is
+used; on first use enter it in the app and press **Start**. Launch success does
+not verify pose inference: camera/GPU work starts when a stream client connects.
+
 ## Release a competing camera app
 
 If the board is disconnected, enable ADB before reconnecting:
@@ -83,7 +117,27 @@ curl -N http://192.168.43.1:1337/v1/stream
 
 For local rendering, follow [pose-test-site/README.md](pose-test-site/README.md): serve on port 8081, set the Android origin to `http://localhost:8081`, and connect the browser. The debug APK also accepts `--es testOrigin http://localhost:8081` on its MainActivity launch. Normal launches use the saved origin. Allow CAMERA when requested; ADB `pm grant` remains available for unattended tests.
 
-The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. Leaving the activity stops the server; returning starts a new session automatically using the saved origin.
+The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. To save battery, camera capture and pose inference run only while `/v1/stream` has a client. Disconnect detection releases the camera and GPU task; reconnect recreates them automatically, preserving the session and selected player count. Status/config requests leave capture off. While idle, `running` indicates server readiness; opening a live stream changes it to `starting` until the first successful inference. Startup heartbeats keep the stream alive, and config snapshots are withheld until inference is ready. The game, authoring tool and test viewer show camera initialization and allow 90 seconds after opening each stream for its first pose result. Leaving the activity stops the server; returning starts a new session automatically using the saved origin.
+
+With the live app running and no other stream consumer, verify idle shutdown and
+reconnect (including disconnect during GPU initialization):
+
+```bash
+python3 scripts/check-idle-capture.py 192.168.43.1 --origin https://game.example.com
+```
+
+Use the exact origin configured in the app. This checks real camera ownership and
+capture/inference worker release over ADB, fresh poses after reconnect, and
+session/player-count continuity. It leaves the server idle with one player selected.
+
+Board checks on 2026-10-10 confirmed capture stayed off after status/config
+requests, fresh poses resumed across two connect/disconnect cycles, and an early
+disconnect during GPU startup followed by an immediate reconnect recovered with
+the same session, advancing sequences and two-player output. Camera/inference
+workers released in 0.58–0.68 seconds after active streaming disconnected. GPU
+startup took about 35 seconds per ordinary connection; reconnect during startup
+took about 63 seconds while the previous task finished initialization and closed.
+These checks verify resource shutdown; battery life was not measured.
 
 The board-specific font fallback loads the installed `Roboto-Regular.ttf` directly because this firmware references missing system fonts. Other images fall back to the normal font family if that file is unavailable. No firmware files are modified.
 
