@@ -358,6 +358,25 @@ export const ICONS = {
     g.arc(cx, cy - h * 0.22, r * 0.09, 0, TAU);
     g.stroke();
   },
+  // A video camera, struck through when `off`: the pose input.
+  webcam(g, cx, cy, r, off = false) {
+    const w = r * 0.78;
+    const h = r * 0.56;
+    const x = cx - r * 0.57;
+    g.beginPath();
+    g.roundRect(x, cy - h / 2, w, h, r * 0.1);
+    g.moveTo(x + w + r * 0.06, cy - h * 0.12);
+    g.lineTo(x + w + r * 0.36, cy - h * 0.38);
+    g.lineTo(x + w + r * 0.36, cy + h * 0.38);
+    g.lineTo(x + w + r * 0.06, cy + h * 0.12);
+    g.closePath();
+    g.stroke();
+    if (!off) return;
+    g.beginPath();
+    g.moveTo(cx - r * 0.6, cy - r * 0.6);
+    g.lineTo(cx + r * 0.6, cy + r * 0.6);
+    g.stroke();
+  },
   // Box with an arrow leaving it: opens somewhere else.
   link(g, cx, cy, r) {
     const a = r * 0.4;

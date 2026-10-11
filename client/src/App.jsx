@@ -271,6 +271,9 @@ function DisplayApp() {
     current: battleResultsShow(battleRef.current, savedBattleResults, performance.now() / 1000),
   } : null, [finishedBattle, battleId, savedBattleResults]);
   const gameResults = screen === 'game' && gamePhase === 'results';
+  // Get Ready (and webcam calibration) keeps Connect Client to hand, so the camera can be
+  // set up without leaving the song.
+  const gameSetup = screen === 'game' && ['loading', 'calibrating', 'ready'].includes(gamePhase);
   const resultsVisible = gameResults || finishedBattle;
   // A play link may report only one seat; another display can supply the other score.
   // Once settled, show the server's outcome on this same screen without restarting it.
@@ -343,6 +346,7 @@ function DisplayApp() {
           session={game}
           onQuit={quitGame}
           onRetry={retryGame}
+          onOpenConnect={() => setConnectOpen(true)}
         />
         <ResultsScreen
           visible={resultsVisible}
@@ -369,7 +373,8 @@ function DisplayApp() {
         />
         <DebugPanel battle={battleId ? battle : null} />
         <ConnectionPanel
-          visible={(!battleId || inBattleSong) && ((menuOpen && menuShown === 'settings') || connectOpen)}
+          visible={(!battleId || inBattleSong) && ((menuOpen && menuShown === 'settings') || gameSetup || connectOpen)}
+          alert={gameSetup}
           open={connectOpen}
           onOpenChange={setConnectOpen}
           source={source}

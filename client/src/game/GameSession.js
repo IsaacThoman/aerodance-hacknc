@@ -162,18 +162,34 @@ export class GameSession {
     this.set('countdown');
   }
 
-  update(now = this.now()) {
+  /**
+   * Before the countdown the pose input can change (Connect Client on Get Ready): a webcam
+   * calibrates standing still first, Android calibrates itself as players are tracked.
+   */
+  syncSource() {
+    const webcam = this.source?.view?.sourceKind === 'webcam';
+    if (webcam === !!this.webcamCalibration) return;
+    this.webcamCalibration = webcam ? new WebcamCalibration(this.playerCount) : null;
+    this.live = Array.from({ length: this.playerCount }, () => createLivePlayer({ autoCalibrate: !webcam }));
+    this.present.fill(-Infinity);
+    this.readySince = null;
+    if (['calibrating', 'ready'].includes(this.phase)) this.set(webcam ? 'calibrating' : 'ready');
+  }
+
+  /** hold: the countdown waits (Connect Client is open over Get Ready). */
+  update(now = this.now(), { hold = false } = {}) {
+    if (['loading', 'calibrating', 'ready'].includes(this.phase)) this.syncSource();
     const { phase, player } = this;
     if (this.webcamCalibration && ['calibrating', 'ready'].includes(phase)) {
       const { complete } = this.calibrationStatus(now);
       if (phase === 'ready' && !complete) {
         this.live.forEach(p => p.setCalibration(null));
         this.set('calibrating');
-      } else if (phase === 'ready' && this.autoStart) this.start();
+      } else if (phase === 'ready' && this.autoStart && !hold) this.start();
     } else if (phase === 'ready') {
       const ready = this.readiness(now).every((r) => r === 'ready');
-      this.readySince = ready ? this.readySince ?? now : null;
-      if (this.autoStart && ready && now - this.readySince >= READY_HOLD_MS) this.start();
+      this.readySince = ready && !hold ? this.readySince ?? now : null;
+      if (this.autoStart && this.readySince !== null && now - this.readySince >= READY_HOLD_MS) this.start();
     } else if (phase === 'countdown') {
       if (player.rawTimeMs() >= this.resumeFromMs()) this.set('playing');
     } else if (phase === 'playing') {

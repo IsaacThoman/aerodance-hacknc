@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import {
-  FONT, drawCaps, drawGlassCircle, drawGlassPanel, drawHeader, drawHeadline as headline, drawPill, drawPlayerLeds, drawProgress, drawShadowText, ellipsize, ICONS,
+  FONT, TAU, drawCaps, drawChip, drawGlassCircle, drawGlassPanel, drawHeader, drawHeadline as headline, drawPill, drawPlayerLeds, drawProgress, drawShadowText,
+  ellipsize, ICONS, roundRect, text,
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { playUISound } from '../audio/uiSounds.js';
@@ -10,8 +11,8 @@ import { WEBCAM_STILL_MS } from './webcamCalibration.js';
 import { drawWebcamPreview } from '../../../packages/pose/browser/preview.js';
 import { PLAYERS, backOut, clamp01 } from './results.js';
 import {
-  GAME_CALIBRATION_PREVIEW, GAME_CALIBRATION_PROGRESS, GAME_PAUSE, GAME_PAUSE_PANEL, GAME_PROGRESS, GAME_QUIT, GAME_READY_BACK, GAME_READY_START, GAME_RESTART, GAME_RESUME,
-  LIVE_PANEL, livePanelCenterX,
+  GAME_CALIBRATION_PREVIEW, GAME_CALIBRATION_PROGRESS, GAME_PAUSE, GAME_PAUSE_PANEL, GAME_PROGRESS, GAME_QUIT, GAME_READY_BACK, GAME_READY_CAMERA, GAME_READY_START,
+  GAME_RESTART, GAME_RESUME, GAME_TRACKING_WARNING, LIVE_PANEL, livePanelCenterX,
 } from './layout.js';
 
 /**
@@ -27,9 +28,14 @@ import {
  *   paused     Resume (with a fresh countdown), Restart, Song select
  *   results    hands the overlay to ResultsScreen, shared with finished battles
  *
- * The canvas reports data-game-phase, -game-countdown, -game-time-ms and -game-scores for tests.
+ * Until the countdown App shows the Connect Client pill top right. While there's no pose
+ * input, a warning card fills the stage and its button opens Connect Client (onOpenConnect);
+ * the countdown holds while that card is open (blocked).
  *
- * <GameScreen visible session={GameSession} onQuit onRetry />
+ * The canvas reports data-game-phase, -game-countdown, -game-time-ms, -game-scores and
+ * -game-tracking ('on', 'starting' or 'off' before the countdown) for tests.
+ *
+ * <GameScreen visible session={GameSession} onQuit onRetry onOpenConnect />
  */
 
 const JUDGEMENT_LOOK = {
@@ -47,6 +53,84 @@ const CALIBRATION_STATUS = {
   holding: ['Hold still…', '#bff4ff'],
   ready: ['Calibrated!', '#9effdf'],
 };
+
+// Before the countdown: is the pose input (Android or webcam) running?
+const SETUP_PHASES = ['loading', 'calibrating', 'ready'];
+const STARTING = ['connecting', 'initializing', 'reconnecting'];
+const tracking = (view) => (view?.status === 'connected' ? 'on' : STARTING.includes(view?.status) ? 'starting' : 'off');
+const WARNING_LOOK = {
+  off: { title: 'TRACKING IS OFF', top: 'rgba(255, 118, 104, 0.95)', bottom: 'rgba(190, 34, 66, 0.95)', glow: '255, 84, 84', ink: '#c42640', tint: '#ffe0da' },
+  starting: { title: 'CAMERA STARTING', top: 'rgba(255, 200, 96, 0.95)', bottom: 'rgba(214, 118, 20, 0.95)', glow: '255, 182, 64', ink: '#c06a08', tint: '#fff0d6' },
+};
+
+// Get Ready's warning card: coral while there's no pose input, amber while it starts up,
+// with a slow glow so it can't be missed.
+function drawTrackingWarning(g, state, view, now, hover, press) {
+  const { x, y, w, h } = GAME_TRACKING_WARNING;
+  const look = WARNING_LOOK[state];
+  const pulse = 0.5 + 0.5 * Math.sin(now * 4);
+  g.save();
+  g.shadowColor = `rgba(${look.glow}, ${0.55 + pulse * 0.35})`;
+  g.shadowBlur = 24 + pulse * 28;
+  roundRect(g, x, y, w, h, 34);
+  const body = g.createLinearGradient(0, y, 0, y + h);
+  body.addColorStop(0, look.top);
+  body.addColorStop(1, look.bottom);
+  g.fillStyle = body;
+  g.fill();
+  g.restore();
+  g.save();
+  roundRect(g, x, y, w, h, 34);
+  g.clip();
+  const sheen = g.createLinearGradient(0, y, 0, y + 90);
+  sheen.addColorStop(0, 'rgba(255,255,255,0.4)');
+  sheen.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = sheen;
+  g.fillRect(x, y, w, 90);
+  g.restore();
+  roundRect(g, x, y, w, h, 34);
+  g.lineWidth = 4;
+  g.strokeStyle = `rgba(255,255,255,${0.7 + pulse * 0.3})`;
+  g.stroke();
+
+  // A white disc with the (struck-through) camera.
+  const cx = x + 108;
+  const cy = y + h / 2;
+  const r = 70;
+  g.save();
+  g.shadowColor = 'rgba(80, 0, 20, 0.35)';
+  g.shadowBlur = 14;
+  g.shadowOffsetY = 4;
+  g.beginPath();
+  g.arc(cx, cy, r, 0, TAU);
+  const disc = g.createLinearGradient(0, cy - r, 0, cy + r);
+  disc.addColorStop(0, '#ffffff');
+  disc.addColorStop(1, look.tint);
+  g.fillStyle = disc;
+  g.fill();
+  g.restore();
+  g.save();
+  g.lineWidth = 8;
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.strokeStyle = look.ink;
+  ICONS.webcam(g, cx, cy, r, state === 'off');
+  g.restore();
+
+  const tx = GAME_READY_CAMERA.x;
+  const maxW = x + w - 36 - tx;
+  drawCaps(g, look.title, tx, y + 58, { size: 32 });
+  g.save();
+  g.shadowColor = 'rgba(70, 0, 20, 0.45)';
+  g.shadowBlur = 4;
+  g.shadowOffsetY = 2;
+  text(g, state === 'off' ? 'Your moves won\'t be seen or scored.' : 'Tracking turns on in a moment.', tx, y + 108, { size: 27, weight: 800 });
+  const detail = view?.status === 'disconnected' || !view?.message ? 'Connect your Android client or start a webcam.' : view.message;
+  g.font = `600 22px ${FONT}`;
+  text(g, ellipsize(g, detail, maxW), tx, y + 146, { size: 22, color: 'rgba(255,255,255,0.92)' });
+  g.restore();
+  drawPill(g, GAME_READY_CAMERA, { label: state === 'off' ? 'Set up camera' : 'Camera settings', icon: 'webcam', hover, press });
+}
 
 const fmt = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -78,14 +162,16 @@ function drawPlayerHud(g, id, result, readiness, popups, now) {
   }
 }
 
-export default function GameScreen({ visible = false, blocked = false, session, onQuit, onRetry }) {
+export default function GameScreen({ visible = false, blocked = false, session, onQuit, onRetry, onOpenConnect }) {
   const gl = useThree((state) => state.gl);
   const props = useRef({});
-  props.current = { visible, blocked, session, onQuit, onRetry };
+  props.current = { visible, blocked, session, onQuit, onRetry, onOpenConnect };
   const st = useRef({ alpha: 0, popups: [], reported: '', countdownShown: null }).current;
 
   const live = () => props.current.visible && !props.current.blocked && phase() !== 'results' && st.alpha > 0.3;
   const phase = () => props.current.session?.phase ?? 'loading';
+  // 'on', 'starting' or 'off' before the countdown (the warning card's state), else ''.
+  const setupTracking = () => (SETUP_PHASES.includes(phase()) ? tracking(props.current.session?.source?.view) : '');
 
   const ui = useCanvasUI({
     priority: 2,
@@ -95,6 +181,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       const ph = phase();
       if (['ready', 'calibrating', 'loading', 'error'].includes(ph)) {
         const list = [{ id: 'quit', circle: GAME_READY_BACK, sound: 'back' }];
+        if (['off', 'starting'].includes(setupTracking())) list.push({ id: 'camera', rect: GAME_READY_CAMERA });
         if (ph === 'ready' && !props.current.session.webcamCalibration) list.push({ id: 'start', rect: GAME_READY_START });
         return list;
       }
@@ -106,6 +193,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       const p = props.current;
       const session = p.session;
       if (wdg.id === 'start') session?.start();
+      else if (wdg.id === 'camera') p.onOpenConnect?.();
       else if (wdg.id === 'pause') session?.pause();
       else if (wdg.id === 'resume') session?.resume();
       else if (wdg.id === 'restart' || wdg.id === 'retry') p.onRetry?.();
@@ -140,7 +228,8 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       st.alpha = s.ease(st.alpha, p.visible ? 1 : 0, p.visible ? 4 : 8);
       const session = p.session;
       if (!p.visible || !session) return;
-      session.update(performance.now());
+      // The countdown waits while Connect Client is open over Get Ready.
+      session.update(performance.now(), { hold: p.blocked });
       // Animated every frame while a song is on: scores, the countdown, popups, readiness.
       s.invalidate();
       const now = s.time;
@@ -155,6 +244,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
         gameCalibrationProgress: calibration ? calibration.progress.toFixed(3) : '',
         gameCalibrationPlayers: calibration?.players.join('|') ?? '',
         gameCalibrationPreview: calibration ? String(!!session.source?.video) : '',
+        gameTracking: setupTracking(),
       };
       const json = JSON.stringify(report);
       if (json !== st.reported) { st.reported = json; Object.assign(gl.domElement.dataset, report); }
@@ -195,11 +285,13 @@ export default function GameScreen({ visible = false, blocked = false, session, 
         drawProgress(g, GAME_CALIBRATION_PROGRESS, calibration.progress);
         const remaining = ((1 - calibration.progress) * WEBCAM_STILL_MS / 1000).toFixed(1);
         const message = source?.view?.status === 'error' ? source.view.message
-          : source?.view?.status === 'disconnected' ? 'Camera disconnected. Go back to connect your webcam.'
+          : source?.view?.status === 'disconnected' ? 'Camera disconnected. Start it again from Connect Client, top right.'
           : calibration.complete ? 'Calibrated! Starting…'
           : calibration.progress > 0 ? `Keep still · ${remaining} seconds to go`
           : 'The countdown starts automatically once everyone is calibrated.';
         drawShadowText(g, message, 800, 862, { size: 22, align: 'center', color: '#e6f8ff' });
+        const state = tracking(source?.view);
+        if (state !== 'on') drawTrackingWarning(g, state, source?.view, now, h.camera ?? 0, press('camera'));
         return;
       }
 
@@ -209,14 +301,24 @@ export default function GameScreen({ visible = false, blocked = false, session, 
         drawShadowText(g, ellipsize(g, song.title, 1000), 128, 270, { size: 64, weight: 800 });
         g.font = `700 30px ${FONT}`;
         drawShadowText(g, ellipsize(g, song.artist, 1000), 130, 322, { size: 30, color: '#d8f6ff' });
-        if (ph === 'loading') drawShadowText(g, `Loading song${'.'.repeat(1 + (Math.floor(now * 3) % 3))}`, 800, 520, { size: 34, align: 'center' });
+        // Loading sits where Start now will appear, under the tracking warning.
+        if (ph === 'loading') drawShadowText(g, `Loading song${'.'.repeat(1 + (Math.floor(now * 3) % 3))}`, 800, 738, { size: 34, align: 'center' });
         if (ph === 'error') drawShadowText(g, session.error, 800, 520, { size: 30, align: 'center', color: '#ffb38a' });
+        const state = ph === 'error' ? 'on' : tracking(session.source?.view);
+        if (state !== 'on') drawTrackingWarning(g, state, session.source?.view, now, h.camera ?? 0, press('camera'));
         if (ph === 'ready') {
           const readiness = session.readiness();
           const hold = session.readySince === null ? 0 : clamp01((performance.now() - session.readySince) / READY_HOLD_MS);
           const allReady = readiness.every((r) => r === 'ready');
+          if (state === 'on') {
+            // The camera's working: say so, and what the ready check is waiting for.
+            const label = allReady ? '● Camera on · you\'re tracked!'
+              : readiness.includes('missing') ? '● Camera on · step into view' : '● Camera on · hold still';
+            g.font = `700 22px ${FONT}`;
+            drawChip(g, 800 - (g.measureText(label).width + 40) / 2, 618, label, '#9effdf');
+          }
           drawPill(g, GAME_READY_START, {
-            label: allReady ? 'Starting…' : 'Start now', sub: allReady ? '' : 'no tracking :(',
+            label: allReady ? 'Starting…' : 'Start now', sub: allReady ? '' : state === 'on' ? 'skip the ready check' : 'no tracking :(',
             icon: 'play', hover: h.start ?? 0, press: press('start'),
           });
           if (hold > 0) drawProgress(g, { x: GAME_READY_START.x + 40, y: GAME_READY_START.y + GAME_READY_START.h + 18, w: GAME_READY_START.w - 80, h: 12 }, hold);
@@ -294,7 +396,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
 
   useEffect(() => {
     if (!visible) {
-      for (const key of ['gamePhase', 'gameCountdown', 'gameTimeMs', 'gameScores', 'gameCalibrationProgress', 'gameCalibrationPlayers', 'gameCalibrationPreview']) delete gl.domElement.dataset[key];
+      for (const key of ['gamePhase', 'gameCountdown', 'gameTimeMs', 'gameScores', 'gameCalibrationProgress', 'gameCalibrationPlayers', 'gameCalibrationPreview', 'gameTracking']) delete gl.domElement.dataset[key];
       st.reported = '';
     }
     ui.invalidate();

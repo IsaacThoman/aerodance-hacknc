@@ -17,10 +17,12 @@ import { drawWebcamPreview } from '../../../packages/pose/browser/preview.js';
  * player placement in the card.
  *
  * While the card is open the rest of the menus are held (App passes them `blocked`).
+ * With `alert` (Get Ready), the pill pulses until the pose input is connected: red while
+ * it is off, amber while it starts.
  * The canvas reports data-connect-open / -ready / -status / -mode / -message / -address for tests.
  *
  * <ConnectionPanel visible open onOpenChange={setOpen} source={source} connection={view}
- *   inputMode="android" onInputModeChange={setMode} />
+ *   inputMode="android" onInputModeChange={setMode} alert={false} />
  */
 
 const DEFAULT_ADDRESS = '192.168.43.1';
@@ -88,14 +90,15 @@ function drawKey(g, { key, rect }, hover, press, enabled) {
   g.restore();
 }
 
-export default function ConnectionPanel({ visible = true, open = false, onOpenChange, source, connection, inputMode, onInputModeChange }) {
+export default function ConnectionPanel({ visible = true, open = false, onOpenChange, source, connection, inputMode, onInputModeChange, alert = false }) {
   const gl = useThree((state) => state.gl);
   const props = useRef({});
-  props.current = { visible, open, onOpenChange, source, connection, inputMode, onInputModeChange };
+  props.current = { visible, open, onOpenChange, source, connection, inputMode, onInputModeChange, alert };
   // alpha: the whole overlay; k: how far the card is out (it grows from the pill).
   const st = useRef({ alpha: 0, k: 0, address: savedAddress(), error: '', drawn: null, blink: true }).current;
 
   const connecting = () => ACTIVE.includes(props.current.connection.status);
+  const alerting = () => props.current.alert && !props.current.open && props.current.connection.status !== 'connected';
   const typing = () => props.current.inputMode === 'android' && !connecting();
   const message = () => st.error || props.current.connection.message || 'Ready to connect on port 1337.';
   const close = () => props.current.onOpenChange?.(false);
@@ -175,6 +178,7 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
       st.k = s.ease(st.k, p.open && p.visible ? 1 : 0, p.open ? 8 : 10);
       const blink = Math.floor(s.time * 1.9) % 2 === 0;
       if (blink !== st.blink && p.open && typing()) { st.blink = blink; s.invalidate(); }
+      if (alerting()) s.invalidate();
       const { status } = p.connection;
       const ready = p.open && st.k >= 0.5 && st.alpha > 0.3;
       if (p.open && p.inputMode === 'webcam' && p.source.video && s.time - (st.lastPreview || 0) > 1 / 15) {
@@ -258,12 +262,27 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
 
       // The pill: status light and what the pose input is doing.
       const hv = h.pill ?? 0;
+      const alert = alerting();
+      if (alert) {
+        // A pulsing ring, red without tracking and amber while it starts: the song is
+        // about to start without it.
+        const pulse = 0.5 + 0.5 * Math.sin(s.time * 4);
+        const [glow, ring] = ACTIVE.includes(status) ? ['255, 182, 64', '255, 206, 120'] : ['255, 84, 84', '255, 128, 112'];
+        g.save();
+        g.shadowColor = `rgba(${glow}, ${0.6 + pulse * 0.4})`;
+        g.shadowBlur = 16 + pulse * 22;
+        pill(g, PILL.x - 4, PILL.y - 4, PILL.w + 8, PILL.h + 8);
+        g.lineWidth = 5;
+        g.strokeStyle = `rgba(${ring}, ${0.75 + pulse * 0.25})`;
+        g.stroke();
+        g.restore();
+      }
       g.save();
       g.globalAlpha *= 0.88 + hv * 0.12;
       drawGlassPanel(g, PILL, PILL.h / 2);
       g.restore();
       const cy = PILL.y + PILL.h / 2;
-      drawStatusDot(g, PILL.x + 40, cy, status, 11);
+      drawStatusDot(g, PILL.x + 40, cy, alert && !ACTIVE.includes(status) ? 'error' : status, 11);
       g.font = `700 28px ${FONT}`;
       text(g, ellipsize(g, LABELS[status] ?? 'Connect Client', PILL.w - 130), PILL.x + 68, cy + 1, { size: 28, weight: 700 });
       g.lineWidth = 4;

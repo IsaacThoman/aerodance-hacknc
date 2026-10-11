@@ -59,12 +59,12 @@ async function setup(playerCount = 1, options = {}) {
     bundle, playerCount, source, now: () => clock.now, createPlayer: async () => (player = fakePlayer(clock)), ...options,
   });
   await session.load();
-  const step = (ms, each) => {
+  const step = (ms, each, update) => {
     for (let t = 0; t < ms; t += 50) {
       clock.now += 50;
       each?.(clock.now);
       player.tick();
-      session.update(clock.now);
+      session.update(clock.now, update);
     }
   };
   return { clock, session, source, step, player: () => player };
@@ -91,6 +91,46 @@ test('the ready check waits for every player, then counts down into the song', a
   assert.ok(session.countdownMs() > 0);
   step(600);
   assert.equal(session.phase, 'playing');
+});
+
+test('the countdown holds while Connect Client is open over Get Ready', async () => {
+  const { session, source, step } = await setup(1);
+  step(1200 + READY_HOLD_MS + 500, (now) => source.send(standing(1), now), { hold: true });
+  assert.deepEqual(session.readiness(), ['ready']);
+  assert.equal(session.phase, 'ready', 'tracked, but the card is still open');
+  // Closed: the usual second's hold, then the countdown.
+  step(READY_HOLD_MS - 200, (now) => source.send(standing(1), now));
+  assert.equal(session.phase, 'ready');
+  step(400, (now) => source.send(standing(1), now));
+  assert.equal(session.phase, 'countdown');
+
+  const webcam = await setup(1, { sourceKind: 'webcam' });
+  webcam.step(3000, (now) => webcam.source.send(standing(1), now), { hold: true });
+  assert.equal(webcam.session.phase, 'ready', 'calibrated, but the card is still open');
+  webcam.step(50, (now) => webcam.source.send(standing(1), now));
+  assert.equal(webcam.session.phase, 'countdown');
+  webcam.session.dispose();
+});
+
+test('switching the pose input on Get Ready swaps webcam calibration in and out', async () => {
+  const { session, source, step } = await setup(1, { autoStart: false });
+  step(1500, (now) => source.send(standing(1), now));
+  assert.deepEqual(session.readiness(), ['ready']);
+  // Webcam picked in Connect Client: everyone stands still to calibrate first.
+  source.view = { ...source.view, sourceKind: 'webcam' };
+  step(50);
+  assert.equal(session.phase, 'calibrating');
+  assert.ok(session.webcamCalibration);
+  assert.equal(session.live[0].calibration, null);
+  step(2600, (now) => source.send(standing(1), now));
+  assert.equal(session.phase, 'ready');
+  // Back to Android: its own ready check, from scratch.
+  source.view = { ...source.view, sourceKind: 'android' };
+  step(50);
+  assert.equal(session.phase, 'ready');
+  assert.equal(session.webcamCalibration, null);
+  assert.deepEqual(session.readiness(), ['missing']);
+  session.dispose();
 });
 
 test('webcam sessions require a shared still hold and start countdown immediately after calibration', async () => {
