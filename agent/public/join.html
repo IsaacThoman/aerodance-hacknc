@@ -134,9 +134,7 @@
     background: linear-gradient(180deg, #ffffff, #e4eaef); box-shadow: 0 3px 8px rgba(11,61,107,.2); }
   .home { height: 44px; padding: 0 16px; border-radius: 999px; border: 0; font-size: 12px; font-weight: 800; letter-spacing: .12em; color: #1f9be0;
     background: linear-gradient(180deg, #ffffff, #e4eaef); box-shadow: 0 3px 8px rgba(11,61,107,.2); }
-  .grille { display: grid; grid-template-columns: repeat(6, 5px); gap: 6px; }
-  .grille i { width: 5px; height: 5px; border-radius: 50%; background: #c3ccd4; box-shadow: inset 0 1px 1px rgba(0,0,0,.25); }
-  .leds { display: flex; gap: 14px; }
+  .leds { display: flex; gap: 16px; margin-bottom: -4px; }
   .leds span { width: 9px; height: 9px; border-radius: 2px; background: #cdd6dd; box-shadow: inset 0 1px 1px rgba(0,0,0,.15); }
   .leds span.on { background: #34b9ff; box-shadow: 0 0 10px #34b9ff, 0 0 3px #9fe0ff; }
   .wii-brand { font-size: 17px; font-weight: 300; letter-spacing: .2em; color: #b8c3cc; }
@@ -188,6 +186,7 @@
   <!-- phone remote for the menu screen (QR on the screen opens /join?remote=CODE) -->
   <section class="hidden" id="remoteCard">
     <div class="wii">
+      <div class="leds" aria-label="Player 1"><span class="on"></span><span></span><span></span><span></span></div>
       <div class="wii-top">
         <button class="power" id="remoteRelease" type="button" aria-label="Hand off the remote"></button>
         <div class="modes">
@@ -203,8 +202,6 @@
         <button class="home" id="remoteCenter" type="button" aria-label="Center the cursor">HOME</button>
         <button class="pm" id="speedUp" type="button" aria-label="Faster pointer">+</button>
       </div>
-      <div class="grille" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <div class="leds" aria-label="Player 1"><span class="on"></span><span></span><span></span><span></span></div>
       <div class="wii-brand">aerodance</div>
       <div class="wii-foot">
         <span id="remoteStatus"></span>
@@ -261,8 +258,7 @@
 
 </main>
 <div class="toast" id="toast"></div>
-<!-- iOS haptics: tapping a native switch's label plays the system tick (iOS 18+). -->
-<label id="hapticLabel" style="position:fixed;left:-100px;top:0;opacity:0;pointer-events:none"><input type="checkbox" switch /></label>
+
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -606,13 +602,26 @@
   });
   for (const t of ["pointerup", "pointercancel"]) $("pad").addEventListener(t, () => { padDrag = null; });
 
-  // A short click on every remote button press: vibrate where supported (Android),
-  // the hidden switch trick on iPhone.
+  // A short click on every remote button: vibrate where supported (Android). Safari has
+  // no vibrate, but toggling a native switch plays the system tick (iOS 18+). iOS only
+  // allows it during a user activation, which for touch is the finger lifting, so the
+  // tick lands on release.
   function haptic() {
-    if (navigator.vibrate) navigator.vibrate(12);
-    else $("hapticLabel").click();
+    if (navigator.vibrate) return void navigator.vibrate(12);
+    try {
+      const label = document.createElement("label");
+      label.ariaHidden = "true";
+      label.style.display = "none";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.setAttribute("switch", "");
+      label.appendChild(input);
+      document.head.appendChild(label);
+      label.click();
+      label.remove();
+    } catch {}
   }
-  $("remoteCard").addEventListener("pointerdown", (e) => { if (e.target.closest("button")) haptic(); });
+  $("remoteCard").addEventListener(navigator.vibrate ? "pointerdown" : "pointerup", (e) => { if (e.target.closest("button")) haptic(); });
 
   // Settings sheet, and − / + as quick speed steps.
   $("tuneOpen").onclick = () => show("tuneSheet", true);
