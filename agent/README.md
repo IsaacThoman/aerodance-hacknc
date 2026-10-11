@@ -1,20 +1,26 @@
 # aerodance agent 🫧🐠
 
-The iMessage side of aerodance: a [Photon Spectrum](https://photon.codes/docs/spectrum-ts) bot plus everything Solana.
+The Solana and iMessage side of aerodance: a [Photon Spectrum](https://photon.codes/docs/spectrum-ts) bot plus everything that touches Solana devnet.
 Your phone number is your identity and your Solana devnet wallet. There's no signup and no login: you text the bot and you're dancing.
 
-One Node process runs both:
-- the Spectrum iMessage message loop, and
-- a small HTTP API (default port 4000) that the game client/server call.
+Battles, profiles, seats and results live in the app (`server/`), which owns the database schema.
+The agent is a worker beside it in Compose, and it holds every Solana key:
+
+- **Jobs:** the app adds rows to the `jobs` table and `NOTIFY`s `jobs`. The agent creates and funds wallets, links phones to Photon, writes the on-chain result receipt, texts the players and mints the winner's trophy NFT. Failed jobs retry with backoff, so a restart or a slow RPC never loses a receipt or a text.
+- **Internal HTTP API** (port 4000, Compose network only), for things the app needs an answer to right away: `GET /wallets/:profileId` (address and balance), `POST /hype` (spectator → dancer transfer) and `POST /stickers` (a sticker NFT minted from the spectator's wallet into the dancer's).
+- **The iMessage bot**, when `PROJECT_ID` and `PROJECT_SECRET` are set. Bot commands that create battles or profiles call the app's internal API (`app:3001`), so battle rules stay in one place. Without credentials (PR previews, local dev), texts are only logged.
+- When a receipt lands or a phone gets linked, the agent `NOTIFY`s `changes` and the app pushes the update to displays and phones over Socket.IO.
 
 ## Setup
+
+Usually you run it with the rest of the stack: `docker compose -f compose.yaml -f compose.local.yaml up --build` from the repository root.
+To run it on its own against the local database:
 
 ```sh
 cd agent
 npm install
-cp .env.example .env      # then fill in PROJECT_ID / PROJECT_SECRET from app.photon.codes
-npm run treasury          # creates data/treasury.json and tries a devnet airdrop
-npm run dev               # or: npm run start
+npm run treasury          # prints a new SOLANA_TREASURY_SECRET for ../.env and tries a devnet airdrop
+npm run dev               # reads ../.env, then agent/.env if present
 ```
 
 If the airdrop is rate-limited, `npm run treasury` prints the treasury address. Paste it into
@@ -23,25 +29,17 @@ The treasury pays for new-player funding (0.05 SOL each) and for the on-chain re
 
 | Env var | Default | |
 |---|---|---|
-| `PROJECT_ID`, `PROJECT_SECRET` | | Photon dashboard → project settings |
+| `DATABASE_URL` | `postgres://postgres:postgres@localhost:5432/aerodance` | The app's TimescaleDB. The app creates the tables; the agent waits for them. |
+| `APP_URL` | `http://app:3001` | The app's internal API |
+| `INTERNAL_SECRET` | | Shared with the app. Both sides check it when set. |
 | `SOLANA_RPC_URL` | `https://api.devnet.solana.com` | **Devnet or localhost only.** The agent refuses to start otherwise. |
-| `BATTLE_BASE_URL` | `http://localhost:5173` | Where the game is served. Battle links are `${BATTLE_BASE_URL}/battle/<battleId>?p=<playerToken>` |
-| `PORT` | `4000` | HTTP API port |
-| `PUBLIC_URL` | `http://<LAN IP>:PORT` | Where phones reach the agent. The QR code points here. |
-| `PHOTON_TOKEN` | | Dashboard token so the join page can add numbers to Photon's allowlist (see below) |
+| `SOLANA_TREASURY_SECRET` | | Base58 secret key, or a solana-keygen JSON byte array |
+| `PROJECT_ID`, `PROJECT_SECRET` | | Photon dashboard → project settings. Unset = bot off. |
+| `PHOTON_TOKEN` | | Dashboard token so the phone view can add numbers to Photon's allowlist (see below) |
+| `PUBLIC_URL` | `http://localhost:3000` | The app's public address. Trophy NFTs point their metadata at `${PUBLIC_URL}/nft/<battleId>.json`. |
+| `AGENT_PORT` | `4000` | Internal HTTP port |
 
-Local state lives in `agent/data/` (gitignored): `profiles.json`, `wallets.json`, `battles.json`, `seen.json`, `treasury.json`.
-**Never commit it:** it holds devnet private keys and phone numbers.
-
-## Phone join flow (QR → PWA)
-
-1. The display shows a battle's QR code: `<img src="http://localhost:4000/battles/<id>/qr.svg">`.
-2. Scanning it opens `PUBLIC_URL/join/<id>`. First-timers enter a name (blank → a Frutiger Aero name like "Glassy Orca") and an optional iPhone number. No verification and no password.
-3. The first two people to join take the dancer seats. Everyone after that is a spectator who can **Hype** a dancer, which sends 0.005 devnet SOL from their wallet to the dancer's, on-chain with a memo.
-4. Returning players are recognized by a device token in `localStorage`, so the form comes prefilled and they can still edit it. Entering a number that already has a profile switches the device to that profile. That's how stats follow you to a new browser or the Home Screen app.
-5. Adding a phone registers it as a Photon user and the bot texts a welcome. After that, results, hype totals and receipts arrive over iMessage.
-
-Every profile gets a devnet wallet funded with 0.05 SOL, with or without a phone. Stats (battles, wins, best score, bubbles popped, hype received) live on the profile.
+Player wallets (devnet keys) and phone numbers live in the database. Don't point a preview at the production database.
 
 **Photon registration** uses the same endpoint as `photon spectrum users add`, which needs a dashboard token rather than the project secret:
 
@@ -53,7 +51,7 @@ PHOTON_TOKEN=...
 
 Without `PHOTON_TOKEN`, profiles still work, but the bot can only text numbers you've added in the dashboard. The token expires after 7 days.
 
-**Phones must be able to reach `PUBLIC_URL`.** Campus Wi-Fi often blocks device-to-device traffic, so for the demo use a tunnel (`cloudflared tunnel --url http://localhost:4000`) or the deployed domain, and set `PUBLIC_URL` to it.
+Only one deployment should run the bot for a Photon project, so set the Photon variables in production only.
 
 ## Texting the bot
 
@@ -69,96 +67,34 @@ On Photon's Pro plan the bot can only text numbers registered as Users in the Ph
 | `name <new name>` | Change your display name |
 | `help` | The command list |
 
-Commands are case-insensitive.
+Commands are case-insensitive. Battle links are `${PUBLIC_URL}/battle/<id>?p=<playerToken>` (`PUBLIC_URL` is set on the app).
 
-## HTTP API
+## Receipts
 
-CORS is open to `localhost` / `127.0.0.1` on any port, plus the `BATTLE_BASE_URL` origin.
-Phone numbers are never returned and never put in URLs. Players are identified by an opaque `playerToken`.
+When the app settles a battle it queues a `battle_finished` job:
 
-### `GET /health`
-
-```sh
-curl localhost:4000/health
-# {"ok":true,"cluster":"devnet","rpc":"api.devnet.solana.com","treasury":"<address>"}
-```
-
-### `POST /battles`
-
-Start a battle from the website. `players` is optional (default 2, max 8).
-
-```sh
-curl -X POST localhost:4000/battles -H 'content-type: application/json' -d '{"players":2}'
-# {"battleId":"8j3knh","url":"http://localhost:5173/battle/8j3knh?p=<token1>",
-#  "players":[{"token":"<token1>","url":"..."},{"token":"<token2>","url":"..."}]}
-```
-
-### `GET /battles/:id`
-
-Public: it's what phones poll. It has names and seats only, never player tokens or phone numbers.
-
-```sh
-curl localhost:4000/battles/8j3knh
-# {"id":"8j3knh","status":"open|finalizing|finished","spectators":3,
-#  "players":[{"seat":0,"name":"Glassy Orca","wallet":"<devnet address>|null","result":{...}|null,"hype":{"count":2,"sol":0.01}}, ...],
-#  "winnerSeat":0,            // null while playing, or null + finished = tie
-#  "receipt":{"status":"pending|confirmed","signature":"...","explorer":"https://explorer.solana.com/tx/...?cluster=devnet"}}
-```
-
-### `GET /battles/:id/qr.svg` and `GET /battles/:id/join-url`
-
-The QR image for the display, and the URL it encodes (`{ "url": "http://<PUBLIC_URL>/join/8j3knh" }`).
-
-```sh
-curl localhost:4000/battles/8j3knh/qr.svg -o qr.svg
-```
-
-### Phone endpoints
-
-These are used by the join page. Identity comes from the `x-device-token` header returned by `POST /me`.
-
-```sh
-# create or update a profile (both fields optional)
-curl -X POST localhost:4000/me -H 'content-type: application/json' -d '{"name":"Glassy Orca","phone":"(919) 555-0123"}'
-# → {"deviceToken":"...","me":{"name":"Glassy Orca","phone":"+19195550123","imessage":"registered|pending|failed|none","stats":{...},"wallet":{...}}}
-
-curl localhost:4000/me -H 'x-device-token: <token>'
-curl -X POST localhost:4000/battles/8j3knh/join -H 'x-device-token: <token>'      # → {"role":"dancer","seat":0} or {"role":"spectator","seat":null}
-curl -X POST localhost:4000/battles/8j3knh/hype -H 'x-device-token: <token>' \
-  -H 'content-type: application/json' -d '{"seat":0}'                            # → {"signature":"...","explorer":"..."}
-```
-
-### `POST /battles/:id/result`
-
-Each player reports once. `score` is required. `pops`, `sync` and `flair` default to 0. All must be non-negative numbers.
-
-```sh
-curl -X POST localhost:4000/battles/8j3knh/result -H 'content-type: application/json' \
-  -d '{"playerToken":"<token1>","score":8200,"pops":41,"sync":87,"flair":12}'
-```
-
-Errors: `400` bad body, `403` unknown token, `404` unknown battle, `409` already reported or battle finished.
-
-When every player has reported (or 90 s after the first report), the battle is settled:
-1. Highest `score` wins (an equal top score is a tie).
-2. A memo is written on-chain with the SPL Memo program, signed by the treasury:
+1. A memo is written on-chain with the SPL Memo program, signed by the treasury:
    `{"app":"aerodance","battleId":"8j3knh","scores":{"<wallet address or p2>":8200,...}}`.
    Seated players are labelled with their devnet wallet address. Empty seats are labelled `p1`, `p2`, …. Names and phones never go on-chain.
-3. Every dancer with a linked phone gets a text with the result, their score, crowd hype and the Explorer link. Profile stats update.
+2. Every dancer with a linked phone gets a text with the result, their score, crowd hype and the Explorer link.
 
-If Solana is slow or down, players still get their result right away, with a note that the receipt is pending. The agent keeps retrying in the background every 30 s and texts the link once it lands. Retries resend the same signed transaction until its blockhash expires, so a battle never gets two memos.
+3. The winner gets a trophy NFT ([Metaplex Core](https://developers.metaplex.com/core)) minted by the treasury into their devnet wallet, and a text when it lands. Ties and unclaimed seats get no trophy. The asset key is generated once and kept until the mint lands, so a retry finds the existing asset instead of minting a second one. The app serves the metadata at `/nft/<battleId>.json`, with `trophy.png` as the image.
+
+If Solana is slow or down, players still get their result right away, with a note that the receipt is pending. A `receipt` job retries every 30 s and texts the link once it lands; a `trophy` job does the same for the NFT. Wallets that missed their starting SOL (say, while the treasury was empty) are retried every minute. Retries resend the same signed transaction until its blockhash expires, so a battle never gets two memos.
 
 ## Code map
 
-- `src/index.ts`: wiring (bot + HTTP + background sweeper)
+- `src/index.ts`: wiring (jobs + HTTP + bot)
+- `src/jobs.ts`: the jobs worker (claim, retry with backoff)
+- `src/battles.ts`: receipts, result texts and trophies
+- `src/nft.ts`: trophy and sticker minting (Metaplex Core via Umi)
+- `src/players.ts`: wallets, Photon linking, iMessage notifier
 - `src/bot.ts`: Spectrum iMessage loop and commands
-- `src/http.ts`: Express API
-- `src/battles.ts`: battle lifecycle, seats, hype, results and receipts
-- `src/players.ts`: profiles, Frutiger Aero names, wallets, iMessage notifier
+- `src/app.ts`: client for the app's internal API
+- `src/http.ts`: internal API for the app
+- `src/db.ts`: database pool, LISTEN/NOTIFY
 - `src/photon.ts`: adds phone numbers to the Photon allowlist
-- `public/`: the phone join page (PWA), manifest and icon
 - `src/solana.ts`: devnet guard, treasury, funding, memo receipts
-- `src/store.ts`: atomic JSON-file storage under `data/`
 - `src/treasury.ts`: the `npm run treasury` script
 
 ## Credits

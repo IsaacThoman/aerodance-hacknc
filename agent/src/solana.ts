@@ -1,4 +1,4 @@
-// Devnet-only Solana helpers: treasury, per-handle wallets, and memo receipts.
+// Devnet-only Solana helpers: treasury, transfers, and memo receipts.
 import {
   Connection,
   Keypair,
@@ -10,10 +10,6 @@ import {
 } from "@solana/web3.js";
 import { createMemoInstruction } from "@solana/spl-memo";
 import bs58 from "bs58";
-import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { DATA_DIR } from "./store.ts";
 
 export const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
@@ -26,23 +22,20 @@ if (!/devnet/i.test(RPC_URL) && !["localhost", "127.0.0.1", "::1"].includes(host
 export const connection = new Connection(RPC_URL, "confirmed");
 export const NEW_WALLET_SOL = 0.05;
 
-const TREASURY_PATH = join(DATA_DIR, "treasury.json");
-
+// SOLANA_TREASURY_SECRET: base58 secret key, or the JSON byte array solana-keygen writes.
+// One treasury per deployment, kept out of the database. `npm run treasury` makes one.
+let treasury: Keypair | null | undefined;
 export function loadTreasury(): Keypair | undefined {
-  if (!existsSync(TREASURY_PATH)) return undefined;
-  const secret = JSON.parse(readFileSync(TREASURY_PATH, "utf8")) as number[];
-  return Keypair.fromSecretKey(Uint8Array.from(secret));
-}
-
-export async function createTreasury(): Promise<Keypair> {
-  const kp = Keypair.generate();
-  await writeFile(TREASURY_PATH, JSON.stringify(Array.from(kp.secretKey)), { mode: 0o600, flag: "wx" });
-  return kp;
+  if (treasury === undefined) {
+    const raw = process.env.SOLANA_TREASURY_SECRET?.trim();
+    treasury = raw ? Keypair.fromSecretKey(raw.startsWith("[") ? Uint8Array.from(JSON.parse(raw)) : bs58.decode(raw)) : null;
+  }
+  return treasury ?? undefined;
 }
 
 function requireTreasury(): Keypair {
   const kp = loadTreasury();
-  if (!kp) throw new Error("No treasury yet. Run `npm run treasury`.");
+  if (!kp) throw new Error("No treasury: set SOLANA_TREASURY_SECRET (see `npm run treasury`).");
   return kp;
 }
 
@@ -79,8 +72,8 @@ export async function fundFromTreasury(address: string, sol = NEW_WALLET_SOL): P
 }
 
 // Spectator → dancer tip. The sender's own wallet pays; the memo tags it on-chain.
-export async function sendHype(fromSecret: number[], toAddress: string, sol: number, memo: string): Promise<string> {
-  const from = Keypair.fromSecretKey(Uint8Array.from(fromSecret));
+export async function sendHype(fromSecret: Uint8Array, toAddress: string, sol: number, memo: string): Promise<string> {
+  const from = Keypair.fromSecretKey(fromSecret);
   const tx = new Transaction().add(
     SystemProgram.transfer({
       fromPubkey: from.publicKey,

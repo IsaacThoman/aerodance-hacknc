@@ -1,24 +1,37 @@
-// One process: Spectrum message loop + HTTP API for the game.
+// One process: the jobs worker (wallets, receipts, texts), the internal HTTP API the app
+// calls for hype and balances, and the Spectrum iMessage loop when credentials are set.
 import { loadTreasury } from "./solana.ts"; // importing this runs the devnet guard
-import { startSweeper } from "./battles.ts";
-import { setNotifier } from "./players.ts";
-import { allowOrigin, createHttp, publicUrl } from "./http.ts";
-import { attachRemote } from "./remote.ts";
+import { waitForSchema } from "./db.ts";
+import { startJobs } from "./jobs.ts";
+import { fundPendingWallets, setNotifier } from "./players.ts";
+import "./battles.ts"; // registers the receipt jobs
+import { createHttp } from "./http.ts";
 import { startBot } from "./bot.ts";
-import { PORT } from "./urls.ts";
+
+// AGENT_PORT, not PORT: in local dev the agent shares the root .env with the app.
+const PORT = Number(process.env.AGENT_PORT) || 4000;
 
 const treasury = loadTreasury();
-if (!treasury) console.warn("⚠️  No treasury at data/treasury.json. Run `npm run treasury` (new wallets won't be funded and receipts stay pending).");
+if (!treasury) console.warn("⚠️  No SOLANA_TREASURY_SECRET. Run `npm run treasury` (new wallets won't be funded and receipts stay pending).");
 else console.log("treasury:", treasury.publicKey.toBase58());
 
-const bot = await startBot();
-setNotifier(bot.notify);
-startSweeper();
+await waitForSchema();
 
-const server = createHttp(PORT).listen(PORT, () => {
-  console.log(`🫧 aerodance agent: http://localhost:${PORT}`);
-  console.log(`📱 phones join at: ${publicUrl(PORT)}/join/<battleId>`);
-});
-attachRemote(server, allowOrigin);
+// Previews and local dev usually run without Photon credentials: texts are only logged.
+let bot: Awaited<ReturnType<typeof startBot>> | undefined;
+if (process.env.PROJECT_ID && process.env.PROJECT_SECRET) {
+  try {
+    bot = await startBot();
+    setNotifier(bot.notify);
+  } catch (err) {
+    console.error("⚠️  iMessage bot failed to start, texts will only be logged:", (err as Error).message);
+  }
+} else {
+  console.log("iMessage off (no PROJECT_ID / PROJECT_SECRET): texts are only logged");
+}
 
-await bot.run();
+startJobs();
+if (treasury) setInterval(() => void fundPendingWallets(), 60_000).unref();
+createHttp().listen(PORT, () => console.log(`🫧 aerodance agent: http://localhost:${PORT}`));
+
+await bot?.run();

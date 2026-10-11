@@ -1,12 +1,12 @@
 {
-  "name": "aerodance",
+  "name": "aerodance-agent",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx --env-file=.env src/index.ts",
-    "dev": "tsx watch --env-file=.env src/index.ts",
-    "treasury": "tsx --env-file-if-exists=.env src/treasury.ts",
+    "start": "tsx --env-file-if-exists=../.env --env-file-if-exists=.env src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=../.env --env-file-if-exists=.env src/index.ts",
+    "treasury": "tsx --env-file-if-exists=../.env --env-file-if-exists=.env src/treasury.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -16,17 +16,14 @@
     "@solana/spl-memo": "^0.3.1",
     "@solana/web3.js": "^1.99.0",
     "bs58": "^6.0.0",
-    "cors": "^2.8.6",
     "express": "^5.3.0",
-    "qrcode": "^1.5.4",
-    "socket.io": "^4.8.1",
+    "pg": "^8.23.1",
     "spectrum-ts": "^12.10.1"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^22",
-    "@types/qrcode": "^1.5.6",
+    "@types/pg": "^8.23.1",
     "tsx": "^4",
     "typescript": "^5"
   }

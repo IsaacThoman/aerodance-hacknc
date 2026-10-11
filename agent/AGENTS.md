@@ -1,11 +1,11 @@
 # aerodance — agent instructions
 
-This is a [Spectrum](https://photon.codes/docs/spectrum-ts) app, pinned to `spectrum-ts@^12.10.1`. The entry point is `src/index.ts`, which configures the imessage provider(s) and runs the echo loop.
+This is a [Spectrum](https://photon.codes/docs/spectrum-ts) app, pinned to `spectrum-ts@^12.10.1`. The entry point is `src/index.ts`, which starts the jobs worker, the internal HTTP API and (with credentials) the iMessage bot in `src/bot.ts`. Battle rules live in the app (`../server/`); see `README.md`.
 
 ## Working in this project
 
-- Run the app with `npm run start`.
-- Add providers by importing them in `src/index.ts` and listing them in the `Spectrum({ providers: [...] })` config.
+- Run the agent with `npm run dev` (reads `../.env`).
+- Add providers by importing them in `src/bot.ts` and listing them in the `Spectrum({ providers: [...] })` config.
 - Outgoing message content uses the builders documented in the skill (text, attachment, voice, contact, richlink, poll, group, custom).
 
 ## Environment

@@ -1,0 +1,23 @@
+{
+  "name": "aerodance",
+  "short_name": "aerodance",
+  "start_url": "/join",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#8fdcfb",
+  "theme_color": "#5ec8f2",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
