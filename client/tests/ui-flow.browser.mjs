@@ -10,7 +10,9 @@ import { chromium } from 'playwright';
 import { bundleFixture } from './fixtures/songBundle.js';
 import { BACK as MENU_BACK, ONE_PLAYER, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
 import { KEYS, MODES, PILL, PRIMARY } from '../src/connect/layout.js';
-import { BACK, PLAY, STAGE_NEXT, rowRect, slotRect } from '../src/game/layout.js';
+import {
+  BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, PLAY, RESULTS_RETRY, STAGE_NEXT, rowRect, slotRect,
+} from '../src/game/layout.js';
 import { STAGE_LIST, resolveStage } from '../../packages/stages/catalog.js';
 
 const app = express();
@@ -274,8 +276,49 @@ try {
   await click(PRIMARY); // Cancel connection
   await closed;
   await until({ connectStatus: 'disconnected', playerSlots: 'Connect Client|Connect Client' }, 5000);
+
+  // A whole song with the autoplay ghost (?input=ghost): ready check, countdown, pause and
+  // resume, scoring, results, Play again and back to Song Select.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await page.goto('http://127.0.0.1:4173/?input=ghost');
+  await page.locator('canvas').waitFor();
+  await page.waitForFunction(() => document.querySelector('canvas')?.style.opacity === '1', null, { timeout: 90000 });
+  frame = await page.locator('.canvas-frame').boundingBox();
+  await menuOn('main');
+  await click(START);
+  await menuOn('players');
+  await click(TWO_PLAYERS);
+  await until({ songScreen: 'list', songReady: 'true', catalog: 'ready', playerSlots: 'Detected|Detected' }, 30000);
+  await click(rowRect(0));
+  await until({ songScreen: 'preview', songReady: 'true' }, 30000);
+  await click(DANCE);
+  // Both ghosts are tracked, so the countdown starts by itself.
+  await until({ gamePhase: 'countdown' }, 30000);
+  await until({ gamePhase: 'playing' }, 10000);
+  await page.waitForTimeout(2000);
+  await click(GAME_PAUSE);
+  await until({ gamePhase: 'paused' }, 5000);
+  const pausedAt = Number((await data()).gameTimeMs);
+  await page.waitForTimeout(1000);
+  assert.equal(Number((await data()).gameTimeMs), pausedAt, 'the song holds while paused');
+  await click(GAME_RESUME);
+  await until({ gamePhase: 'countdown' }, 5000);
+  await until({ gamePhase: 'playing' }, 10000);
+  await shot('game-playing');
+  await until({ gamePhase: 'results' }, 90000);
+  await shot('game-results');
+  const scores = (await data()).gameScores.split('|').map(Number);
+  assert.equal(scores.length, 2);
+  for (const score of scores) assert.ok(score > 850000, `the ghost copies the routine: ${score}`);
+  await click(RESULTS_RETRY);
+  await until({ gamePhase: 'countdown' }, 30000);
+  await click(GAME_PAUSE);
+  await until({ gamePhase: 'paused' }, 5000);
+  await click(GAME_QUIT);
+  await until({ songScreen: 'list', songReady: 'true' }, 10000);
+  assert.equal((await data()).gamePhase, undefined);
   assert.deepEqual(errors, []);
-  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam dummy), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, song stages and the stage picker, Android startup, first-pose readiness, disconnect, startup cancellation and no runtime errors.');
+  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam dummy), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, song stages and the stage picker, Android startup, first-pose readiness, disconnect, startup cancellation, a scored two-player song with the autoplay ghost (countdown, pause, resume, results, Play again, quit) and no runtime errors.');
 } catch (error) {
   console.error(error);
   if (testPage) console.error(await testPage.locator('canvas').evaluate((c) => JSON.stringify(c.dataset)).catch(() => ''));
