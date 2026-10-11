@@ -56,3 +56,33 @@ body,
 .hud .status.online {
   background: #30a46c;
 }
+
+/* Phones (/join): a portrait frame filling the screen, capped to a column on desktops.
+   The buffer height follows the screen (see PhoneApp), so pixels stay square. */
+.canvas-frame.phone {
+  width: min(100vw, 560px);
+  height: 100dvh;
+  aspect-ratio: auto;
+}
+
+/* The UI handles touches itself (buttons, drag to scroll). */
+.canvas-frame.phone canvas {
+  touch-action: none;
+}
+
+/* Real inputs so the keyboard opens, kept invisible over the fields drawn in-engine.
+   16px stops iOS zooming in on focus. */
+.phone-input {
+  position: absolute;
+  display: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px;
+  opacity: 0;
+}
