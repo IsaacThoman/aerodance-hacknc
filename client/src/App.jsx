@@ -12,6 +12,9 @@ import { FAKE_DANCE_MS, fakeDance } from './battle/fakeDance.js';
 import { api, createBattle, seatTokens, startBattle, useBattle } from './battle/api.js';
 import PhoneApp from './phone/PhoneApp.jsx';
 import ConnectionPanel from './connect/ConnectionPanel.jsx';
+import SongSelect from './game/SongSelect.jsx';
+import StageView from './stage/StageView.jsx';
+import { DEFAULT_STAGE } from '../../packages/stages/catalog.js';
 import { AndroidPoseSource } from './pose/AndroidPoseSource.js';
 import { socket } from './socket.js';
 
@@ -61,6 +64,10 @@ function DisplayApp() {
   const [connection, setConnection] = useState(source.view);
   // The Connect Client card holds the menus while it's open.
   const [connectOpen, setConnectOpen] = useState(false);
+  // Song Select's preview: the routine to dance, on which stage, and how that stage is doing.
+  const [preview, setPreview] = useState(null);
+  const [stageId, setStageId] = useState(DEFAULT_STAGE);
+  const [stage, setStage] = useState({ showing: false, ready: false, stage: null, failed: false });
   const menuOpen = screen === 'menu';
   const selectedConnection = inputMode === 'webcam'
     ? { status: 'dummy', snapshot: null, message: 'Webcam dummy selected. Continue through the menus to test the flow.' }
@@ -75,6 +82,7 @@ function DisplayApp() {
 
   const openBattle = useCallback((id) => {
     history.pushState(null, '', id ? `/battle/${id}` : '/');
+    setMenuScreen('main');
     setBattleId(id);
     setPlaying(false);
   }, []);
@@ -132,8 +140,13 @@ function DisplayApp() {
   const choosePlayers = useCallback((count) => {
     if (inputMode === 'android' && source.view.configuring) return;
     setPlayerCount(count);
+    setScreen('songs');
     if (inputMode === 'android') source.setPlayerCount(count).catch(() => {});
   }, [inputMode, source]);
+  const leaveSongs = useCallback(() => {
+    setMenuScreen('players');
+    setScreen('menu');
+  }, []);
 
   useEffect(() => { saveSound(sound); applySound(sound); }, [sound]);
   // "Pod Lounge" loops under the aero background as the menu music (Settings: Master,
@@ -159,8 +172,9 @@ function DisplayApp() {
     <div className="canvas-frame">
       <Canvas dpr={1} flat camera={{ fov: 66, near: 0.3, far: 6500 }}>
         <FixedRenderResolution />
-        <Scene />
-        <MenuDancers visible={menuOpen || !!battleId} />
+        <Scene paused={stage.showing} />
+        <StageView active={screen === 'songs' && !!preview && !battleId} stageId={stageId} routine={preview} onState={setStage} />
+        <MenuDancers visible={(menuOpen || screen === 'songs' || !!battleId) && !stage.showing} />
         <MainMenu
           visible={menuOpen && !battleId}
           blocked={connectOpen}
@@ -169,6 +183,18 @@ function DisplayApp() {
           onBattle={newBattle}
           sound={sound}
           onSoundChange={setSound}
+        />
+        <SongSelect
+          visible={screen === 'songs' && !battleId}
+          blocked={connectOpen}
+          playerCount={playerCount}
+          connection={selectedConnection}
+          onBack={leaveSongs}
+          onOpenConnect={() => setConnectOpen(true)}
+          stageId={stageId}
+          stageState={stage}
+          onStageChange={setStageId}
+          onPreviewChange={setPreview}
         />
         <BattleScreen
           visible={!!battleId}

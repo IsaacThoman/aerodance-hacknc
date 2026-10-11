@@ -422,6 +422,7 @@ export function drawPill(g, rect, { label, sub, icon, hover = 0, press = 0, angl
 
   g.fillStyle = NAVY;
   g.font = `700 ${Math.round(h * (sub ? 0.34 : 0.4))}px ${FONT}`;
+  g.textAlign = 'left';
   g.textBaseline = 'middle';
   if ('letterSpacing' in g) g.letterSpacing = '-1px';
   g.fillText(label, x + h + 14, sub ? cy - h * 0.13 : cy + 2);

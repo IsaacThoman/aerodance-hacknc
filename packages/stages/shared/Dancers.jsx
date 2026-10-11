@@ -1,5 +1,7 @@
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
 import Character from '../../character/Character.jsx';
+import { sampleSong } from '../../pose/song.js';
 
 // A little more solid than the menu's dancers (default gel opacity 0.72) so they
 // hold up against busy stage backgrounds.
@@ -11,20 +13,43 @@ export const DANCER_LOOKS = [
 // The rig's feet rest about this far above the group origin's floor.
 const FOOT_CLEARANCE = 0.015;
 
+// One pose ref per player, sampled from a song's choreography at its current time each frame.
+function useRoutinePoses(routine) {
+  const refs = useMemo(() => [{ current: null }, { current: null }], []);
+  useFrame(() => {
+    if (!routine) return;
+    const { bundle, playerCount } = routine;
+    // Hold the last pose at the very end instead of vanishing.
+    const t = Math.min(routine.timeMs(), bundle.song.playableEndMs - 1);
+    const { poses } = sampleSong(bundle, t, playerCount);
+    for (const id of [0, 1]) refs[id].current = poses.find((p) => p.playerId === id) ?? null;
+  }, -1);
+  return refs;
+}
+
 /**
- * The two captured glass dancers, standing on a stage's dance floor.
+ * The glass dancers, standing on a stage's dance floor, mirrored like a dance coach.
+ *   motion, playback: loop the captured demo (both dancers), or
+ *   routine: { bundle, playerCount, timeMs() } dance a song's choreography (one player
+ *     dances alone in the middle)
  *   position: [x, y, z] of the floor surface between them
  *   rotationY: turn the pair (they face +z by default)
  *   spacing: distance between the two dancers
  *   scale: uniform scale (1 = ~2.6 units tall)
  */
-export default function Dancers({ motion, playback, position = [0, 0, 0], rotationY = 0, spacing = 4, scale = 1, looks = DANCER_LOOKS }) {
+export default function Dancers({ motion, playback, routine, position = [0, 0, 0], rotationY = 0, spacing = 4, scale = 1, looks = DANCER_LOOKS }) {
+  const poses = useRoutinePoses(routine);
+  const solo = routine?.playerCount === 1;
   return (
     <group position={[position[0], position[1] + FOOT_CLEARANCE * scale, position[2]]} rotation={[0, rotationY, 0]} scale={scale}>
       <Suspense fallback={null}>
-        {[0, 1].map((person) => (
-          <group key={person} position={[(person === 0 ? -1 : 1) * (spacing / 2), 0, 0]} scale={[-1, 1, 1]}>
-            <Character motion={motion} person={person} playback={playback} appearance={looks[person]} />
+        {(solo ? [0] : [0, 1]).map((person) => (
+          <group key={person} position={[solo ? 0 : (person === 0 ? -1 : 1) * (spacing / 2), 0, 0]} scale={[-1, 1, 1]}>
+            {routine ? (
+              <Character poseRef={poses[person]} calibration={routine.bundle.choreography.tracks[person].calibration} appearance={looks[person]} />
+            ) : (
+              <Character motion={motion} person={person} playback={playback} appearance={looks[person]} />
+            )}
           </group>
         ))}
       </Suspense>
