@@ -17,10 +17,11 @@ import { BACK, BATTLE, ONE_PLAYER, SETTINGS, START, TITLE, TWO_PLAYERS } from '.
  *
  * Input comes from the mouse/touch on the canvas, the keyboard (arrows, Enter, Escape) or a
  * paired phone remote (remote/remoteLink.js; B goes back). `blocked` (the Connect Client card
- * is open) holds input. The canvas reports data-menu-screen / data-menu-ready for tests.
+ * is open) holds input. onScreenChange hears which screen is showing (Settings carries the
+ * Connect Client pill). The canvas reports data-menu-screen / data-menu-ready for tests.
  *
  * <MainMenu visible initialScreen="main" onStart={(playerCount) => ...} onBattle={() => ...}
- *   sound={sound} onSoundChange={setSound} />
+ *   onScreenChange={setShown} sound={sound} onSoundChange={setSound} />
  */
 
 // Design space is 1600x900 (16:9); the layout is in ./layout.js.
@@ -137,12 +138,12 @@ function drawSoundPanel(g, sound, hover) {
 }
 
 export default function MainMenu({
-  visible = true, blocked = false, initialScreen = 'main', onStart, onBattle, onSettingsOpen, sound, onSoundChange,
+  visible = true, blocked = false, initialScreen = 'main', onStart, onBattle, onSettingsOpen, onScreenChange, sound, onSoundChange,
 }) {
   const gl = useThree((state) => state.gl);
   const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null });
   const props = useRef({});
-  props.current = { visible, blocked, onStart, onBattle, onSettingsOpen, sound, onSoundChange };
+  props.current = { visible, blocked, onStart, onBattle, onSettingsOpen, onScreenChange, sound, onSoundChange };
 
   const m = menu.current;
   const go = (screen) => {
@@ -211,6 +212,7 @@ export default function MainMenu({
       m.alpha = s.ease(m.alpha, shown ? 1 : 0, shown ? 3 : 6);
       m.gearAngle = s.ease(m.gearAngle, m.spin + (s.hover.settings ?? 0) * 0.35, 8);
       if (props.current.sound !== m.drawnSound) s.invalidate();
+      if (m.screen !== m.reported) { m.reported = m.screen; props.current.onScreenChange?.(m.screen); }
       const { dataset } = gl.domElement;
       dataset.menuScreen = m.screen;
       dataset.menuReady = String(shown && m.alpha > 0.5 && m.screen === m.next && m.swap > 0.95);
@@ -234,9 +236,9 @@ export default function MainMenu({
       } else if (m.screen === 'players') {
         drawHeader(g, BACK, 'PLAYERS', h.back ?? 0);
         // Each pill shows the Wii-remote LEDs the players will get.
-        [[ONE_PLAYER, 'one', 'One Player', [1]], [TWO_PLAYERS, 'two', 'Two Players', [1, 2]]].forEach(([rect, id, label, leds]) => {
+        [[ONE_PLAYER, 'one', 'One Player', 'solo', [1]], [TWO_PLAYERS, 'two', 'Two Players', 'pair', [1, 2]]].forEach(([rect, id, label, icon, leds]) => {
           const hv = h[id] ?? 0;
-          drawPill(g, rect, { label, icon: 'play', hover: hv, press: press(id) });
+          drawPill(g, rect, { label, icon, hover: hv, press: press(id) });
           drawPlayerLeds(g, rect.x + rect.w - 92, rect.y + rect.h / 2 - hv * 3 + press(id) * 3, { player: leds, glow: 0.4 + hv * 0.6, scale: 0.55 });
         });
       } else {
