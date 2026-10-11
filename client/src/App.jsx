@@ -320,7 +320,6 @@ function DisplayApp() {
           playerCount={playerCount}
           connection={selectedConnection}
           onBack={leaveSongs}
-          onOpenConnect={() => setConnectOpen(true)}
           stageState={stage}
           onPreviewChange={setPreview}
           onDance={startGame}
@@ -350,7 +349,6 @@ function DisplayApp() {
           onMenu={() => openBattle(null)}
         />
         <DebugPanel battle={battleId ? battle : null} />
-        {/* Song Select's player slots can also open the card, so it stays up while open. */}
         <ConnectionPanel
           visible={(!battleId || inBattleSong) && ((menuOpen && menuShown === 'settings') || connectOpen)}
           open={connectOpen}

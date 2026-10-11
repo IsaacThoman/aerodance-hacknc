@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import {
-  FONT, ICONS, drawCaps, drawChip, drawGlassCircle, drawGlassPanel, drawHeader, drawLink, drawPill, drawPlayerLeds,
-  drawProgress, drawShadowText, ellipsize, paragraph, roundRect, text,
+  FONT, ICONS, drawChip, drawGlassCircle, drawGlassPanel, drawHeader, drawPill, drawProgress, drawShadowText, ellipsize,
+  paragraph, text,
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { playUISound } from '../audio/uiSounds.js';
@@ -14,14 +14,14 @@ import { SCORER_VERSION } from '../../../packages/score/scorer.js';
 import { bestScore } from './bestScores.js';
 import { preloadStage, resolveStage, stageName } from '../../../packages/stages/index.js';
 import {
-  BACK, BAR, DANCE, LINK_Y, PAGE_DOWN, PAGE_UP, PLAY, READY, RETRY, ROWS, SCRUB, rowRect, slotRect,
+  BACK, BAR, DANCE, PAGE_DOWN, PAGE_UP, PLAY, RETRY, ROWS, SCRUB, rowRect,
 } from './layout.js';
 
 /**
  * Song Select, drawn in-engine after the player count is picked (menu/MainMenu.jsx).
  *
  *   list     the published songs (songs/manifest.json, found by server/songCatalog.js),
- *            four to a page, and each player's readiness from the pose input
+ *            four to a page
  *   preview  a song's music with its reference dancers on the song's stage (StageView,
  *            mounted by App from onPreviewChange; each song's stage is picked in Dance
  *            Studio), play / pause, a scrubbable timeline and Dance!, which hands the
@@ -37,7 +37,6 @@ import {
  */
 
 const CATALOG_URL = () => new URL(`${import.meta.env.BASE_URL}songs/manifest.json`, window.location.href).href;
-const PLACEMENT_CUE = 'Stand in separate camera halves: player 1 on the left, player 2 on the right of the unmirrored camera image.';
 const ACTIVE = ['connecting', 'reconnecting'];
 const fmt = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -45,7 +44,7 @@ const fmt = (ms) => {
 };
 const SCRUB_HIT = { x: SCRUB.x - 12, y: SCRUB.y - 24, w: SCRUB.w + 24, h: SCRUB.h + 48 };
 
-// What each player slot says, from the pose input.
+// Each player's tracking, from the pose input (reported for tests as data-player-slots).
 function slotStatus(connection, id) {
   if (connection.status === 'dummy') return { label: 'Preview ready', kind: 'preview' };
   if (connection.snapshot?.poses?.some((p) => p.playerId === id)) return { label: 'Detected', kind: 'detected' };
@@ -55,48 +54,19 @@ function slotStatus(connection, id) {
   return { label: 'Connect Client' };
 }
 
-function cuesFor(connection, playerCount) {
-  const cues = [];
-  if (connection.status === 'connected' && connection.model === 'synthetic') cues.push(['Synthetic test source · tracking is simulated.']);
-  if (connection.status === 'initializing' && connection.message) cues.push([connection.message]);
-  if (connection.status === 'dummy') cues.push(['Webcam dummy · menu testing only · without tracking, songs play unscored.']);
-  if (connection.model === 'replay') cues.push([connection.message]);
-  if (playerCount === 2 && connection.status !== 'dummy') cues.push([PLACEMENT_CUE, '#ffe27a']);
-  return cues;
-}
-
-function drawSlot(g, rect, i, status, hover) {
-  const { x, y, w, h } = rect;
-  const lift = hover * 2;
-  g.save();
-  roundRect(g, x, y - lift, w, h, 24);
-  g.fillStyle = `rgba(0, 30, 70, ${0.32 + hover * 0.08})`;
-  g.fill();
-  if (status.kind === 'preview') g.setLineDash([10, 8]);
-  g.lineWidth = status.kind ? 3 : 2;
-  g.strokeStyle = status.kind === 'detected' ? '#6ff3d6' : status.kind === 'preview' ? '#a9d5ff' : `rgba(255,255,255,${0.45 + hover * 0.4})`;
-  g.stroke();
-  g.restore();
-  const cy = y + h / 2 - lift;
-  drawPlayerLeds(g, x + 66, cy, { player: i + 1, glow: status.kind === 'detected' ? 1 : 0.35, scale: 0.42 });
-  drawCaps(g, `PLAYER ${i + 1}`, x + 120, cy - 17, { size: 17 });
-  g.font = `700 25px ${FONT}`;
-  text(g, ellipsize(g, status.label, w - 132), x + 120, cy + 17, { size: 25, weight: 700, color: status.kind === 'detected' ? '#9effdf' : '#ffffff' });
-}
-
 export default function SongSelect({
-  visible = false, blocked = false, playerCount = 1, connection, onBack, onOpenConnect,
+  visible = false, blocked = false, playerCount = 1, connection, onBack,
   stageState = {}, onPreviewChange, onDance,
 }) {
   const gl = useThree((state) => state.gl);
   const props = useRef({});
-  props.current = { visible, blocked, playerCount, connection, onBack, onOpenConnect, stageState, onPreviewChange, onDance };
+  props.current = { visible, blocked, playerCount, connection, onBack, stageState, onPreviewChange, onDance };
   const st = useRef({
     alpha: 0, screen: 'list', next: 'list', swap: 1, page: 0,
     catalog: { status: 'idle', songs: [], error: '' }, catalogCtl: null,
     loading: null, loadError: '',
     bundle: null, player: null, routine: null, previewState: 'loading', previewError: '', scrubMs: null,
-    linkRect: null, drawn: '', reported: '',
+    drawn: '', reported: '',
   }).current;
 
   const songs = () => st.catalog.songs.filter((song) => song.supportedPlayerCounts.includes(props.current.playerCount));
@@ -220,7 +190,6 @@ export default function SongSelect({
         if (st.player) list.push({ id: 'play', rect: PLAY }, { id: 'scrub', drag: true, rect: SCRUB_HIT });
         return list;
       }
-      const { playerCount: n } = props.current;
       const list = [{ id: 'back', circle: BACK }];
       if (st.catalog.status === 'ready') {
         if (!st.loading) pageSongs().forEach((song, i) => list.push({ id: `song-${song.id}`, song, rect: rowRect(i) }));
@@ -228,8 +197,6 @@ export default function SongSelect({
         if (st.page < pages() - 1) list.push({ id: 'page-down', circle: PAGE_DOWN });
       }
       if (st.catalog.status === 'error') list.push({ id: 'retry', rect: RETRY });
-      if (st.linkRect) list.push({ id: 'demo', rect: st.linkRect });
-      for (let i = 0; i < n; i++) list.push({ id: `slot-${i}`, rect: slotRect(i) });
       return list;
     },
     onActivate: (wdg, s) => {
@@ -238,8 +205,6 @@ export default function SongSelect({
       else if (wdg.id === 'page-up') st.page = Math.max(0, st.page - 1);
       else if (wdg.id === 'page-down') st.page = Math.min(pages() - 1, st.page + 1);
       else if (wdg.id === 'retry') fetchCatalog();
-      else if (wdg.id === 'demo') window.open('/dance/', '_blank', 'noopener');
-      else if (wdg.id.startsWith('slot-')) props.current.onOpenConnect?.();
       else if (wdg.id === 'play') togglePlay();
       else if (wdg.id === 'dance') dance();
       s.invalidate();
@@ -280,7 +245,7 @@ export default function SongSelect({
       const slots = Array.from({ length: p.playerCount }, (_, i) => slotStatus(c, i).label);
       const key = [
         st.screen, st.catalog.status, st.page, st.loading?.id, st.loadError, st.previewState, st.previewError,
-        slots.join('|'), cuesFor(c, p.playerCount).map(([t]) => t).join('|'), p.stageState.stage, p.stageState.ready, p.stageState.failed,
+        p.stageState.stage, p.stageState.ready, p.stageState.failed,
       ].join('~');
       if (key !== st.drawn) { st.drawn = key; s.invalidate(); }
       // The timeline and clock move while the song plays or is dragged.
@@ -308,12 +273,9 @@ export default function SongSelect({
       g.save();
       g.globalAlpha = t;
       g.translate((1 - t) * -24, 0);
-      const playersLabel = p.playerCount === 1 ? 'ONE PLAYER' : 'TWO PLAYERS';
 
       if (st.screen === 'list') {
         drawHeader(g, BACK, 'SONG SELECT', h.back ?? 0);
-        drawChip(g, 528, BACK.y - 22, playersLabel, '#bff4ff');
-        drawShadowText(g, 'Find your rhythm. Follow the dancers.', ROWS.x, 214, { size: 30, weight: 700 });
 
         const dots = '.'.repeat(1 + (Math.floor(s.time * 3) % 3));
         const list = songs();
@@ -365,27 +327,6 @@ export default function SongSelect({
             g.font = `700 24px ${FONT}`;
             drawShadowText(g, ellipsize(g, st.loadError, ROWS.w + 60), ROWS.x, ROWS.y + ROWS.perPage * (ROWS.h + ROWS.gap) + 14, { size: 24, color: '#ffb38a' });
           }
-        }
-        g.save();
-        g.shadowColor = 'rgba(0, 34, 84, 0.8)';
-        g.shadowBlur = 5;
-        g.shadowOffsetY = 2;
-        st.linkRect = drawLink(g, 'Watch the captured dance preview ↗', ROWS.x, LINK_Y, (h.demo ?? 0) > 0.5, { size: 26 });
-        g.restore();
-        drawShadowText(g, 'Copy the dancers to score · best scores stay on this browser', ROWS.x, LINK_Y + 50, { size: 22, weight: 600, color: '#e6f8ff' });
-
-        // Readiness: one slot per player, then whatever the pose input needs to say.
-        const c = p.connection;
-        const cues = cuesFor(c, p.playerCount);
-        g.font = `600 21px ${FONT}`;
-        const cueLines = cues.reduce((n, [cue]) => n + Math.ceil(g.measureText(cue).width / (READY.w - 64)) + 0.3, 0);
-        const panel = { ...READY, h: 182 + Math.ceil(cueLines * 28) + (cues.length ? 10 : 0) };
-        drawGlassPanel(g, panel, 30);
-        drawCaps(g, 'PLAYERS', READY.x + 32, READY.y + 38, { size: 22 });
-        for (let i = 0; i < p.playerCount; i++) drawSlot(g, slotRect(i), i, slotStatus(c, i), h[`slot-${i}`] ?? 0);
-        let cy = READY.y + 186;
-        for (const [cue, color] of cues) {
-          cy += paragraph(g, cue, READY.x + 34, cy, READY.w - 68, { size: 21, lineH: 28, color: color ?? 'rgba(255,255,255,0.9)' }) + 8;
         }
       } else if (st.bundle) {
         const { song } = st.bundle;

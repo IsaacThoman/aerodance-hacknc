@@ -3,15 +3,12 @@
 // Both phases: back button + heading, top left (under the server HUD).
 export const BACK = { x: 166, y: 150, r: 30 };
 
-// List phase: songs down the left, the players' readiness in a panel on the right.
+// List phase: songs down the left.
 export const ROWS = { x: 128, y: 258, w: 560, h: 88, gap: 16, perPage: 4 };
 export const rowRect = (i) => ({ x: ROWS.x, y: ROWS.y + i * (ROWS.h + ROWS.gap), w: ROWS.w, h: ROWS.h });
 export const PAGE_UP = { x: 730, y: ROWS.y + ROWS.h / 2, r: 28 };
 export const PAGE_DOWN = { x: 730, y: ROWS.y + 3 * (ROWS.h + ROWS.gap) + ROWS.h / 2, r: 28 };
 export const RETRY = { x: 128, y: 340, w: 300, h: 80 };
-export const READY = { x: 820, y: 128, w: 744 };
-export const slotRect = (i) => ({ x: READY.x + 32 + i * 348, y: READY.y + 70, w: 332, h: 88 });
-export const LINK_Y = 778;
 
 // Preview phase: title top left, transport along the bottom.
 export const BAR = { x: 128, y: 776, w: 1344, h: 96 };

@@ -11,7 +11,7 @@ import { bundleFixture } from './fixtures/songBundle.js';
 import { BACK as MENU_BACK, ONE_PLAYER, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
 import { KEYS, MODES, PILL, PRIMARY } from '../src/connect/layout.js';
 import {
-  BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, PLAY, RESULTS_RETRY, rowRect, slotRect,
+  BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, PLAY, RESULTS_RETRY, rowRect,
 } from '../src/game/layout.js';
 import { resolveStage } from '../../packages/stages/catalog.js';
 
@@ -252,18 +252,37 @@ try {
   await until({ songScreen: 'preview', songReady: 'true' });
   await click(BACK);
   await until({ songScreen: 'list', songReady: 'true' });
-  // A player slot opens the card from Song Select (the pill itself stays on Settings).
-  await click(slotRect(0));
-  await until({ connectReady: 'true' });
+  // Connect Client from Settings, with two players picked.
+  const openConnect = async () => {
+    await click(BACK);
+    await menuOn('players');
+    await click(MENU_BACK);
+    await menuOn('main');
+    await click(SETTINGS);
+    await menuOn('settings');
+    await click(PILL);
+    await until({ connectReady: 'true' });
+  };
+  await openConnect();
   await click(MODES[0]);
   await until({ connectMode: 'android', connectStatus: 'disconnected' });
   for (let i = 0; i < 16; i++) await page.keyboard.press('Backspace');
   await page.keyboard.type('127.0.0.1');
   await page.keyboard.press('Enter');
-  await until({ connectStatus: 'initializing', connectMessage: /90 seconds/, playerSlots: 'Camera starting…|Camera starting…' }, 10000);
+  await until({ connectStatus: 'initializing', connectMessage: /90 seconds/ }, 10000);
   ready = true;
-  await until({ connectStatus: 'connected', playerSlots: 'Detected|Detected' }, 10000);
+  await until({ connectStatus: 'connected' }, 10000);
+  // Both players are tracked once Song Select is back up.
+  await page.keyboard.press('Escape');
+  await until({ connectOpen: 'false' });
+  await click(MENU_BACK);
+  await menuOn('main');
+  await click(START);
+  await menuOn('players');
+  await click(TWO_PLAYERS);
+  await until({ songScreen: 'list', songReady: 'true', playerSlots: 'Detected|Detected' }, 10000);
   await shot('android-connected');
+  await openConnect();
   await click(PRIMARY); // Disconnect
   await closed;
   await until({ connectStatus: 'disconnected' }, 5000);
@@ -271,7 +290,7 @@ try {
   await until({ connectStatus: 'initializing' }, 10000);
   await click(PRIMARY); // Cancel connection
   await closed;
-  await until({ connectStatus: 'disconnected', playerSlots: 'Connect Client|Connect Client' }, 5000);
+  await until({ connectStatus: 'disconnected' }, 5000);
 
   // A whole song with the autoplay ghost (?input=ghost): ready check, countdown, pause and
   // resume, scoring, results, Play again and back to Song Select.
