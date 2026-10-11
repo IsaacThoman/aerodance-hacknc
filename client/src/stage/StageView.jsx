@@ -134,6 +134,10 @@ export default function StageView({ active = false, stageId, routine, onState })
   const target = active ? resolveStage(stageId) : null;
   const props = useRef({});
   props.current = { target, shown, onState };
+  // Keep dancing the last routine while the veil comes up on the way out.
+  const lastRoutine = useRef(null);
+  if (routine) lastRoutine.current = routine;
+  else if (!shown) lastRoutine.current = null;
 
   const onReady = useMemo(() => (id, failed) => {
     st.loaded = id;
@@ -177,7 +181,7 @@ export default function StageView({ active = false, stageId, routine, onState })
 
   return (
     <>
-      {shown && createPortal(<StageContent id={shown} routine={routine} onReady={onReady} onDancersFail={onDancersFail} />, scene)}
+      {shown && createPortal(<StageContent id={shown} routine={routine ?? lastRoutine.current} onReady={onReady} onDancersFail={onDancersFail} />, scene)}
       <Veil fade={fade} />
     </>
   );

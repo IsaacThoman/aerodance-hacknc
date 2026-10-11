@@ -26,7 +26,7 @@ if ! "$engine" compose version >/dev/null 2>&1; then
 fi
 
 compose=("$engine" compose -f compose.yaml -f compose.local.yaml)
-echo "Rebuilding and deploying the main app locally with $engine…"
+echo "Rebuilding and deploying the main app locally with ${engine}…"
 "${compose[@]}" build app agent
 "${compose[@]}" up -d db agent
 # Podman Compose can retain a container when only its image has changed.

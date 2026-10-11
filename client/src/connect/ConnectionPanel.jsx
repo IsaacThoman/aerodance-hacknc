@@ -16,7 +16,7 @@ import { CARD, CLOSE, COLUMN, FIELD, KEYS, MODES, PILL, PRIMARY, STATUS } from '
  * pose/AndroidPoseSource.js; it remembers the last address that connected.
  *
  * While the card is open the rest of the menus are held (App passes them `blocked`).
- * The canvas reports data-connect-open / -status / -mode / -message / -address for tests.
+ * The canvas reports data-connect-open / -ready / -status / -mode / -message / -address for tests.
  *
  * <ConnectionPanel visible open onOpenChange={setOpen} source={source} connection={view}
  *   inputMode="android" onInputModeChange={setMode} />
@@ -118,7 +118,8 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
     active: () => props.current.visible && st.alpha > 0.3,
     keyNav: () => props.current.open,
     widgets: () => {
-      if (!props.current.open || st.k < 0.9) return [{ id: 'pill', rect: PILL }];
+      // The card takes input once it's mostly out (not while it whooshes from the pill).
+      if (!props.current.open || st.k < 0.5) return [{ id: 'pill', rect: PILL }];
       return [
         { id: 'close', circle: CLOSE, sound: 'back' },
         ...MODES.map((m) => ({ id: `mode-${m.id}`, mode: m.id, rect: m.rect })),
@@ -156,12 +157,14 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
       const blink = Math.floor(s.time * 1.9) % 2 === 0;
       if (blink !== st.blink && p.open && typing()) { st.blink = blink; s.invalidate(); }
       const { status } = p.connection;
-      const key = `${status}|${message()}|${p.inputMode}|${p.open}|${st.address}`;
+      const ready = p.open && st.k >= 0.5 && st.alpha > 0.3;
+      const key = `${status}|${message()}|${p.inputMode}|${p.open}|${st.address}|${ready}`;
       if (key !== st.drawn) {
         st.drawn = key;
         s.invalidate();
         Object.assign(gl.domElement.dataset, {
-          connectOpen: String(p.open), connectStatus: status, connectMode: p.inputMode, connectMessage: message(), connectAddress: st.address,
+          connectOpen: String(p.open), connectReady: String(ready), connectStatus: status, connectMode: p.inputMode,
+          connectMessage: message(), connectAddress: st.address,
         });
       }
     },

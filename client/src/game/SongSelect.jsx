@@ -26,7 +26,7 @@ import {
  *
  * Bundles are fully verified before they play (songs/loadBundle.js). Back / Escape / the
  * remote's B go from the preview to the list and from the list to the player count.
- * The canvas reports data-song-screen, -catalog, -song-count, -player-slots, -preview-state
+ * The canvas reports data-song-screen, -song-ready, -catalog, -song-count, -player-slots, -preview-state
  * and -preview-time-ms for tests.
  *
  * <SongSelect visible blocked playerCount={1} connection={view} onBack onOpenConnect
@@ -144,7 +144,7 @@ export default function SongSelect({
   props.current = { visible, blocked, playerCount, connection, onBack, onOpenConnect, stageId, stageState, onStageChange, onPreviewChange };
   const st = useRef({
     alpha: 0, screen: 'list', next: 'list', swap: 1, page: 0,
-    catalog: { status: 'loading', songs: [], error: '' }, catalogCtl: null,
+    catalog: { status: 'idle', songs: [], error: '' }, catalogCtl: null,
     loading: null, loadError: '',
     bundle: null, player: null, routine: null, previewState: 'loading', previewError: '', scrubMs: null,
     linkRect: null, drawn: '', reported: '',
@@ -345,6 +345,7 @@ export default function SongSelect({
 
       const report = {
         songScreen: st.screen,
+        songReady: String(live() && st.swap > 0.95),
         catalog: st.catalog.status === 'ready' && !songs().length ? 'empty' : st.catalog.status,
         songCount: String(songs().length),
         playerSlots: slots.join('|'),

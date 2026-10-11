@@ -80,8 +80,7 @@ try {
 
   // Connect Client: remembered address, keyboard validation, the keypad, Escape.
   await click(PILL);
-  await until({ connectOpen: 'true', connectAddress: '192.168.43.1', connectMessage: 'Ready to connect on port 1337.' });
-  await page.waitForTimeout(400);
+  await until({ connectReady: 'true', connectAddress: '192.168.43.1', connectMessage: 'Ready to connect on port 1337.' });
   await page.keyboard.type('999');
   await page.keyboard.press('Enter');
   await until({ connectMessage: /Enter an IPv4 address/ });
@@ -97,8 +96,7 @@ try {
 
   // The webcam dummy: no address, closes on Ok, and the arrow keys stay in the card.
   await click(PILL);
-  await until({ connectOpen: 'true' });
-  await page.waitForTimeout(400);
+  await until({ connectReady: 'true' });
   await click(MODES[1]);
   await until({ connectMode: 'webcam', connectStatus: 'dummy', connectMessage: /Webcam dummy selected/ });
   await page.keyboard.press('ArrowDown');
@@ -113,12 +111,11 @@ try {
   await menuOn('players');
   await shot('player-select');
   await click(ONE_PLAYER);
-  await until({ songScreen: 'list', catalog: 'empty', songCount: '0', playerSlots: 'Preview ready' });
-  await page.waitForTimeout(500);
+  await until({ songScreen: 'list', songReady: 'true', catalog: 'empty', songCount: '0', playerSlots: 'Preview ready' });
   await click(BACK);
   await menuOn('players');
   await click(TWO_PLAYERS);
-  await until({ songScreen: 'list', catalog: 'empty', playerSlots: 'Preview ready|Preview ready' });
+  await until({ songScreen: 'list', songReady: 'true', catalog: 'empty', playerSlots: 'Preview ready|Preview ready' });
   assert.equal(deviceRequests, 0, 'Webcam dummy must not contact Android');
   await shot('song-select');
 
@@ -127,7 +124,7 @@ try {
   await page.keyboard.press('Escape');
   await menuOn('players');
   for (const k of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(k);
-  await until({ songScreen: 'list', playerSlots: 'Preview ready|Preview ready' });
+  await until({ songScreen: 'list', songReady: 'true', playerSlots: 'Preview ready|Preview ready' });
 
   // The letterboxed frame on a phone.
   await page.setViewportSize({ width: 390, height: 844 });
@@ -147,21 +144,20 @@ try {
     await click(BACK);
     await menuOn('players');
     await click(count === 1 ? ONE_PLAYER : TWO_PLAYERS);
-    await until({ songScreen: 'list', catalog: 'ready' });
-    await page.waitForTimeout(400);
+    await until({ songScreen: 'list', songReady: 'true', catalog: 'ready' });
     await click(rowRect(index));
   };
   for (const [i, song] of installed.songs.slice(0, 4).entries()) {
     for (const count of [1, 2]) {
       if (!song.supportedPlayerCounts.includes(count)) continue;
       await openSong(count, i);
-      await until({ songScreen: 'preview', previewState: 'paused', stage: resolveStage(song.stage), stageReady: 'true' });
+      await until({ songScreen: 'preview', songReady: 'true', previewState: 'paused', stage: resolveStage(song.stage), stageReady: 'true' });
       await click(PLAY);
       await until({ previewState: 'playing' });
       await page.waitForFunction(() => Number(document.querySelector('canvas').dataset.previewTimeMs) > 150);
       await shot(`preview-${count}p`);
       await click(BACK);
-      await until({ songScreen: 'list', stage: '' });
+      await until({ songScreen: 'list', songReady: 'true', stage: '' });
     }
   }
 
@@ -182,19 +178,19 @@ try {
   await serveFixture();
   for (const count of [1, 2]) {
     await openSong(count, 0);
-    await until({ songScreen: 'preview', previewState: 'paused', previewTimeMs: '100', stage: 'openreef', stageReady: 'true' });
+    await until({ songScreen: 'preview', songReady: 'true', previewState: 'paused', previewTimeMs: '100', stage: 'openreef', stageReady: 'true' });
     await click(PLAY);
     await until({ previewState: 'playing' });
     // It stops at the end of the playable range.
     await until({ previewState: 'paused', previewTimeMs: '900' });
     await click(BACK);
-    await until({ songScreen: 'list', stage: '' });
+    await until({ songScreen: 'list', songReady: 'true', stage: '' });
   }
 
   // A song's own stage, the picker through all six, and back to the song's stage.
   await serveFixture('club');
   await openSong(1, 0);
-  await until({ songScreen: 'preview', stage: 'club', stageReady: 'true' });
+  await until({ songScreen: 'preview', songReady: 'true', stage: 'club', stageReady: 'true' });
   const at = STAGE_LIST.findIndex((s) => s.id === 'club');
   for (let step = 1; step <= STAGE_LIST.length; step++) {
     await click(STAGE_NEXT);
@@ -203,16 +199,15 @@ try {
   await page.keyboard.press('ArrowLeft');
   await until({ stage: STAGE_LIST[(at - 1 + STAGE_LIST.length) % STAGE_LIST.length].id, stageReady: 'true' });
   await click(BACK);
-  await until({ songScreen: 'list', stage: '' });
-  await page.waitForTimeout(300);
+  await until({ songScreen: 'list', songReady: 'true', stage: '' });
   await click(rowRect(0));
-  await until({ songScreen: 'preview', stage: 'club', stageReady: 'true' });
+  await until({ songScreen: 'preview', songReady: 'true', stage: 'club', stageReady: 'true' });
   await click(BACK);
   await until({ songScreen: 'list', stage: '' });
   // A stage this build doesn't know falls back to Open Reef.
   await serveFixture('moon-base');
   await openSong(1, 0);
-  await until({ songScreen: 'preview', stage: 'openreef', stageReady: 'true' });
+  await until({ songScreen: 'preview', songReady: 'true', stage: 'openreef', stageReady: 'true' });
   await click(BACK);
   await until({ songScreen: 'list', stage: '' });
 
@@ -251,9 +246,11 @@ try {
   deviceServer = device.listen(1337, '127.0.0.1');
   await new Promise((resolve) => deviceServer.once('listening', resolve));
   await openSong(2, 0);
+  await until({ songScreen: 'preview', songReady: 'true' });
+  await click(BACK);
+  await until({ songScreen: 'list', songReady: 'true' });
   await click(PILL);
-  await until({ connectOpen: 'true' });
-  await page.waitForTimeout(400);
+  await until({ connectReady: 'true' });
   await click(MODES[0]);
   await until({ connectMode: 'android', connectStatus: 'disconnected' });
   for (let i = 0; i < 16; i++) await page.keyboard.press('Backspace');
