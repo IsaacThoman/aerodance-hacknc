@@ -28,6 +28,8 @@ const STAGE = { x: 4.3, y: -2.6, z: -19, tilt: 0.2, turn: -0.22 };
 // How far the stage rises when it's raised.
 const RAISE = 1.5;
 const SLIDE = 12;
+// Easing approaches its target forever; snap once the remaining step is imperceptible.
+const SPOT_EPSILON = 0.01;
 
 function Environment({ scene }) {
   const gl = useThree((state) => state.gl);
@@ -114,12 +116,17 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
 
     const t = state.clock.elapsedTime;
     const away = 1 - shown.current;
-    // Rise and the solo dancer's step to the middle ease in, unless the stage is off screen.
+    // Rise and both dancers' steps to the middle ease in, unless the stage is off screen.
     const k = shown.current < 0.05 ? 1 : Math.min(1, dt * 4);
     lift.current += ((raised ? RAISE : 0) - lift.current) * k;
     DANCERS.forEach((d, i) => {
       const spot = spots.current[i];
-      if (spot) spot.position.x += ((solo ? 0 : d.x) - spot.position.x) * k;
+      if (!spot) return;
+      const target = solo ? 0 : d.x;
+      spot.position.x += (target - spot.position.x) * k;
+      if (Math.abs(target - spot.position.x) < SPOT_EPSILON) spot.position.x = target;
+      // Purple joins blue at the center before disappearing, then reappears to split out.
+      spot.visible = !solo || i === 0 || spot.position.x !== 0;
     });
     rig.current.position.set(
       STAGE.x + away * away * SLIDE,
@@ -158,7 +165,6 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
                 ref={(g) => { spots.current[person] = g; }}
                 position={[d.x, 0, 0]}
                 scale={[-1, 1, 1]}
-                visible={!solo || person === 0}
               >
                 <Character
                   motion={motion}
