@@ -7,18 +7,19 @@ import { useRemoteStatus } from './remoteLink.js';
 /**
  * The display's phone-remote corner, drawn in-engine over everything (priority 3.5):
  *   card    QR to /join?remote=<code>, with an X that whooshes it into the button
- *   button  a Wii remote in the bottom-right corner that brings the card back
+ *   button  a Wii remote in the bottom-right corner that brings the card out
  *   cursor  the remote's pointer, on top of every other overlay
- * The card hides while a remote is connected. When the remote drops it comes back for
- * 15 seconds, then whooshes away on its own; opened by hand it stays until closed.
+ * The card starts tucked into the button and hides while a remote is connected. When the
+ * remote drops it comes back for 15 seconds, then whooshes away on its own; opened by hand
+ * it stays until closed.
  *
  * <RemoteDock />
  */
 
 const ICON = { x: 1516, y: 836, r: 42 };
-const CARD = { x: 1262, y: 400, w: 300, h: 380 };
-const QR_BOX = { x: 1282, y: 432, w: 260, h: 260 };
-const CLOSE = { x: 1550, y: 412, r: 22 };
+const CARD = { x: 1262, y: 416, w: 300, h: 364 };
+const QR_BOX = { x: 1282, y: 448, w: 260, h: 260 };
+const CLOSE = { x: 1550, y: 428, r: 22 };
 const REOPEN_MS = 15000;
 
 const smooth = (k) => k * k * (3 - 2 * k);
@@ -105,7 +106,7 @@ export default function RemoteDock() {
   const props = useRef(status);
   props.current = status;
   // open: where the card is heading; k: how far out it is (0 tucked into the button, 1 out).
-  const st = useRef({ open: true, k: 1, hideAt: null, holder: null, drawn: null }).current;
+  const st = useRef({ open: false, k: 0, hideAt: null, holder: null, drawn: null }).current;
 
   const qr = useMemo(() => (status.joinUrl ? QRCode.create(status.joinUrl, { errorCorrectionLevel: 'M' }).modules : null), [status.joinUrl]);
   const qrRef = useRef(qr);
@@ -156,9 +157,6 @@ export default function RemoteDock() {
         const cx = CARD.x + CARD.w / 2;
         g.font = `800 30px ${FONT}`;
         drawShadowText(g, holder ? 'Remote taken' : 'Grab the remote', cx, QR_BOX.y + QR_BOX.h + 40, { size: 30, weight: 800, align: 'center' });
-        g.font = `600 21px ${FONT}`;
-        const sub = holder ? `${holder} is pointing` : 'Scan to point with your phone';
-        drawShadowText(g, ellipsize(g, sub, CARD.w - 36), cx, QR_BOX.y + QR_BOX.h + 72, { size: 21, weight: 600, align: 'center' });
         if (k > 0.9) drawClose(g, CLOSE, h.close ?? 0);
         g.restore();
       }
