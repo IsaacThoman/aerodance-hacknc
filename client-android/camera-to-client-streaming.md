@@ -38,6 +38,7 @@ Agree on this before implementing either side.
 | `GET /v1/status` | Identify the device and verify connectivity |
 | `GET /v1/stream` | Open the continuous data stream |
 | `POST /v1/config` | Select one or two players, including during an open stream |
+| `GET /v1/time` | Clock-synchronization exchange on the pose-record clock (capability `timeSync`) |
 
 Example status response:
 
@@ -55,10 +56,47 @@ Example status response:
     "maxPoses": 2,
     "landmarksPerPose": 33,
     "worldLandmarks": false,
-    "sensorTimestampSource": "unknown"
+    "sensorTimestampSource": "unknown",
+    "timeSync": true
   }
 }
 ```
+
+`timeSync: true` advertises `GET /v1/time`. It is an additive protocol-2
+capability: clients must check the flag rather than infer support from
+`protocolVersion` alone, and must ignore unknown capability fields.
+
+### Clock synchronization
+
+`GET /v1/time` returns one JSON object and closes the connection:
+
+```json
+{"protocolVersion":2,"sessionId":"session-abc","receivedTimeMs":81234,"sentTimeMs":81235}
+```
+
+- `receivedTimeMs` (`a1`) is sampled once the request headers have been fully
+  read; `sentTimeMs` (`a2`) is sampled immediately before the body is serialized
+  and written. `a1 <= a2`.
+- Both use the **same clock and units** as pose `frameReceivedTimeMs`/`resultTimeMs`
+  and heartbeat `producerTimeMs`: Android `SystemClock.elapsedRealtime()` in
+  integer milliseconds (monotonic since boot, including deep sleep). They are not
+  wall-clock times. A changed `sessionId` invalidates any previous mapping.
+- The route is read-only and independent of the stream slot: it works with or
+  without an open stream, never receives the single-stream `409`, and never starts
+  camera capture or inference. It costs two clock reads and one small string;
+  it does not take the publication lock or wait on the pipeline.
+- CORS matches `/v1/status`: approved or absent `Origin`, route-specific
+  `OPTIONS` allowing `GET`, `405` for other methods, `Cache-Control: no-store`.
+  Requests share the four fixed HTTP workers; a request beyond capacity is closed
+  and may be retried.
+
+For browser send/receive times `b0`/`b3` (`performance.now()`), estimate
+`androidMinusBrowser = ((a1 - b0) + (a2 - b3)) / 2` and
+`roundTrip = (b3 - b0) - (a2 - a1)`. Take several samples, prefer the lowest round
+trips, and treat half the round trip as the uncertainty. Each request opens a new
+TCP connection, so `b0`→`a1` includes connection setup; the minimum-round-trip
+filter limits that asymmetry. See the
+[game integration plan](../docs/android-game-integration-plan.md#required-android-timing-extension).
 
 ### Streaming format
 
@@ -226,7 +264,7 @@ Use `fetch()` and a streaming response reader:
 - Forward to the backend through a separate bounded path.
 - Replace both player states on every pose snapshot, clearing omitted IDs immediately, and after 500 ms without a fresh pose result. Make this initial stale threshold configurable.
 - Treat 12 seconds without any record as a stalled connection and reconnect. An ongoing heartbeat must not reset the pose-age timer.
-- Track receipt with browser `performance.now()`. Compare device durations on the device clock; do not subtract Android uptime from browser time without clock calibration.
+- Track receipt with browser `performance.now()`. Compare device durations on the device clock; do not subtract Android uptime from browser time without clock calibration (`GET /v1/time`, when status advertises `timeSync`).
 
 **Network chunks are not message boundaries:** one chunk can contain several messages or only part of one.
 
@@ -279,9 +317,9 @@ Configure it to:
 
 - Listen on the LAN-accessible interface, not only `127.0.0.1`.
 - Use a fixed port, such as `1337`.
-- Serve `/v1/status` and `/v1/stream`.
+- Serve `/v1/status`, `/v1/stream`, `/v1/config` and `/v1/time`.
 - Limit simultaneous streaming connections—one is sufficient for the initial design.
-- Reject an additional streaming client with a clear `409` response. Status requests remain available.
+- Reject an additional streaming client with a clear `409` response. Status, config and time requests remain available.
 - Prove bounded output and cancellation of a blocked socket write before selecting the server library.
 
 ### B. Android permissions and lifecycle
@@ -315,7 +353,7 @@ Cache-Control: no-store
 
 If you add custom request headers or other preflight-triggering behavior, support `OPTIONS` with the corresponding allowed methods and headers.
 
-Support route-specific `OPTIONS`: `GET` for status/stream and `POST` with `Content-Type` for config, without credentials. Config mutations require a configured allowed Origin; a missing Origin is rejected. Read-only status/stream remain usable by native LAN diagnostics without Origin. Apply CORS headers to errors for approved origins as well. Validate the request origin against a configured allowlist; never reflect arbitrary origins. The example origin must be replaced by the actual game's origin before browser testing.
+Support route-specific `OPTIONS`: `GET` for status/stream/time and `POST` with `Content-Type` for config, without credentials. Config mutations require a configured allowed Origin; a missing Origin is rejected. Read-only status/stream/time remain usable by native LAN diagnostics without Origin. Apply CORS headers to errors for approved origins as well. Validate the request origin against a configured allowlist; never reflect arbitrary origins. The example origin must be replaced by the actual game's origin before browser testing.
 
 **Browser local-network permission and CORS are separate:** both must permit the request.
 

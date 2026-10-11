@@ -18,6 +18,7 @@ import tech.aerodance.androidclient.pipeline.TaskTimestamps
 import tech.aerodance.androidclient.protocol.Landmark
 import tech.aerodance.androidclient.protocol.Pose
 import tech.aerodance.androidclient.protocol.InferenceResult
+import tech.aerodance.androidclient.streaming.ElapsedRealtimeClock
 
 /** GPU inference: one input in flight, one replaceable camera image, no per-frame runnable queue. */
 class LivePoseEstimator(
@@ -57,7 +58,7 @@ class LivePoseEstimator(
                         .setRunningMode(RunningMode.LIVE_STREAM).setNumPoses(2)
                         .setOutputSegmentationMasks(false)
                         .setResultListener { result, _ ->
-                            val completed = SystemClock.elapsedRealtime()
+                            val completed = ElapsedRealtimeClock.nowMs() // wire resultTimeMs
                             // Copy native result values on the callback thread, before returning to Tasks.
                             try {
                                 val poses = result.landmarks().map { points -> Pose(points.map { p ->

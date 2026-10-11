@@ -26,7 +26,7 @@ flowchart LR
     B --> W[Existing backend connection]
 ```
 
-The browser initiates `GET /v1/stream`; Android pushes through that response. Keep the [streaming specification's](camera-to-client-streaming.md) HTTP port `1337`, NDJSON, and one streaming client initially. No per-frame requests or WAN relay sit between inference and the browser.
+The browser initiates `GET /v1/stream`; Android pushes through that response. `GET /v1/status`, `POST /v1/config` and `GET /v1/time` (clock synchronization, advertised as `capabilities.timeSync`) are short request/response routes that never take the stream slot or start capture. Keep the [streaming specification's](camera-to-client-streaming.md) HTTP port `1337`, NDJSON, and one streaming client initially. No per-frame requests or WAN relay sit between inference and the browser.
 
 HTTP over TCP is the initial practical low-latency design, not a guarantee of the lowest possible latency under packet loss. Measure it before considering another transport.
 
@@ -114,9 +114,9 @@ The manifest declares `CAMERA`, `INTERNET`, and network-state access. Test camer
 
 ## Timing and performance
 
-Record camera callback arrival, conversion, submission, completion, and write start/end on one Android monotonic clock. Sensor timestamps measure intervals, but this board reports `timestampSource = UNKNOWN`; do not compare them directly to that clock.
+Record camera callback arrival, conversion, submission, completion, and write start/end on one Android monotonic clock: `SystemClock.elapsedRealtime()` milliseconds, exposed as `ElapsedRealtimeClock` (a shared `MonotonicClock`) for every wire timestamp. Sensor timestamps measure intervals, but this board reports `timestampSource = UNKNOWN`; do not compare them directly to that clock.
 
-Wire timing is labeled as arrival-based. Measure sensor-to-browser latency using an external visual test, or calibrate clock domains and quantify uncertainty. Browser `performance.now()` and Android uptime cannot be directly subtracted; clock calibration requires a separate measurement exchange.
+Wire timing is labeled as arrival-based. Measure sensor-to-browser latency using an external visual test, or calibrate clock domains and quantify uncertainty. Browser `performance.now()` and Android uptime cannot be directly subtracted; `GET /v1/time` provides the separate measurement exchange, returning request-received and response-prepared times on the pose-record clock.
 
 Provisional goals: sustained 30 pose results/second where inference permits, p95 camera-callback-to-browser receipt <100 ms, and p95 inference-completion-to-write-completion <10 ms on a healthy LAN. These are unmeasured targets. Bounded age takes priority over an FPS number.
 
