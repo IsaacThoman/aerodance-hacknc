@@ -89,13 +89,14 @@ function FlockCamera() {
     const pole = copy.getObjectByName('Pole_|_simplified_12-foot_pole');
     const top = new THREE.Box3().setFromObject(copy, true).max.y;
     const poleHeight = new THREE.Box3().setFromObject(pole, true).max.y;
-    // Enlarge the hardware uniformly, keeping the original top height and pole foot.
-    // Lower the upper assembly and shorten only the shaft before scaling everything.
+    // Enlarge the hardware uniformly and shorten the shaft to the original top height.
     const drop = top * (1 - 1 / FLOCK_SCALE);
-    for (const part of assembly.children) {
-      if (part !== pole) part.position.y -= drop;
-    }
-    pole.scale.y = (poleHeight - drop) / poleHeight;
+    const upperParts = assembly.children.filter((part) => part !== pole);
+    const lowerEnd = Math.min(...upperParts.map((part) => new THREE.Box3().setFromObject(part, true).min.y));
+    // Give the exposed lower shaft 15% more length, raising the hardware with it.
+    const extension = (lowerEnd - drop) * 0.15;
+    for (const part of upperParts) part.position.y += extension - drop;
+    pole.scale.y = (poleHeight - drop + extension) / poleHeight;
     pole.position.y *= pole.scale.y;
     return copy;
   }, [scene]);
