@@ -1,23 +1,16 @@
 import { useCallback, useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
 import {
-  FONT, drawBubble, drawCaps, drawGlassPanel, drawHeader, drawMedal, drawPill, drawQR, drawShadowText, drawSparkle,
-  drawSunburst, ellipsize, roundRect,
+  FONT, drawBubble, drawCaps, drawGlassPanel, drawHeader, drawPill, drawQR, drawShadowText, ellipsize, roundRect,
 } from '../ui/draw.js';
 import { drawSticker, stickerLabel } from '../ui/stickers.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { joinUrl, useHype } from './api.js';
 
 /**
- * The game display's side of a battle, drawn in-engine over the world and the menu
- * dancers (useFrame priority 2.5). Phases follow the battle:
- *   lobby    QR code to join, seat tags over the dancers, Start
- *   playing  seat tags and hype while the results this display reported settle the battle
- *   results  winner, scores, hype totals, the on-chain receipt and the winner's trophy NFT;
- *            the winner gets a Frutiger Aero moment (sunburst, orb pop, medal, sparkles)
- * Hype from phones rises as bubbles from the dancer it was sent to; stickers rise as themselves.
- *
- * <BattleScreen visible battle={publicBattle} playing onPlay onBack onRematch onMenu />
+ * The QR battle lobby over the world and menu dancers. Start opens Song Select;
+ * every finished battle uses the shared ResultsScreen on a dance stage.
+ * Hype from phones rises as bubbles; stickers rise as themselves.
  */
 
 const BACK = { x: 166, y: 134, r: 30 };
@@ -29,57 +22,13 @@ const SEAT_X = [1050, 1325];
 const TAG_Y = 286;
 const BUBBLE_Y = 640;
 
-// Score cards share the space between the banner and the receipt line.
-const CARDS = { x: 128, y: 300, w: 600, h: 256, gap: 16 };
-const cardRect = (i, n) => {
-  const h = Math.min(112, (CARDS.h - CARDS.gap * (n - 1)) / n);
-  return { x: CARDS.x, y: CARDS.y + i * (h + CARDS.gap), w: CARDS.w, h };
-};
-const RECEIPT = { x: 128, y: 580, w: 600, h: 64 };
-const TROPHY = { x: 128, y: 660, w: 600, h: 64 };
-const REMATCH = { x: 128, y: 760, w: 380, h: 100 };
-const MENU = { x: 524, y: 760, w: 290, h: 100 };
-
 const seatX = (seat, count) => (count <= 2 ? SEAT_X[seat] : 960 + (seat * 520) / (count - 1));
 const fmtSol = (sol) => `${Number(sol.toFixed(3))} SOL`;
 const fmtClock = (ms) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
-const short = (sig) => `${sig.slice(0, 4)}…${sig.slice(-4)}`;
-const clamp01 = (v) => Math.min(1, Math.max(0, v));
-// Overshoots a little, then settles at 1: things pop in.
-const popIn = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2);
-// Fixed sparkle spots around a seat tag, as offsets and phases.
-const SPARKLES = Array.from({ length: 9 }, (_, i) => ({
-  dx: Math.cos(i * 2.4) * (130 + (i % 3) * 60),
-  dy: Math.sin(i * 2.4) * (90 + (i % 2) * 70) + 40,
-  size: 14 + (i % 4) * 7,
-  phase: i * 0.7,
-}));
-
-// The winner's moment over their seat: light rays, a glossy orb that grows and pops,
-// a medal bouncing in and sparkles twinkling. t is seconds since the results showed.
-function drawWinnerMoment(g, x, y, t) {
-  const grow = popIn(clamp01(t / 0.9));
-  drawSunburst(g, x, y + 60, 430 * grow, { angle: t * 0.25, alpha: 0.75 });
-  if (t < 0.75) {
-    const k = t / 0.75;
-    drawBubble(g, x, y + 40, 40 + 150 * k * k, 1 - k * 0.3);
-  }
-  for (const sp of SPARKLES) {
-    const tw = 0.5 + 0.5 * Math.sin(t * 3.2 + sp.phase);
-    drawSparkle(g, x + sp.dx, y + sp.dy, sp.size * tw * clamp01((t - 0.5) * 2), tw);
-  }
-  drawMedal(g, x, y - 92 + Math.sin(t * 2.2) * 5, 40 * popIn(clamp01((t - 0.55) / 0.5)));
-}
-
-function phaseOf(battle, playing) {
-  if (battle?.status === 'finished') return 'results';
-  return playing ? 'playing' : 'lobby';
-}
-
-function drawSeatTag(g, x, y, { name, sub, gold, dim }) {
+function drawSeatTag(g, x, y, { name, sub, dim }) {
   g.save();
   g.font = `700 34px ${FONT}`;
   const label = ellipsize(g, name, 300);
@@ -87,50 +36,15 @@ function drawSeatTag(g, x, y, { name, sub, gold, dim }) {
   const rect = { x: x - w / 2, y: y - 32, w, h: 64 };
   g.globalAlpha *= dim ? 0.75 : 1;
   drawGlassPanel(g, rect, 32);
-  if (gold) {
-    roundRect(g, rect.x - 3, rect.y - 3, rect.w + 6, rect.h + 6, 35);
-    g.lineWidth = 5;
-    g.strokeStyle = '#ffd34d';
-    g.stroke();
-  }
   g.restore();
   drawShadowText(g, label, x, y + 1, { size: 34, align: 'center', alpha: dim ? 0.8 : 1 });
   if (sub) drawShadowText(g, sub, x, y + 58, { size: 24, weight: 600, align: 'center' });
 }
 
-function drawScoreCard(g, rect, player, { winner }) {
-  const k = rect.h / 112;
-  drawGlassPanel(g, rect, 30 * k);
-  if (winner) {
-    roundRect(g, rect.x - 3, rect.y - 3, rect.w + 6, rect.h + 6, 33);
-    g.lineWidth = 5;
-    g.strokeStyle = '#ffd34d';
-    g.stroke();
-  }
-  const r = player.result;
-  g.save();
-  g.textBaseline = 'middle';
-  g.fillStyle = '#ffffff';
-  g.font = `700 ${34 * k}px ${FONT}`;
-  g.fillText(ellipsize(g, player.name ?? `Seat ${player.seat + 1}`, 330), rect.x + 32, rect.y + 40 * k);
-  g.font = `600 ${22 * k}px ${FONT}`;
-  g.fillStyle = 'rgba(255,255,255,0.8)';
-  const detail = r ? `pops ${r.pops} · sync ${r.sync.toFixed(2)} · flair ${r.flair}` : 'no score this round';
-  g.fillText(detail, rect.x + 32, rect.y + 80 * k);
-  g.textAlign = 'right';
-  g.font = `800 ${52 * k}px ${FONT}`;
-  g.fillStyle = winner ? '#ffe27a' : '#ffffff';
-  g.fillText(r ? String(r.score) : '–', rect.x + rect.w - 32, rect.y + 44 * k);
-  g.font = `600 ${22 * k}px ${FONT}`;
-  g.fillStyle = 'rgba(255,255,255,0.8)';
-  g.fillText(`${player.hype.count} hype · ${fmtSol(player.hype.sol)}`, rect.x + rect.w - 32, rect.y + 86 * k);
-  g.restore();
-}
-
-export default function BattleScreen({ visible, battle, playing, onPlay, onBack, onRematch, onMenu }) {
+export default function BattleScreen({ visible, battle, onPlay, onBack }) {
   const props = useRef({});
-  props.current = { visible, battle, playing, onPlay, onBack, onRematch, onMenu };
-  const st = useRef({ alpha: 0, bubbles: [], phase: null, seen: null, drawn: null, danceStart: 0, resultsAt: 0 }).current;
+  props.current = { visible, battle, onPlay, onBack };
+  const st = useRef({ alpha: 0, bubbles: [], drawn: null }).current;
 
   const id = battle?.id;
   const url = id ? joinUrl(id) : null;
@@ -160,73 +74,40 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
     spawn(seatX(seat, count), sticker ? 4 : 6, { label, sticker });
   }, []));
 
-  const widgetsFor = (phase, b) => {
-    if (phase === 'lobby') return [{ id: 'back', circle: BACK }, { id: 'start', rect: START }];
-    if (phase === 'playing') return [{ id: 'back', circle: BACK }];
-    const list = [{ id: 'menu-back', circle: BACK }, { id: 'rematch', rect: REMATCH }, { id: 'menu', rect: MENU }];
-    if (b?.receipt?.explorer) list.push({ id: 'receipt', rect: RECEIPT });
-    if (b?.trophy?.explorer) list.push({ id: 'trophy', rect: TROPHY });
-    return list;
-  };
-
   useCanvasUI({
     priority: 2.5,
     active: () => props.current.visible && !!props.current.battle?.players && st.alpha > 0.3,
-    widgets: () => widgetsFor(phaseOf(props.current.battle, props.current.playing), props.current.battle),
+    widgets: () => [{ id: 'back', circle: BACK }, { id: 'start', rect: START }],
     onActivate: (wdg) => {
       const p = props.current;
       switch (wdg.id) {
         case 'start': p.onPlay?.(); break;
         case 'back': p.onBack?.(); break;
-        case 'menu-back':
-        case 'menu': p.onMenu?.(); break;
-        case 'rematch': p.onRematch?.(); break;
-        case 'receipt': window.open(p.battle.receipt.explorer, '_blank', 'noopener'); break;
-        case 'trophy': window.open(p.battle.trophy.explorer, '_blank', 'noopener'); break;
         default:
       }
     },
     onKey: (e) => {
       const p = props.current;
       if (e.key !== 'Escape' || !p.visible) return;
-      if (phaseOf(p.battle, p.playing) === 'results') p.onMenu?.();
-      else p.onBack?.();
+      p.onBack?.();
     },
     // The phone remote's B button, like Escape.
     onBack: () => {
       const p = props.current;
-      if (phaseOf(p.battle, p.playing) === 'results') p.onMenu?.();
-      else p.onBack?.();
+      p.onBack?.();
     },
     update: (dt, s) => {
       const p = props.current;
       st.alpha = s.ease(st.alpha, p.visible && p.battle?.players ? 1 : 0, p.visible ? 3 : 6);
-      const phase = phaseOf(p.battle, p.playing);
-      if (phase !== st.phase) {
-        if (phase === 'playing') st.danceStart = s.time;
-        if (phase === 'results') st.resultsAt = s.time;
-        st.phase = phase;
-        s.invalidate();
-      }
-      // Each push is a new battle object: redraw so joins show up straight away.
+      // Each push is a new battle object: redraw joins, hype and countdowns.
       if (p.battle !== st.drawn) s.invalidate();
-      if (phase === 'playing' || phase === 'results') s.invalidate(); // countdown, celebration
-      // Celebrate when a battle finishes while we're watching it: the winner's orb pops.
-      if (p.battle?.status) {
-        if (st.seen?.id === p.battle.id && st.seen.status === 'open' && p.battle.status === 'finished') {
-          for (let i = 0; i < 6; i++) spawn(200 + i * 260, 5, { spread: 120, y: 940 });
-          const w = p.battle.winnerSeat;
-          if (w !== null) setTimeout(() => spawn(seatX(w, p.battle.players.length), 16, { spread: 170, y: TAG_Y + 60 }), 750);
-        }
-        st.seen = { id: p.battle.id, status: p.battle.status };
-      }
       for (const b of st.bubbles) {
         b.age += dt;
         b.y += b.vy * dt * (b.age > 0 ? 1 : 0);
       }
       st.bubbles = st.bubbles.filter((b) => b.age < b.life && b.y > -60);
-      // Bubbles, countdowns and the receipt spinner animate; everything else is static.
-      if (st.bubbles.length || p.battle?.closesAt || p.battle?.receipt?.status === 'pending' || p.battle?.trophy?.status === 'pending') {
+      // Bubbles and the result deadline animate; everything else is static.
+      if (st.bubbles.length || p.battle?.closesAt) {
         s.invalidate();
       }
     },
@@ -236,89 +117,39 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
       const b = p.battle;
       st.drawn = b;
       if (!b?.players) return;
-      const phase = phaseOf(b, p.playing);
       const h = s.hover;
       const count = b.players.length;
 
-      if (phase === 'lobby') {
-        drawHeader(g, BACK, `BATTLE ${b.id.toUpperCase()}`, h.back ?? 0);
-        drawGlassPanel(g, QR_PANEL, 34);
-        drawCaps(g, 'SCAN TO JOIN', QR_PANEL.x + QR_PANEL.w / 2, QR_PANEL.y + 32, { size: 24, align: 'center' });
-        roundRect(g, QR_BOX.x - 4, QR_BOX.y - 4, QR_BOX.w + 8, QR_BOX.h + 8, 22);
-        g.fillStyle = '#ffffff';
-        g.fill();
-        if (qrRef.current) drawQR(g, qrRef.current, QR_BOX, s);
-        const host = url.replace(/^https?:\/\//, '');
-        g.font = `700 26px ${FONT}`;
-        drawShadowText(g, ellipsize(g, host, QR_PANEL.w - 40), QR_PANEL.x + QR_PANEL.w / 2, QR_BOX.y + QR_BOX.h + 40, { size: 26, align: 'center' });
-        // Local dev only: phones can't follow a localhost QR code.
-        if (/^(localhost|127\.|\[::1\])/.test(location.hostname)) {
-          drawShadowText(g, "Phones can't open localhost: use a LAN IP", QR_PANEL.x + QR_PANEL.w / 2, QR_BOX.y + QR_BOX.h + 80, {
-            size: 21, weight: 600, align: 'center', color: '#ffe27a',
-          });
-        }
-        const ready = b.players.filter((pl) => pl.name).length;
-        drawPill(g, START, {
-          label: 'Start battle',
-          sub: ready ? `${ready} of ${count} dancers ready` : 'waiting for dancers',
-          icon: 'play',
-          hover: h.start ?? 0,
-          press: s.press * (h.start ?? 0),
+      drawHeader(g, BACK, `BATTLE ${b.id.toUpperCase()}`, h.back ?? 0);
+      drawGlassPanel(g, QR_PANEL, 34);
+      drawCaps(g, 'SCAN TO JOIN', QR_PANEL.x + QR_PANEL.w / 2, QR_PANEL.y + 32, { size: 24, align: 'center' });
+      roundRect(g, QR_BOX.x - 4, QR_BOX.y - 4, QR_BOX.w + 8, QR_BOX.h + 8, 22);
+      g.fillStyle = '#ffffff';
+      g.fill();
+      if (qrRef.current) drawQR(g, qrRef.current, QR_BOX, s);
+      const host = url.replace(/^https?:\/\//, '');
+      g.font = `700 26px ${FONT}`;
+      drawShadowText(g, ellipsize(g, host, QR_PANEL.w - 40), QR_PANEL.x + QR_PANEL.w / 2, QR_BOX.y + QR_BOX.h + 40, { size: 26, align: 'center' });
+      // Local dev only: phones can't follow a localhost QR code.
+      if (/^(localhost|127\.|\[::1\])/.test(location.hostname)) {
+        drawShadowText(g, "Phones can't open localhost: use a LAN IP", QR_PANEL.x + QR_PANEL.w / 2, QR_BOX.y + QR_BOX.h + 80, {
+          size: 21, weight: 600, align: 'center', color: '#ffe27a',
         });
-      } else if (phase === 'playing') {
-        drawHeader(g, BACK, `BATTLE ${b.id.toUpperCase()}`, h.back ?? 0);
-        drawShadowText(g, 'Scoring…', 128, 330, { size: 96, weight: 800 });
-        drawShadowText(g, 'tallying the bubbles', 132, 410, { size: 44, weight: 700, color: '#bff4ff' });
-        // A shimmer along the bar until every seat's score is in.
-        const bar = { x: 128, y: 450, w: 452, h: 22 };
-        roundRect(g, bar.x, bar.y, bar.w, bar.h, bar.h / 2);
-        g.fillStyle = 'rgba(255,255,255,0.35)';
-        g.fill();
-        const k = ((s.time - st.danceStart) * 0.6) % 1;
-        roundRect(g, bar.x + bar.w * Math.max(0, k - 0.25), bar.y, bar.w * 0.25, bar.h, bar.h / 2);
-        g.fillStyle = '#6ff3d6';
-        g.fill();
       }
-
-      if (phase === 'results') {
-        drawHeader(g, BACK, 'RESULTS', h['menu-back'] ?? 0);
-        const w = b.winnerSeat;
-        const winner = w === null ? null : b.players[w];
-        drawShadowText(g, winner ? `${winner.name ?? `Seat ${w + 1}`} wins!` : "It's a tie!", 128, 250, { size: 76, weight: 800 });
-        b.players.forEach((pl, i) => drawScoreCard(g, cardRect(i, count), pl, { winner: pl.seat === w }));
-        const dots = '.'.repeat(1 + (Math.floor(s.time * 3) % 3));
-        const chip = (rect, label, link, hover) => {
-          g.save();
-          g.globalAlpha *= 0.85 + hover * 0.15;
-          drawGlassPanel(g, rect, rect.h / 2);
-          g.restore();
-          drawShadowText(g, label, rect.x + 32, rect.y + rect.h / 2 + 1, {
-            size: 26, weight: 700, color: link && !hover ? '#bff4ff' : '#ffffff',
-          });
-        };
-        const confirmed = b.receipt?.status === 'confirmed';
-        chip(RECEIPT, confirmed ? `On-chain receipt ${short(b.receipt.signature)}  ↗` : `Writing the on-chain receipt${dots}`, confirmed, h.receipt ?? 0);
-        if (b.trophy) {
-          const minted = b.trophy.status === 'minted';
-          chip(TROPHY, minted ? `Winner's trophy NFT ${short(b.trophy.asset)}  ↗` : `Minting the winner's trophy NFT${dots}`, minted, h.trophy ?? 0);
-        }
-        drawPill(g, REMATCH, { label: 'Run it back', icon: 'replay', hover: h.rematch ?? 0, press: s.press * (h.rematch ?? 0) });
-        drawPill(g, MENU, { label: 'Menu', icon: 'home', hover: h.menu ?? 0, press: s.press * (h.menu ?? 0) });
-      }
-
-      if (phase === 'results' && b.winnerSeat !== null) drawWinnerMoment(g, seatX(b.winnerSeat, count), TAG_Y, s.time - st.resultsAt);
+      const ready = b.players.filter((pl) => pl.name).length;
+      drawPill(g, START, {
+        label: 'Start battle',
+        sub: ready ? `${ready} of ${count} dancers ready` : 'waiting for dancers',
+        icon: 'play',
+        hover: h.start ?? 0,
+        press: s.press * (h.start ?? 0),
+      });
 
       // Seat tags over the dancers.
       b.players.forEach((pl) => {
         const x = seatX(pl.seat, count);
         const hype = pl.hype.count ? `${pl.hype.count} hype · ${fmtSol(pl.hype.sol)}` : null;
-        if (phase === 'results') {
-          drawSeatTag(g, x, TAG_Y, {
-            name: pl.name ?? `Seat ${pl.seat + 1}`,
-            sub: pl.result ? `${pl.result.score} pts` : 'no score',
-            gold: pl.seat === b.winnerSeat,
-          });
-        } else if (pl.name) {
+        if (pl.name) {
           drawSeatTag(g, x, TAG_Y, { name: pl.name, sub: pl.result ? 'score in' : hype });
         } else {
           drawSeatTag(g, x, TAG_Y, { name: 'Open seat', sub: 'scan to dance', dim: true });
@@ -329,7 +160,7 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
       const footer = [];
       if (b.spectators) footer.push(`${b.spectators} in the crowd`);
       if (b.closesAt) footer.push(`scores close in ${fmtClock(Date.parse(b.closesAt) - Date.now())}`);
-      if (footer.length && phase !== 'results') {
+      if (footer.length) {
         drawCaps(g, footer.join(' · ').toUpperCase(), (SEAT_X[0] + SEAT_X[1]) / 2, 850, { size: 22, align: 'center' });
       }
 

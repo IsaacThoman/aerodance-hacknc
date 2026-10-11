@@ -37,3 +37,16 @@ export const RESULTS_SONGS = { x: 810, y: 806, w: 320, h: 80 };
 export const RESULTS_CONTINUE = { x: 640, y: 806, w: 320, h: 80 };
 // Song Select preview: Dance! starts the song for real, bottom right.
 export const DANCE = { x: 1172, y: 770, w: 300, h: 96 };
+
+// Battle details sit beneath the song title, leaving the celebration and score rows clear.
+export const RESULTS_RECEIPT = { x: 440, y: 206, w: 720, h: 44 };
+export const RESULTS_TROPHY = { x: 440, y: 262, w: 720, h: 44 };
+export const RESULTS_REMATCH = { x: 1240, y: 806, w: 260, h: 80 };
+
+// Bot-created battles may have more than the display's usual two seats.
+export function resultLayout(i, count) {
+  if (count <= 2) return { x: count === 1 ? 800 : 500 + i * 600, y: 590, scale: 1, hypeY: 524 };
+  const columns = Math.min(4, count);
+  const y = 578 + Math.floor(i / columns) * 122;
+  return { x: 240 + (i % columns) * 1120 / (columns - 1), y, scale: 0.52, hypeY: y - 32 };
+}
