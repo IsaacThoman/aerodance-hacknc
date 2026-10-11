@@ -30,6 +30,7 @@ const RAISE = 1.5;
 const SLIDE = 12;
 // Easing approaches its target forever; snap once the remaining step is imperceptible.
 const SPOT_EPSILON = 0.01;
+const SOLO_HIDE_PROGRESS = 0.85;
 
 function Environment({ scene }) {
   const gl = useThree((state) => state.gl);
@@ -125,8 +126,8 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
       const target = solo ? 0 : d.x;
       spot.position.x += (target - spot.position.x) * k;
       if (Math.abs(target - spot.position.x) < SPOT_EPSILON) spot.position.x = target;
-      // Purple joins blue at the center before disappearing, then reappears to split out.
-      spot.visible = !solo || i === 0 || spot.position.x !== 0;
+      // Hide purple near the end of convergence, then reveal it immediately to split out.
+      spot.visible = !solo || i === 0 || Math.abs(spot.position.x) > Math.abs(d.x) * (1 - SOLO_HIDE_PROGRESS);
     });
     rig.current.position.set(
       STAGE.x + away * away * SLIDE,
