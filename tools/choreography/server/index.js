@@ -42,7 +42,7 @@ export function createStudio({
     }
   });
   const raw = express.raw({ type: () => true, limit: "128mb" }),
-    body = express.json({ limit: "32mb" });
+    body = express.json({ limit: "256mb" });
   app.get("/api/projects", async (_req, res) => res.json(await store.list()));
   app.post("/api/projects", body, async (_req, res) =>
     res.status(201).json(await store.save(newProject(), null)),

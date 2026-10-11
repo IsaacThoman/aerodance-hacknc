@@ -6,6 +6,7 @@ dist
 **/dist
 **/.venv
 **/.cache
+!.cache/pose-assets/*/*.task
 **/__pycache__
 **/tracking-output
 agent
