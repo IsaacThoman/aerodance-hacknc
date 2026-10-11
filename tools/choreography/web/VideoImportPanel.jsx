@@ -19,7 +19,7 @@ export default function VideoImportPanel({ file, projectId, request, onImported,
   }, [url, onBusy]);
   const close = () => { active.current = false; importer.current?.abort(); onClose(); };
   const getImporter = () => {
-    importer.current ||= new VideoImporter({ video: video.current, modelId: model, projectId, request, onProgress: setProgress });
+    importer.current ||= new VideoImporter({ video: video.current, file, modelId: model, projectId, request, onProgress: setProgress });
     return importer.current;
   };
   const run = async action => {

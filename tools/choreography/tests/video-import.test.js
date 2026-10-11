@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { VideoImporter, seekVideoFrame, videoCalibrationPreview, videoRegionCrop, restoreVideoLandmarks } from '../web/videoImport.js';
+import { VideoImporter, sampleTimes, seekVideoFrame, videoCalibrationPreview, videoRegionCrop, restoreVideoLandmarks } from '../web/videoImport.js';
 import { createStudio } from '../server/index.js';
 import { readZip } from '../server/zip.js';
 import { MEDIAPIPE_VERSION, poseModel } from '../../../packages/pose/browser/models.js';
@@ -88,7 +88,7 @@ test('missing P1 is recovered without changing P2, file timing or primary video 
   const records = calls.find(c => c.url.endsWith('/batches')).body.records;
   assert.deepEqual(records.at(-1).record.poses.map(p => p.playerId), [0, 1]);
   assert.deepEqual(records.at(-1).record.poses[1], pose(1));
-  assert.deepEqual(records.map(e => e.record.mediaTimeMs), [0, 1000 / 30, 2000 / 30]);
+  assert.deepEqual(records.map(e => e.record.mediaTimeMs), [...sampleTimes(100)].map(t => t * 1000));
   assert.deepEqual(diagnostics.modes, ['IMAGE', 'IMAGE', 'VIDEO', 'IMAGE']);
   assert.equal(diagnostics.terminated, 4);
   assert.equal(diagnostics.maxActive, 1);
@@ -192,6 +192,82 @@ test('cancelling inference releases the worker and does not finalize a partial t
   assert.equal(job.processed, undefined);
   assert.equal(calls.some(url => url.endsWith('/finalize')), false);
   assert.ok(diagnostics.terminated > 0);
+});
+
+test('samples are taken mid-window so rounded container timestamps are not skipped', () => {
+  const times = [...sampleTimes(200)];
+  assert.equal(times.length, 6);
+  assert.ok(Math.abs(times[2] - 2.5 / 30) < 1e-12);
+  // A 30 fps WebM stores frame 2 at 67 ms; sampling at 66.7 ms would select frame 1.
+  assert.ok(times[2] > .067);
+});
+
+test('decoded frames are processed in order, prefetched during inference and released', async () => {
+  const diagnostics = { active: 0, maxActive: 0, terminated: 0, modes: [] }, calls = [], bitmaps = [];
+  const state = { pulled: 0, returned: false, options: null };
+  const video = { duration: .3, videoWidth: 640, videoHeight: 480, pause() {} };
+  const file = { name: 'decoded.webm' };
+  // 33 ms appears twice: a source frame shown across two sample windows.
+  const order = [0, 33, 33, 67, 100, 133, 167, 200, 233, 267];
+  const job = new VideoImporter({ video, file, modelId: 'lite', projectId: 'project', assetUrl: () => 'http://localhost/',
+    createWorker: () => new PoseWorker(diagnostics),
+    bitmap: async source => { bitmaps.push({ source, pulled: state.pulled }); return { close() {} }; },
+    seek: async () => { throw Error('decoded frames must not seek'); },
+    decodeFrames: async (source, options) => {
+      assert.equal(source, file); state.options = options;
+      return (async function* () {
+        try {
+          for (const ms of order) {
+            state.pulled++; yield { source: { ms }, mediaTimeMs: ms, timingMethod: 'decoded-frame', method: 'WebCodecs' };
+          }
+        } finally { state.returned = true; }
+      })();
+    },
+    request: async (url, options) => { calls.push({ url, body: structuredClone(options.body) }); return { takeId: 'decoded' }; },
+  });
+  await job.process('decoded.webm');
+  assert.deepEqual(state.options, { width: 640, height: 480, durationMs: 300 });
+  const records = calls.filter(c => c.url.endsWith('/batches')).flatMap(c => c.body.records.map(e => e.record));
+  assert.deepEqual(records.map(r => r.mediaTimeMs), [0, 33, 67, 100, 133, 167, 200, 233, 267]);
+  assert.ok(records.every(r => r.timingMethod === 'decoded-frame'));
+  // The following frame is already decoding when each frame's pixels are read.
+  assert.deepEqual(bitmaps.slice(0, -1).map(b => b.pulled), records.slice(0, -1).map(r => order.indexOf(r.mediaTimeMs) + 2));
+  assert.equal(diagnostics.maxActive, 1);
+  assert.equal(state.returned, true);
+});
+
+test('cancelling decoded processing releases the decoder and does not finalize', async () => {
+  const diagnostics = { active: 0, maxActive: 0, terminated: 0, modes: [] }, calls = [];
+  let returned = false;
+  const job = new VideoImporter({ video: { duration: 10, videoWidth: 640, videoHeight: 480, pause() {} }, file: {},
+    modelId: 'lite', projectId: 'project', assetUrl: () => 'http://localhost/', bitmap: async () => ({ close() {} }),
+    createWorker: () => new PoseWorker(diagnostics),
+    decodeFrames: async () => (async function* () {
+      try { for (let i = 0; ; i++) yield { source: {}, mediaTimeMs: i * 33, timingMethod: 'decoded-frame', method: 'WebCodecs' }; }
+      finally { returned = true; }
+    })(),
+    request: async url => { calls.push(url); return { takeId: 'cancelled' }; },
+  });
+  const processing = job.process('fixture.webm');
+  setTimeout(() => job.abort(), 20);
+  await assert.rejects(processing, { name: 'AbortError' });
+  assert.equal(returned, true);
+  assert.equal(calls.some(url => url.endsWith('/finalize')), false);
+});
+
+test('undecodable files fall back to seeking the video element', async () => {
+  const diagnostics = { active: 0, maxActive: 0, terminated: 0, modes: [] }, seeks = [], calls = [];
+  const job = new VideoImporter({ video: { duration: .2, videoWidth: 640, videoHeight: 480, pause() {} }, file: {},
+    modelId: 'lite', projectId: 'project', assetUrl: () => 'http://localhost/', bitmap: async () => ({ close() {} }),
+    createWorker: () => new PoseWorker(diagnostics), decodeFrames: async () => null,
+    seek: async (_v, time) => { seeks.push(time); return { mediaTimeMs: time * 1000, timingMethod: 'seek-time' }; },
+    request: async (url, options) => { calls.push({ url, body: options.body }); return { takeId: 'fallback' }; },
+  });
+  await job.process('fixture.webm');
+  assert.deepEqual(seeks, [...sampleTimes(200)]);
+  const records = calls.filter(c => c.url.endsWith('/batches')).flatMap(c => c.body.records.map(e => e.record));
+  assert.equal(records.length, 6);
+  assert.ok(records.every(r => r.timingMethod === 'seek-time'));
 });
 
 test('video seeking waits for decoded pixels and supports browsers without frame callbacks', async () => {

@@ -5,6 +5,13 @@ import { validateVideoRecord } from '../../../packages/pose/videoRecord.js';
 import { validatePoses } from '../../../packages/pose/choreography.js';
 
 const cancelled = () => new DOMException('Video import cancelled', 'AbortError');
+const SAMPLE_RATE = 30;
+
+// Sample the middle of each 1/30 s window. Container timestamps are rounded
+// (67 ms for 66.7 ms), so sampling exactly k/30 often selects the prior frame.
+export function* sampleTimes(durationMs, start = 0) {
+  for (let k = 0; k < Math.ceil(durationMs * SAMPLE_RATE / 1000); k++) yield start + (k + .5) / SAMPLE_RATE;
+}
 
 export function videoRegionCrop(detections, playerId, width, height) {
   // Small dancers in portrait footage need a vertical crop as well as a side
@@ -86,13 +93,48 @@ export function seekVideoFrame(video, time, signal) {
   });
 }
 
+// Fallback when WebCodecs cannot decode the file: one seek per sample.
+export async function* seekFrames(video, seek, durationMs, signal) {
+  for (const time of sampleTimes(durationMs)) yield { source: video, method: 'seeking', ...await seek(video, time, signal) };
+}
+
+// Decodes the file sequentially, avoiding a decoder reset for every sample.
+// Returns null when this browser or file needs the seeking fallback.
+export async function webCodecsFrames(file, { width, height, durationMs }) {
+  if (!file || typeof VideoDecoder === 'undefined') return null;
+  let input;
+  try {
+    const { Input, BlobSource, ALL_FORMATS, CanvasSink } = await import('mediabunny');
+    input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+    const track = await input.getPrimaryVideoTrack();
+    // CanvasSink applies rotation metadata; the size must match what <video>
+    // reports, which calibration and region crops use.
+    if (!track || !await track.canDecode() || track.displayWidth !== width || track.displayHeight !== height) {
+      input.dispose(); return null;
+    }
+    // Timestamps stay in file time, matching the <video> frame callbacks that
+    // calibration uses, but files may start after zero.
+    const start = Math.max(0, await track.getFirstTimestamp());
+    // One canvas in inference, one prefetched, one spare.
+    const sink = new CanvasSink(track, { poolSize: 3 });
+    return (async function* () {
+      try {
+        for await (const frame of sink.canvasesAtTimestamps(sampleTimes(durationMs, start))) {
+          if (frame && frame.timestamp >= 0) yield { source: frame.canvas, mediaTimeMs: frame.timestamp * 1000,
+            timingMethod: 'decoded-frame', method: 'WebCodecs' };
+        }
+      } finally { input.dispose(); }
+    })();
+  } catch { input?.dispose(); return null; }
+}
+
 export class VideoImporter {
-  constructor({ video, modelId, request, projectId, onProgress = () => {},
+  constructor({ video, file, modelId, request, projectId, onProgress = () => {},
     createWorker = () => new Worker(new URL('../../../packages/pose/browser/pose.worker.js', import.meta.url), { type: 'module' }),
-    bitmap = (...args) => createImageBitmap(...args), seek = seekVideoFrame,
+    bitmap = (...args) => createImageBitmap(...args), seek = seekVideoFrame, decodeFrames = webCodecsFrames,
     assetUrl = () => new URL(`${import.meta.env?.BASE_URL || '/'}${ASSET_PATH}/`, location.origin).href,
   }) {
-    Object.assign(this, { video, modelId, request, projectId, onProgress, createWorker, bitmap, seek, assetUrl });
+    Object.assign(this, { video, file, modelId, request, projectId, onProgress, createWorker, bitmap, seek, decodeFrames, assetUrl });
     this.model = poseModel(modelId);
     this.controller = new AbortController();
     this.sessionId = crypto.randomUUID();
@@ -148,22 +190,22 @@ export class VideoImporter {
     }
     return this.regionWorker;
   }
-  async infer(mediaTimeMs, crop, regionId) {
+  async infer(mediaTimeMs, crop, regionId, source = this.video) {
     const worker = crop ? await this.ensureRegionWorker() : this.worker;
-    const bitmap = crop ? await this.bitmap(this.video, crop.x, crop.y, crop.width, crop.height) : await this.bitmap(this.video);
+    const bitmap = crop ? await this.bitmap(source, crop.x, crop.y, crop.width, crop.height) : await this.bitmap(source);
     if (this.controller.signal.aborted) { bitmap.close(); throw cancelled(); }
     return this.waitForMessage({ type: 'frame', bitmap, seq: ++this.seq,
       timestampMs: mediaTimeMs, ...(crop ? { regionId } : {}) }, 'result', worker);
   }
-  async detectDancers(mediaTimeMs, calibration = false) {
-    const result = await this.infer(mediaTimeMs);
+  async detectDancers(mediaTimeMs, calibration = false, source = this.video) {
+    const result = await this.infer(mediaTimeMs, null, null, source);
     let detections = result.landmarks;
     const accepted = assignPlayerSlots(detections, 2).filter(p => !calibration || reliableBodyPose(p));
     const width = this.video.videoWidth, height = this.video.videoHeight;
     for (const id of [0, 1]) {
       if (accepted.some(p => p.playerId === id)) continue;
       const crop = videoRegionCrop(detections, id, width, height);
-      const regional = await this.infer(mediaTimeMs, crop, id);
+      const regional = await this.infer(mediaTimeMs, crop, id, source);
       const restored = regional.landmarks.map(p => restoreVideoLandmarks(p, crop, width, height));
       const candidate = assignPlayerSlots(restored, 2).find(p => p.playerId === id);
       if (!candidate || calibration && !reliableBodyPose(candidate)) continue;
@@ -209,20 +251,35 @@ export class VideoImporter {
         await this.upload(`${this.path}/batches`, { batchId: this.batchCount, records: pending });
         this.batchCount++; pending = [];
       };
-      for (let index = 0; index < Math.ceil(durationMs * 30 / 1000); index++) {
-        if (this.controller.signal.aborted) throw cancelled();
-        const frame = await this.seek(this.video, index / 30, this.controller.signal);
-        if (frame.mediaTimeMs <= lastTime) continue;
-        if (this.video.videoWidth !== input.width || this.video.videoHeight !== input.height) throw Error('Video dimensions changed during processing');
-        const poses = slots.map(await this.detectDancers(frame.mediaTimeMs), 2);
-        for (const p of poses) this.players.add(p.playerId);
-        const record = validateVideoRecord({ schema: 'aerodance.video-record', schemaVersion: 1, type: 'pose',
-          sessionId: this.sessionId, seq: this.recordCount + 1, playerCount: 2, modelId: this.modelId, input, ...frame, poses });
-        pending.push({ ordinal: this.recordCount++, record }); lastTime = frame.mediaTimeMs;
-        this.onProgress({ fraction: (index + 1) / Math.ceil(durationMs * 30 / 1000),
-          message: `Processing video · ${this.recordCount} samples · ${status.delegate}` });
-        if (pending.length >= 100) await flush();
-      }
+      const frames = await this.decodeFrames(this.file, { width: input.width, height: input.height, durationMs }) ??
+        seekFrames(this.video, this.seek, durationMs, this.controller.signal);
+      let next = frames.next(), firstTime;
+      try {
+        for (let result; !(result = await next).done;) {
+          if (this.controller.signal.aborted) throw cancelled();
+          const { source, method, mediaTimeMs, timingMethod } = result.value;
+          // Decoded canvases come from a pool, so the next frame can decode
+          // during inference. The seeking fallback must not move the video yet.
+          const prefetch = source !== this.video;
+          next = prefetch ? frames.next() : null;
+          next?.catch(() => {});
+          if (mediaTimeMs > lastTime) {
+            if (!prefetch && (this.video.videoWidth !== input.width || this.video.videoHeight !== input.height))
+              throw Error('Video dimensions changed during processing');
+            const poses = slots.map(await this.detectDancers(mediaTimeMs, false, source), 2);
+            for (const p of poses) this.players.add(p.playerId);
+            const record = validateVideoRecord({ schema: 'aerodance.video-record', schemaVersion: 1, type: 'pose',
+              sessionId: this.sessionId, seq: this.recordCount + 1, playerCount: 2, modelId: this.modelId, input,
+              mediaTimeMs, timingMethod, poses });
+            pending.push({ ordinal: this.recordCount++, record }); lastTime = mediaTimeMs;
+            firstTime ??= mediaTimeMs;
+            this.onProgress({ fraction: Math.min(1, (mediaTimeMs - firstTime) / durationMs),
+              message: `Processing video · ${this.recordCount} samples · ${method} · ${status.delegate}` });
+            if (pending.length >= 100) await flush();
+          }
+          next ??= frames.next();
+        }
+      } finally { await frames.return(); }
       await flush();
       if (this.recordCount < 2) throw Error('Video needs at least two distinct frames');
       if (!this.players.size) throw Error('No dancers detected in this video');
