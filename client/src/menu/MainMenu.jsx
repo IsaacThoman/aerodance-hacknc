@@ -8,10 +8,10 @@ import * as THREE from 'three';
  * the world (useFrame priority 2). It shares the world's pixels and gets the same
  * stretch to the 16:9 frame, so it matches the game's resolution and aspect exactly.
  *
- * Screens: main (Start + settings), start (random / select song), songs (song list),
+ * Screens: main (Start + settings), players (one / two players),
  * settings (sound).
  *
- * <MainMenu visible onStart={(mode, song) => ...} sound={sound} onSoundChange={setSound} />
+ * <MainMenu visible onStart={(playerCount) => ...} sound={sound} onSoundChange={setSound} />
  */
 
 // Design space (16:9); everything below is in these units.
@@ -30,14 +30,8 @@ const SETTINGS = { x: 128, y: 618, w: 440, h: 112 };
 
 // Submenus share a header row: back button + small caps heading.
 const BACK = { x: 166, y: 500, r: 30 };
-const RANDOM = { x: 128, y: 550, w: 470, h: 96 };
-const SELECT = { x: 128, y: 666, w: 470, h: 96 };
-// Placeholder track list until real songs exist.
-const SONGS = [
-  { id: 'song-1', title: 'Song Title One', artist: 'Artist Name' },
-  { id: 'song-2', title: 'Song Title Two', artist: 'Artist Name' },
-];
-const SONG_RECTS = SONGS.map((_, i) => ({ x: 128, y: 550 + i * 116, w: 520, h: 96 }));
+const ONE_PLAYER = { x: 128, y: 550, w: 470, h: 96 };
+const TWO_PLAYERS = { x: 128, y: 666, w: 470, h: 96 };
 const PANEL = { x: 128, y: 548, w: 600, h: 284 };
 const SLIDERS = [
   { key: 'master', label: 'Master' },
@@ -52,14 +46,10 @@ const WIDGETS = {
     { id: 'start', rect: START },
     { id: 'settings', rect: SETTINGS },
   ],
-  start: [
+  players: [
     { id: 'back', circle: BACK },
-    { id: 'random', rect: RANDOM },
-    { id: 'select', rect: SELECT },
-  ],
-  songs: [
-    { id: 'back', circle: BACK },
-    ...SONGS.map((song, i) => ({ id: song.id, song, rect: SONG_RECTS[i] })),
+    { id: 'one', rect: ONE_PLAYER },
+    { id: 'two', rect: TWO_PLAYERS },
   ],
   settings: [
     { id: 'back', circle: BACK },
@@ -68,7 +58,7 @@ const WIDGETS = {
   ],
 };
 // Where back / Escape leads from each submenu.
-const PARENT = { start: 'main', settings: 'main', songs: 'start' };
+const PARENT = { players: 'main', settings: 'main' };
 
 // Hit areas are padded a little so a bubble's rim and edge count as part of it.
 const PAD = 8;
@@ -465,7 +455,7 @@ function drawSoundPanel(g, sound, hover) {
   g.fill();
 }
 
-export default function MainMenu({ visible = true, onStart, onSettingsOpen, sound, onSoundChange }) {
+export default function MainMenu({ visible = true, initialScreen = 'main', onStart, onSettingsOpen, sound, onSoundChange }) {
   const gl = useThree((state) => state.gl);
   const ui = useMemo(() => {
     const canvas = document.createElement('canvas');
@@ -501,7 +491,7 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
     // Input goes to the visible screen as soon as it is fading in (never mid swap-out).
     const active = () => props.current.visible && s.alpha > 0.3 && s.screen === s.next;
     const widgetAt = (p) => (active() ? WIDGETS[s.screen].find((wdg) => hit(p, wdg)) : undefined);
-    const go = (screen) => { if (screen !== s.next) { s.next = screen; s.dirty = true; } };
+    const go = (screen) => { if (screen !== s.next) { s.next = screen; s.keyIndex = -1; s.pointer = null; s.dirty = true; } };
     const setSound = (patch) => {
       const { sound: cur, onSoundChange: cb } = props.current;
       cb?.({ ...cur, ...patch });
@@ -545,18 +535,28 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
     };
     const activate = (wdg) => {
       s.press = 1;
-      if (wdg.song) { props.current.onStart?.('select', wdg.song); return; }
       switch (wdg.id) {
-        case 'start': go('start'); break;
+        case 'start': go('players'); break;
         case 'settings': s.spin += Math.PI / 2; go('settings'); props.current.onSettingsOpen?.(); break;
         case 'back': go(PARENT[s.screen]); break;
-        case 'random': props.current.onStart?.('random'); break;
-        case 'select': go('songs'); break;
+        case 'one': props.current.onStart?.(1); break;
+        case 'two': props.current.onStart?.(2); break;
         case 'muted': setSound({ muted: !props.current.sound?.muted }); break;
         default:
       }
     };
-    const onKey = (e) => { if (e.key === 'Escape' && active() && PARENT[s.screen]) go(PARENT[s.screen]); };
+    const onKey = (e) => {
+      if (!active() || (e.target instanceof HTMLElement && e.target.closest('input, button, select, textarea, a'))) return;
+      if (e.key === 'Escape' && PARENT[s.screen]) go(PARENT[s.screen]);
+      if (['ArrowDown', 'ArrowUp'].includes(e.key)) {
+        e.preventDefault();
+        const widgets = WIDGETS[s.screen].filter(w => !w.slider);
+        s.keyIndex = ((s.keyIndex ?? -1) + (e.key === 'ArrowDown' ? 1 : -1) + widgets.length) % widgets.length;
+        const w = widgets[s.keyIndex];
+        s.pointer = w.rect ? { x: w.rect.x + w.rect.w / 2, y: w.rect.y + w.rect.h / 2 } : w.circle;
+      }
+      if (e.key === 'Enter' && widgetAt(s.pointer)) { e.preventDefault(); activate(widgetAt(s.pointer)); }
+    };
 
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerleave', onLeave);
@@ -583,14 +583,14 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
     };
   }, [gl]);
 
-  // Reopening the menu always lands on the main screen.
+  // Reopen at the requested screen (Song Select returns to player selection).
   useEffect(() => {
     if (!visible) return;
     const s = state.current;
-    s.screen = s.next = 'main';
+    s.screen = s.next = initialScreen;
     s.swap = 1;
     s.dirty = true;
-  }, [visible]);
+  }, [visible, initialScreen]);
 
   useEffect(() => () => {
     ui.texture.dispose();
@@ -630,6 +630,8 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
     }
 
     const live = shown && s.alpha > 0.5 && s.screen === s.next;
+    gl.domElement.dataset.menuScreen = s.screen;
+    gl.domElement.dataset.menuReady = String(live && s.swap > 0.95);
     const hovered = live && (s.drag ?? WIDGETS[s.screen].find((wdg) => hit(s.pointer, wdg))?.id);
     for (const id of new Set(Object.values(WIDGETS).flat().map((wdg) => wdg.id))) {
       s.hover[id] = ease(s.hover[id] ?? 0, id === hovered ? 1 : 0, 12);
@@ -658,15 +660,10 @@ export default function MainMenu({ visible = true, onStart, onSettingsOpen, soun
       if (s.screen === 'main') {
         drawPill(g, START, { label: 'Start', icon: 'play', hover: h.start ?? 0, press: s.press * (h.start ?? 0) });
         drawPill(g, SETTINGS, { label: 'Settings', icon: 'gear', hover: h.settings ?? 0, press: s.press * (h.settings ?? 0), angle: s.gearAngle });
-      } else if (s.screen === 'start') {
-        drawHeader(g, 'START', h.back ?? 0);
-        drawPill(g, RANDOM, { label: 'Random song', icon: 'shuffle', hover: h.random ?? 0, press: s.press * (h.random ?? 0) });
-        drawPill(g, SELECT, { label: 'Select song', icon: 'list', hover: h.select ?? 0, press: s.press * (h.select ?? 0) });
-      } else if (s.screen === 'songs') {
-        drawHeader(g, 'SELECT SONG', h.back ?? 0);
-        SONGS.forEach((song, i) => {
-          drawPill(g, SONG_RECTS[i], { label: song.title, sub: song.artist, icon: 'note', hover: h[song.id] ?? 0, press: s.press * (h[song.id] ?? 0) });
-        });
+      } else if (s.screen === 'players') {
+        drawHeader(g, 'PLAYERS', h.back ?? 0);
+        drawPill(g, ONE_PLAYER, { label: 'One Player', icon: 'play', hover: h.one ?? 0, press: s.press * (h.one ?? 0) });
+        drawPill(g, TWO_PLAYERS, { label: 'Two Players', icon: 'play', hover: h.two ?? 0, press: s.press * (h.two ?? 0) });
       } else {
         drawHeader(g, 'SOUND', h.back ?? 0);
         drawSoundPanel(g, snd, h);

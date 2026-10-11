@@ -5,6 +5,9 @@ import MainMenu from './menu/MainMenu.jsx';
 import MenuDancers from './menu/MenuDancers.jsx';
 import { loadSound, saveSound } from './menu/soundSettings.js';
 import { socket } from './socket.js';
+import { AndroidPoseSource } from './pose/AndroidPoseSource.js';
+import ConnectionPanel from './menu/ConnectionPanel.jsx';
+import SongSelect from './game/SongSelect.jsx';
 
 function FixedRenderResolution() {
   const gl = useThree((state) => state.gl);
@@ -21,9 +24,35 @@ function FixedRenderResolution() {
 export default function App() {
   const [connected, setConnected] = useState(socket.connected);
   const [stats, setStats] = useState({ online: 0 });
-  const [menuOpen, setMenuOpen] = useState(true);
-  // { mode: 'random' } or { mode: 'select', song }; the player hooks in here.
-  const [selection, setSelection] = useState(null);
+  const [menuScreen, setMenuScreen] = useState('main');
+  const [screen, setScreen] = useState('menu');
+  const [inputMode, setInputMode] = useState('android');
+  const [playerCount, setPlayerCount] = useState(1);
+  const [source] = useState(() => new AndroidPoseSource());
+  const [connection, setConnection] = useState(source.view);
+  const menuOpen = screen === 'menu';
+  const selectedConnection = inputMode === 'webcam'
+    ? { status: 'dummy', snapshot: null, message: 'Webcam dummy selected. Continue through the menus to test the flow.' }
+    : connection;
+  const changeInputMode = (mode) => {
+    source.disconnect();
+    setInputMode(mode);
+    source.setPlayerCount(playerCount).catch(() => {});
+  };
+
+  useEffect(() => {
+    const unsubscribe = source.subscribe(setConnection);
+    const disconnect = () => source.disconnect();
+    window.addEventListener('pagehide', disconnect);
+    return () => { window.removeEventListener('pagehide', disconnect); unsubscribe(); source.disconnect(); };
+  }, [source]);
+
+  const choosePlayers = (count) => {
+    if (inputMode === 'android' && source.view.configuring) return;
+    setPlayerCount(count);
+    setScreen('songs');
+    if (inputMode === 'android') source.setPlayerCount(count).catch(() => {});
+  };
   const [sound, setSound] = useState(loadSound);
 
   useEffect(() => { saveSound(sound); }, [sound]);
@@ -49,15 +78,18 @@ export default function App() {
         <MenuDancers visible={menuOpen} />
         <MainMenu
           visible={menuOpen}
-          onStart={(mode, song) => { setSelection({ mode, song }); setMenuOpen(false); }}
+          initialScreen={menuScreen}
+          onStart={choosePlayers}
           sound={sound}
           onSoundChange={setSound}
         />
       </Canvas>
+      {screen === 'songs' && <SongSelect playerCount={playerCount} connection={selectedConnection} onBack={() => { setMenuScreen('players'); setScreen('menu'); }} />}
+      <ConnectionPanel source={source} connection={selectedConnection} inputMode={inputMode} onInputModeChange={changeInputMode} />
       <div className="hud">
         <div>
           <span className={`status ${connected ? 'online' : ''}`} />
-          {connected ? 'connected' : 'disconnected'}
+          {connected ? 'Server online' : 'Server offline'}
         </div>
         <div>online: {stats.online}</div>
       </div>

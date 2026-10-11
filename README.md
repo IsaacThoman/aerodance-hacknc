@@ -4,6 +4,8 @@ React + three.js (via [@react-three/fiber](https://r3f.docs.pmnd.rs/)) rendered 
 
 The server still records `spin` events in the `spins` hypertable, but the current client no longer sends them.
 
+See [the Android/game integration plan](docs/android-game-integration-plan.md) for pairing, player selection, live character animation, latency-aware scoring, and choreography recording/editing work.
+
 ## Aero background
 
 The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, hot-air balloons, gulls, flower meadow). The whole app is one letterboxed 16:9 frame rendered at a fixed 640x480 buffer and scaled up with `image-rendering: pixelated`; the HUD sits inside the frame.
@@ -12,6 +14,37 @@ The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, ho
 - `client/src/aero/AeroWorld.jsx` plugs it into the Fiber `<Canvas>` (used by `Scene.jsx`): `<AeroWorld speed={1} quality="auto" />`. It renders the frame itself, so it uses whatever buffer size `FixedRenderResolution` sets.
 - The loop starts low over the meadow facing the skyline (`start` 0.08). Downtown, the east/west districts and the north district across the lake all sit on one 70 m street grid; the lake uses a reflective water surface with boats and quays.
 - `quality="low"` thins out grass, flowers and leaf detail for weaker GPUs; `auto` picks it on touch devices.
+
+## Main UI flow
+
+**Start → One Player / Two Players → Song Select** is now wired into the main app.
+Back from Song Select returns to player selection. The bottom-right **Connect Client**
+opens an Android IP field defaulting to `192.168.43.1`, with Ok, Cancel, connection
+status, and Disconnect. Successfully connected addresses are remembered. The server
+HUD describes the separate backend connection. Choose **Webcam (dummy)** in
+Connect Client to test both player modes without Android. It skips device pairing
+and does not request camera access or provide tracking.
+
+The game consumes Android protocol v2 directly, applies player count at the stream's
+sequence boundary, and clears missing/stale tracking. Set the Android allowed origin
+to the exact origin shown in the connection panel. Real-device pairing from deployed
+HTTPS still needs validation.
+
+The public song catalog is `client/public/songs/manifest.json`. It is currently empty:
+the existing silent captured dance is linked as a preview, not a playable song.
+Audio, countdown, live characters, scoring, and results remain future integration work.
+
+Containerized build and protocol/adapter checks (use `podman` in place of `docker`
+when using Podman):
+
+```sh
+docker build --target test -t aerodance-ui-test .
+docker build --target ui-test -t aerodance-ui-browser-test .
+docker run --rm aerodance-ui-browser-test
+```
+
+Browser flow checks skip GPU rasterization in software-only containers. Set
+`UI_RENDER=1` for a full rendered check on a capable GPU.
 
 ## Captured dance demo
 

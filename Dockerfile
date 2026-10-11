@@ -5,6 +5,15 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+FROM build AS test
+RUN npm test
+
+FROM mcr.microsoft.com/playwright:v1.58.2-noble AS ui-test
+WORKDIR /app
+COPY --from=build /app ./
+RUN npm install --no-save --package-lock=false playwright@1.58.2
+CMD ["node", "client/tests/ui-flow.browser.mjs"]
+
 FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
