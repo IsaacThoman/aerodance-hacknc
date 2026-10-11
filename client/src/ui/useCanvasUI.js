@@ -26,6 +26,8 @@ import { remote as sharedRemote } from '../remote/remoteLink.js';
  * });
  *
  * Content taller than the design height scrolls by drag or wheel: draw sets ui.contentHeight.
+ * Works with <Canvas frameloop="demand">: input, ui.invalidate() and running animations
+ * (anything that marks the overlay dirty) request the next frame.
  * While a remote is pointing, ui.remote is its cursor (content units); remote/RemoteDock.jsx
  * draws it over everything.
  */
@@ -65,7 +67,8 @@ function createState() {
     dirty: true,
     dt: 0,
     time: 0,
-    invalidate() { this.dirty = true; },
+    requestFrame: () => {},
+    invalidate() { this.dirty = true; this.requestFrame(); },
     get maxScroll() { return Math.max(0, this.contentHeight - this.h); },
     // Eases v towards `to`, marking the overlay dirty while it moves.
     ease(v, to, rate) {
@@ -79,6 +82,7 @@ function createState() {
 
 export default function useCanvasUI(options) {
   const gl = useThree((state) => state.gl);
+  const requestFrame = useThree((state) => state.invalidate);
   const opts = useRef(options);
   opts.current = options;
 
@@ -102,6 +106,7 @@ export default function useCanvasUI(options) {
   const ref = useRef(null);
   ref.current ??= createState();
   const ui = ref.current;
+  ui.requestFrame = requestFrame;
 
   useEffect(() => {
     const el = gl.domElement;
@@ -184,6 +189,9 @@ export default function useCanvasUI(options) {
     };
     const onKey = (e) => opts.current.onKey?.(e, s);
 
+    // Each input asks for a frame (frameloop="demand" renders nothing otherwise).
+    const framed = (fn) => (e) => { fn(e); s.requestFrame(); };
+
     // Phone remote: its cursor stands in for the mouse while it moves.
     const fromRemote = (e) => ({ x: e.detail.x, y: e.detail.y + s.scroll });
     const remoteHandlers = {
@@ -198,28 +206,26 @@ export default function useCanvasUI(options) {
       leave: () => { s.remote = s.pointer = s.drag = s.pressed = null; s.dirty = true; },
     };
     const remote = opts.current.remote === undefined ? sharedRemote : opts.current.remote;
+    for (const [type, fn] of Object.entries(remoteHandlers)) remoteHandlers[type] = framed(fn);
     for (const [type, fn] of Object.entries(remoteHandlers)) remote?.addEventListener(type, fn);
 
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerleave', onLeave);
-    el.addEventListener('pointerdown', onDown);
-    el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointercancel', onCancel);
-    el.addEventListener('wheel', onWheel, { passive: true });
-    window.addEventListener('keydown', onKey);
+    const handlers = [
+      [el, 'pointermove', framed(onMove)],
+      [el, 'pointerleave', framed(onLeave)],
+      [el, 'pointerdown', framed(onDown)],
+      [el, 'pointerup', framed(onUp)],
+      [el, 'pointercancel', framed(onCancel)],
+      [el, 'wheel', framed(onWheel), { passive: true }],
+      [window, 'keydown', framed(onKey)],
+    ];
+    for (const [target, type, fn, o] of handlers) target.addEventListener(type, fn, o);
 
     let cancelled = false;
-    loadFonts().then(() => { if (!cancelled) s.dirty = true; });
+    loadFonts().then(() => { if (!cancelled) s.invalidate(); });
 
     return () => {
       cancelled = true;
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerleave', onLeave);
-      el.removeEventListener('pointerdown', onDown);
-      el.removeEventListener('pointerup', onUp);
-      el.removeEventListener('pointercancel', onCancel);
-      el.removeEventListener('wheel', onWheel);
-      window.removeEventListener('keydown', onKey);
+      for (const [target, type, fn] of handlers) target.removeEventListener(type, fn);
       for (const [type, fn] of Object.entries(remoteHandlers)) remote?.removeEventListener(type, fn);
       wantCursor(el, key, false);
     };
@@ -282,6 +288,8 @@ export default function useCanvasUI(options) {
       g.setTransform(sx, 0, 0, sy, 0, -s.scroll * sy);
       o.draw(g, s);
       overlay.texture.needsUpdate = true;
+      // Still animating (easing, particles): keep frames coming until it settles.
+      s.requestFrame();
     }
 
     overlay.material.opacity = alpha;

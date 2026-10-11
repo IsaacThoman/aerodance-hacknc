@@ -17,6 +17,18 @@ import PhoneUI from './PhoneUI.jsx';
 
 // Render buffer width; the height follows the screen, so pixels stay square.
 const BUFFER_W = 360;
+// The 3D world is the battery hog: it renders this often, and the canvas only redraws
+// otherwise when the UI changes (frameloop="demand", see ui/useCanvasUI.js).
+const WORLD_FPS = 15;
+
+function WorldTicker({ fps }) {
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    const t = setInterval(() => { if (!document.hidden) invalidate(); }, 1000 / fps);
+    return () => clearInterval(t);
+  }, [invalidate, fps]);
+  return null;
+}
 
 function PhoneResolution() {
   const gl = useThree((state) => state.gl);
@@ -106,9 +118,15 @@ export default function PhoneApp() {
     );
   }, [me, battleId, role, say]);
 
-  // Stats change when a battle finishes.
+  // Stats change when a battle finishes; every phone buzzes when it's decided (Android:
+  // iOS Safari has no vibration API).
   const status = battle?.status;
-  useEffect(() => { if (status === 'finished') refreshMe(); }, [status, refreshMe]);
+  const lastStatus = useRef(status);
+  useEffect(() => {
+    if (status === 'finished') refreshMe();
+    if (lastStatus.current === 'open' && status === 'finished') navigator.vibrate?.([120, 80, 120, 80, 320]);
+    lastStatus.current = status;
+  }, [status, refreshMe]);
 
   const submit = useCallback(async () => {
     if (saving) return;
@@ -160,9 +178,10 @@ export default function PhoneApp() {
 
   return (
     <div className="canvas-frame phone">
-      <Canvas dpr={1} flat camera={{ fov: 66, near: 0.3, far: 6500 }}>
+      <Canvas dpr={1} flat frameloop="demand" camera={{ fov: 66, near: 0.3, far: 6500 }}>
         <PhoneResolution />
-        <AeroWorld speed={0.7} quality="low" />
+        <WorldTicker fps={WORLD_FPS} />
+        <AeroWorld speed={0.7} quality="low" fps={WORLD_FPS} />
         <PhoneUI
           ready={ready}
           me={me}

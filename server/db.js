@@ -76,6 +76,8 @@ const schema = `
     trophy_asset        TEXT,
     trophy_attempts     INT         NOT NULL DEFAULT 0
   );
+  -- When the display last pressed Start, so phones can follow the dance.
+  ALTER TABLE battles ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
 
   CREATE TABLE IF NOT EXISTS battle_seats (
     battle_id   TEXT        NOT NULL REFERENCES battles (id) ON DELETE CASCADE,

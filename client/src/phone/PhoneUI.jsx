@@ -1,16 +1,20 @@
 import { useRef } from 'react';
 import {
-  FONT, NAVY, drawBubble, drawCaps, drawGlassPanel, drawPill, drawTitle, ellipsize, roundRect,
-  titleWidth, wrapText,
+  FONT, NAVY, drawBubble, drawCaps, drawGlassPanel, drawMedal, drawPill, drawPlayerLeds, drawSparkle, drawSunburst,
+  drawTitle, ellipsize, roundRect, titleWidth, wrapText,
 } from '../ui/draw.js';
+import { FAKE_DANCE_MS } from '../battle/fakeDance.js';
 import { STICKERS, drawSticker } from '../ui/stickers.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 
 /**
  * The phone view, drawn in-engine like the display's menus: one scrolling column laid out
  * 720 design units wide, as tall as the phone's aspect allows. Sections: the profile form,
- * the battle (your role, both dancers, Hype buttons for the crowd, the receipt), your
- * stats and wallet, and an Add to Home Screen hint.
+ * the battle, your stats and wallet, and an Add to Home Screen hint.
+ *
+ * The battle shows rather than tells: your player number lit on a Wii remote's LEDs, the
+ * dance as a filling bar with the dancers bobbing, and the winner's card in a sunburst
+ * with a medal (the winner's whole screen celebrates).
  *
  * Text fields are real <input>s (so the phone keyboard opens) kept invisible over the
  * drawn fields; their values and focus are drawn here.
@@ -22,6 +26,9 @@ const CW = PHONE_W - M * 2;
 const PAD = 32; // inside panels
 
 const fmtSol = (sol) => `${Number(sol.toFixed(3))} SOL`;
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const popIn = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2);
+const CELEBRATE_S = 6;
 const shortAddr = (a) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 const IMESSAGE = {
   registered: ['iMessage linked', '#7affdc'],
@@ -94,7 +101,19 @@ function drawLink(g, label, x, y, hover, { align = 'left', size = 26 } = {}) {
 export default function PhoneUI(props) {
   const ref = useRef({});
   ref.current = props;
-  const st = useRef({ widgets: [], particles: [], alpha: 0 }).current;
+  const st = useRef({ widgets: [], particles: [], alpha: 0, lastStatus: null, finishAt: null }).current;
+  const burst = (x, y, n, spread) => {
+    for (let i = 0; i < n; i++) {
+      st.particles.push({
+        x: x + (Math.random() - 0.5) * spread,
+        y,
+        r: 10 + Math.random() * 18,
+        vy: -(160 + Math.random() * 140),
+        age: -i * 0.05,
+        life: 1.1 + Math.random() * 0.5,
+      });
+    }
+  };
 
   const ui = useCanvasUI({
     priority: 2,
@@ -105,16 +124,7 @@ export default function PhoneUI(props) {
       const p = ref.current;
       if (wdg.id.startsWith('hype-') || wdg.id.startsWith('sticker-')) {
         const { rect } = wdg;
-        for (let i = 0; i < 7; i++) {
-          st.particles.push({
-            x: rect.x + rect.w / 2 + (Math.random() - 0.5) * rect.w * 0.8,
-            y: rect.y + rect.h / 2,
-            r: 10 + Math.random() * 18,
-            vy: -(160 + Math.random() * 140),
-            age: -i * 0.05,
-            life: 1.1 + Math.random() * 0.5,
-          });
-        }
+        burst(rect.x + rect.w / 2, rect.y + rect.h / 2, 7, rect.w * 0.8);
         p.onHype(wdg.seat, wdg.sticker);
         return;
       }
@@ -142,7 +152,10 @@ export default function PhoneUI(props) {
       }
       st.particles = st.particles.filter((b) => b.age < b.life);
       const focused = p.showForm && Object.values(p.inputs).some((r) => r.current === document.activeElement);
-      if (st.particles.length || focused || p.toast) s.invalidate();
+      const b = p.battle;
+      const dancing = b?.status === 'open' && b.startedAt; // the bar fills, then shimmers while scoring
+      const celebrating = st.finishAt !== null && s.time - st.finishAt < CELEBRATE_S;
+      if (st.particles.length || focused || p.toast || dancing || celebrating) s.invalidate();
     },
     opacity: () => st.alpha,
     draw: (g, s) => {
@@ -220,47 +233,106 @@ export default function PhoneUI(props) {
         if (p.battleId && b?.players) {
           const finished = b.status === 'finished';
           const crowd = p.role?.role === 'spectator';
+          const mySeat = p.role?.role === 'dancer' ? p.role.seat : null;
+          const since = b.startedAt ? Date.now() - Date.parse(b.startedAt) : null;
+          const dancing = !finished && since !== null && since < FAKE_DANCE_MS;
+          const winnerSeat = finished ? b.winnerSeat : null;
           const anyStickers = b.players.some((pl) => Object.values(pl.hype.stickers ?? {}).some(Boolean));
-          const cardH = (crowd && !finished ? 420 : 210) + (anyStickers ? 46 : 0);
           const got = anyStickers ? 46 : 0;
-          const height = 136 + cardH - 20 + PAD + (finished ? 56 : 0) + (finished && b.trophy ? 52 : 0);
+          const cardH = (crowd && !finished ? 420 : 210) + got;
+          const head = 128;
+          const strip = !finished && since !== null ? 52 : 0;
+          const height = head + strip + cardH - 20 + PAD + (finished ? 56 : 0) + (finished && b.trophy ? 52 : 0);
+
+          // The winner's whole screen celebrates for a few seconds.
+          const tWin = st.finishAt === null ? Infinity : s.time - st.finishAt;
+          if (winnerSeat !== null && winnerSeat === mySeat && tWin < CELEBRATE_S) {
+            const fade = 1 - clamp01((tWin - CELEBRATE_S + 1.5) / 1.5);
+            drawSunburst(g, PHONE_W / 2, s.scroll + s.h * 0.42, 760 * popIn(clamp01(tWin / 0.9)), { angle: tWin * 0.3, alpha: 0.8 * fade, rays: 16 });
+          }
+
           drawGlassPanel(g, { x: M, y, w: CW, h: height }, 34);
-          const roleLine = p.role?.role === 'dancer' ? `You're Dancer ${p.role.seat + 1}!` : crowd ? "You're in the crowd" : 'Joining…';
-          text(g, roleLine, PHONE_W / 2, y + 54, { size: 40, weight: 800, align: 'center' });
-          const winner = finished && b.winnerSeat !== null ? b.players[b.winnerSeat] : null;
-          const status = finished
-            ? winner ? `${winner.name ?? `Dancer ${b.winnerSeat + 1}`} wins!` : "It's a tie!"
-            : b.players.some((pl) => pl.result) ? 'Scores coming in…'
-              : p.role?.role === 'dancer' ? 'Get in front of the screen!' : `Hype the dancers with devnet SOL · ${b.spectators} watching`;
-          g.font = `600 26px ${FONT}`;
-          text(g, ellipsize(g, status, CW - 40), PHONE_W / 2, y + 100, { size: 26, align: 'center', color: 'rgba(255,255,255,0.9)' });
+          // Your player number, the way a Wii remote shows it.
+          drawPlayerLeds(g, PHONE_W / 2, y + 64, { player: p.role?.player, glow: dancing ? 0.5 + 0.5 * Math.sin(s.time * 6) : 0.6 });
+          if (b.spectators) text(g, `👀 ${b.spectators}`, M + CW - PAD, y + 64, { size: 26, weight: 700, align: 'right' });
+
+          let top = y + head;
+          if (strip) {
+            // The dance: a glossy bar filling up, then a shimmer while scores come in.
+            const bar = { x: M + PAD, y: top, w: CW - PAD * 2, h: 28 };
+            roundRect(g, bar.x, bar.y, bar.w, bar.h, bar.h / 2);
+            g.fillStyle = 'rgba(0, 30, 70, 0.35)';
+            g.fill();
+            const k = clamp01(since / FAKE_DANCE_MS);
+            if (k > 0) {
+              roundRect(g, bar.x, bar.y, Math.max(bar.h, bar.w * k), bar.h, bar.h / 2);
+              const fill = g.createLinearGradient(0, bar.y, 0, bar.y + bar.h);
+              fill.addColorStop(0, '#b9fff0');
+              fill.addColorStop(1, '#2fc7d8');
+              g.fillStyle = fill;
+              g.fill();
+            }
+            if (k >= 1) {
+              const sx = bar.x + ((s.time * 0.8) % 1) * bar.w;
+              g.save();
+              roundRect(g, bar.x, bar.y, bar.w, bar.h, bar.h / 2);
+              g.clip();
+              const shine = g.createLinearGradient(sx - 80, 0, sx + 80, 0);
+              shine.addColorStop(0, 'rgba(255,255,255,0)');
+              shine.addColorStop(0.5, 'rgba(255,255,255,0.8)');
+              shine.addColorStop(1, 'rgba(255,255,255,0)');
+              g.fillStyle = shine;
+              g.fillRect(bar.x, bar.y, bar.w, bar.h);
+              g.restore();
+            }
+            top += strip;
+          }
 
           const cols = Math.min(b.players.length, 2);
           const gap = 18;
           const cw = (CW - PAD * 2 - gap * (cols - 1)) / cols;
-          const top = y + 136;
           b.players.slice(0, 2).forEach((pl, i) => {
             const cx = M + PAD + i * (cw + gap);
-            const card = { x: cx, y: top, w: cw, h: cardH - 20 };
+            const bob = dancing && pl.name ? Math.sin(s.time * 9 + i * Math.PI) * 7 : 0;
+            const card = { x: cx, y: top + bob, w: cw, h: cardH - 20 };
+            const won = winnerSeat !== null && pl.seat === winnerSeat;
+            const lost = winnerSeat !== null && !won;
+            if (won) drawSunburst(g, cx + cw / 2, card.y + 90, 230, { angle: s.time * 0.3, alpha: 0.7 });
+            g.save();
+            if (lost) g.globalAlpha *= 0.55;
             roundRect(g, card.x, card.y, card.w, card.h, 26);
-            g.fillStyle = 'rgba(255,255,255,0.14)';
+            g.fillStyle = won ? 'rgba(255,240,180,0.22)' : 'rgba(255,255,255,0.14)';
             g.fill();
-            g.lineWidth = pl.seat === p.role?.seat && p.role?.role === 'dancer' ? 4 : 2;
-            g.strokeStyle = finished && pl.seat === b.winnerSeat ? '#ffd34d'
-              : pl.seat === p.role?.seat && p.role?.role === 'dancer' ? '#7affdc' : 'rgba(255,255,255,0.5)';
+            const mine = pl.seat === mySeat;
+            g.lineWidth = won ? 5 : mine ? 4 : 2;
+            g.strokeStyle = won ? '#ffd34d' : mine ? '#7affdc' : 'rgba(255,255,255,0.5)';
             g.stroke();
-            g.font = `800 30px ${FONT}`;
-            const name = pl.name ? ellipsize(g, pl.name, cw - 24) : 'open seat';
-            text(g, name, cx + cw / 2, top + 40, { size: 30, weight: pl.name ? 800 : 600, align: 'center', color: pl.name ? '#ffffff' : 'rgba(255,255,255,0.6)' });
-            text(g, pl.result ? String(pl.result.score) : '–', cx + cw / 2, top + 98, { size: 54, weight: 800, align: 'center', color: finished && pl.seat === b.winnerSeat ? '#ffe27a' : '#ffffff' });
-            text(g, `${pl.hype.count} hype · ${fmtSol(pl.hype.sol)}`, cx + cw / 2, top + 154, { size: 22, align: 'center', color: 'rgba(255,255,255,0.8)' });
+            const ty = card.y;
+            if (pl.name) {
+              g.font = `800 30px ${FONT}`;
+              text(g, ellipsize(g, pl.name, cw - 24), cx + cw / 2, ty + 40, { size: 30, weight: 800, align: 'center' });
+            } else {
+              // An open seat: an empty bubble waiting for someone.
+              drawBubble(g, cx + cw / 2, ty + 44, 24 + Math.sin(s.time * 3) * 3, 0.9);
+            }
+            text(g, pl.result ? String(pl.result.score) : '–', cx + cw / 2, ty + 98, { size: 54, weight: 800, align: 'center', color: won ? '#ffe27a' : '#ffffff' });
+            text(g, `🫧 ${pl.hype.count} · ${fmtSol(pl.hype.sol)}`, cx + cw / 2, ty + 154, { size: 22, align: 'center', color: 'rgba(255,255,255,0.8)' });
             // Stickers this dancer got: icon ×n.
             const received = STICKERS.filter((st2) => pl.hype.stickers?.[st2.id]);
             received.forEach((st2, k) => {
               const sx = cx + cw / 2 + (k - (received.length - 1) / 2) * 80;
-              drawSticker(g, st2.id, sx - 14, top + 194, 36, () => s.invalidate());
-              text(g, `×${pl.hype.stickers[st2.id]}`, sx + 8, top + 195, { size: 22, weight: 700 });
+              drawSticker(g, st2.id, sx - 14, ty + 194, 36, () => s.invalidate());
+              text(g, `×${pl.hype.stickers[st2.id]}`, sx + 8, ty + 195, { size: 22, weight: 700 });
             });
+            g.restore();
+            if (won) {
+              const tm = st.finishAt === null ? 1 : clamp01((s.time - st.finishAt - 0.3) / 0.5);
+              drawMedal(g, card.x + card.w - 22, card.y + 18, 30 * popIn(tm));
+              for (let k = 0; k < 4; k++) {
+                const tw = 0.5 + 0.5 * Math.sin(s.time * 3 + k * 1.7);
+                drawSparkle(g, card.x + [16, card.w - 10, 24, card.w - 30][k], card.y + [30, card.h - 20, card.h - 40, 70][k], 12 * tw, tw);
+              }
+            }
             if (crowd && !finished) {
               const id = `hype-${pl.seat}`;
               const btn = { x: cx + 14, y: top + 186 + got, w: cw - 28, h: 80 };
@@ -283,17 +355,20 @@ export default function PhoneUI(props) {
                 g.restore();
                 if (enabled) widgets.push({ id: sid, seat: pl.seat, sticker: st2.id, rect: { x: cxk - size / 2, y: cy - size / 2, w: size, h: size } });
               });
-              text(g, 'or send a sticker NFT', cx + cw / 2, top + 186 + got + 80 + 22 + size + 22, { size: 20, align: 'center', color: 'rgba(255,255,255,0.75)' });
             }
+            // The moment it's decided: bubbles burst out of the winner's card.
+            if (won && st.lastStatus === 'open') burst(cx + cw / 2, card.y + card.h / 2, 16, cw);
           });
+          if (finished && st.lastStatus === 'open') st.finishAt = s.time;
+          st.lastStatus = b.status;
           if (finished) {
             const ry = top + cardH + 12;
             if (b.receipt?.explorer) widgets.push({ id: 'receipt', rect: drawLink(g, 'On-chain receipt ↗', PHONE_W / 2, ry, h.receipt, { align: 'center' }) });
             else text(g, 'On-chain receipt pending…', PHONE_W / 2, ry, { size: 26, align: 'center', color: 'rgba(255,255,255,0.85)' });
             if (b.trophy) {
-              const mine = p.role?.role === 'dancer' && p.role.seat === b.winnerSeat;
+              const mineTrophy = mySeat !== null && mySeat === b.winnerSeat;
               if (b.trophy.explorer) {
-                const label = mine ? 'Your trophy NFT ↗' : "Winner's trophy NFT ↗";
+                const label = mineTrophy ? 'Your trophy NFT ↗' : "Winner's trophy NFT ↗";
                 widgets.push({ id: 'trophy', rect: drawLink(g, label, PHONE_W / 2, ry + 52, h.trophy, { align: 'center' }) });
               } else {
                 text(g, 'Minting the trophy NFT…', PHONE_W / 2, ry + 52, { size: 26, align: 'center', color: 'rgba(255,255,255,0.85)' });

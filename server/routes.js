@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import {
   MAX_SEATS, claimSeat, createBattle, hypeDancer, isSticker, joinBattle, publicBattle, reportResult, seatForToken,
+  startBattle,
 } from './battles.js';
 import {
   HttpError, cleanName, getProfile, normalizePhone, profileByDevice, profileForPhone, profileStats,
@@ -65,6 +66,14 @@ export function publicRoutes() {
     const { playerToken } = req.body ?? {};
     if (typeof playerToken !== 'string') throw new HttpError(400, 'playerToken required');
     res.json(await reportResult(req.params.id, playerToken, readResult(req.body)));
+  });
+
+  // The display pressed Start: phones follow the dance from battle.startedAt.
+  api.post('/battles/:id/start', async (req, res) => {
+    const { playerToken } = req.body ?? {};
+    if (typeof playerToken !== 'string') throw new HttpError(400, 'playerToken required');
+    await startBattle(req.params.id, playerToken);
+    res.json({ ok: true });
   });
 
   // A play link (/battle/:id?p=<token>) opened on a display: which seat is it?

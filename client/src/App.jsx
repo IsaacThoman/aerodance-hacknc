@@ -7,7 +7,7 @@ import { loadSound, saveSound } from './menu/soundSettings.js';
 import BattleScreen from './battle/BattleScreen.jsx';
 import DebugPanel from './battle/DebugPanel.jsx';
 import { FAKE_DANCE_MS, fakeDance } from './battle/fakeDance.js';
-import { api, createBattle, seatTokens, useBattle } from './battle/api.js';
+import { api, createBattle, seatTokens, startBattle, useBattle } from './battle/api.js';
 import PhoneApp from './phone/PhoneApp.jsx';
 import { socket } from './socket.js';
 import RemoteDock from './remote/RemoteDock.jsx';
@@ -130,7 +130,10 @@ function DisplayApp() {
           visible={!!battleId}
           battle={battle}
           playing={playing}
-          onPlay={() => setPlaying(true)}
+          onPlay={() => {
+            setPlaying(true);
+            startBattle(battleId).catch((err) => console.warn('could not mark the battle started:', err.message));
+          }}
           onBack={() => (playing ? setPlaying(false) : openBattle(null))}
           onRematch={newBattle}
           onMenu={() => openBattle(null)}
