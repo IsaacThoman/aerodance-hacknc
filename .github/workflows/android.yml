@@ -32,6 +32,9 @@ jobs:
           distribution: zulu
           java-version: 21
       - uses: android-actions/setup-android@v3
+        with:
+          # The default also installs the retired "tools" package, which sdkmanager no longer finds.
+          packages: platform-tools
       - name: Install NDK and CMake for the native libyuv build
         # Versions from gradle/libs.versions.toml (android-ndk, android-cmake).
         run: sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1"
