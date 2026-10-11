@@ -301,7 +301,11 @@ function DisplayApp() {
           results={gamePhase === 'results' ? resultsShow : null}
           onState={setStage}
         />
-        <MenuDancers visible={(menuOpen || songsOpen || (!!battleId && !inBattleSong)) && !stage.showing} />
+        <MenuDancers
+          visible={(menuOpen || songsOpen || (!!battleId && !inBattleSong)) && !stage.showing}
+          raised={songsOpen}
+          solo={songsOpen && playerCount === 1}
+        />
         <MainMenu
           visible={menuOpen && !battleId}
           blocked={connectOpen}

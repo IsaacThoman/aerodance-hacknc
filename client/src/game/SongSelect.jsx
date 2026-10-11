@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import {
-  FONT, ICONS, drawChip, drawGlassCircle, drawGlassPanel, drawHeader, drawPill, drawProgress, drawShadowText, ellipsize,
+  FONT, ICONS, drawGlassCircle, drawGlassPanel, drawHeader, drawPill, drawProgress, drawShadowText, ellipsize,
   paragraph, text,
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
@@ -331,7 +331,6 @@ export default function SongSelect({
       } else if (st.bundle) {
         const { song } = st.bundle;
         drawHeader(g, BACK, 'PREVIEW', h.back ?? 0);
-        drawChip(g, 400, BACK.y - 22, `${p.playerCount === 1 ? 'ONE' : 'TWO'} PLAYER PREVIEW`, '#bff4ff');
         g.font = `800 64px ${FONT}`;
         drawShadowText(g, ellipsize(g, song.title, 900), BACK.x - 38, BACK.y + 84, { size: 64, weight: 800 });
         g.font = `700 30px ${FONT}`;
@@ -340,7 +339,6 @@ export default function SongSelect({
         const stageFailed = p.stageState.failed && p.stageState.stage === resolveStage(song.stage);
         const error = st.previewError || (stageFailed ? "This song's stage couldn't load." : p.stageState.dancersFailed ? 'Character preview could not load.' : '');
         if (error) drawShadowText(g, error, BAR.x, BAR.y - 86, { size: 26, color: '#ffb38a' });
-        drawShadowText(g, 'Preview the routine, then press Dance! to play it for a score.', BAR.x, BAR.y - 34, { size: 21, weight: 600, color: '#e6f8ff' });
         drawPill(g, DANCE, { label: 'Dance!', sub: p.playerCount === 1 ? 'One player' : 'Two players', icon: 'play', hover: h.dance ?? 0, press: press('dance') });
         drawGlassPanel(g, BAR, 30);
         const playing = st.previewState === 'playing';
