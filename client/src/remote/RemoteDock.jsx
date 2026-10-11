@@ -198,13 +198,6 @@ export default function RemoteDock({ visible = () => true }) {
       g.restore();
       if (fs.error) {
         drawShadowText(g, fs.error, FULLSCREEN.x - FULLSCREEN.r - 18, FULLSCREEN.y, { size: 24, align: 'right' });
-      } else if (!fs.supported || (h.fullscreen ?? 0) > 0.1) {
-        g.save();
-        if (fs.supported) g.globalAlpha *= h.fullscreen;
-        const x = FULLSCREEN.x - FULLSCREEN.r - 18;
-        drawCaps(g, 'FULLSCREEN', x, FULLSCREEN.y - 14, { size: 18, align: 'right' });
-        drawShadowText(g, fs.supported ? (fs.active ? 'Exit fullscreen · Esc' : 'Enter fullscreen') : 'Unavailable in this browser', x, FULLSCREEN.y + 18, { size: 26, align: 'right' });
-        g.restore();
       }
       if (holder && k < 0.5) {
         drawCaps(g, 'REMOTE', ICON.x - ICON.r - 18, ICON.y - 14, { size: 18, align: 'right' });
