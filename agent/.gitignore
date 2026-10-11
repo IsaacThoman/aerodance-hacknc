@@ -6,3 +6,6 @@ dist
 .DS_Store
 
 *.keypair.json
+
+# Old file-based agent state (pre-Postgres): keypairs, keep out of git
+data/
