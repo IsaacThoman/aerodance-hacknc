@@ -4,6 +4,7 @@ export class Recorder {
     this.pending = [];
     this.batchId = 0;
     this.ordinal = 0;
+    this.poseCount = 0;
     this.bytes = 0;
     this.chain = Promise.resolve();
     this.failure = null;
@@ -46,15 +47,24 @@ export class Recorder {
         this.onFailure("Android session, player mode or geometry changed");
         return;
       }
+      const audioPositionAtReceiptMs =
+        this.transport.current() -
+        (this.transport.active
+          ? Math.max(0, performance.now() - e.receivedBrowserTimeMs) * this.transport.rate
+          : 0);
+      // Ignore the lead-in, including late inference results for frames that
+      // arrived before music started. Device timestamp differences need no sync.
+      const processingDelayMs = e.record.type === "pose"
+        ? e.record.resultTimeMs - e.record.frameReceivedTimeMs
+        : 0;
+      if (audioPositionAtReceiptMs - processingDelayMs * this.transport.rate < this.transport.positionMs)
+        return;
+      this.captureStartedAt ??= performance.now();
+      if (e.record.type === "pose") this.poseCount++;
       const envelope = {
         ordinal: this.ordinal++,
         receivedBrowserTimeMs: e.receivedBrowserTimeMs,
-        audioPositionAtReceiptMs:
-          this.transport.current() -
-          (this.transport.active
-            ? Math.max(0, performance.now() - e.receivedBrowserTimeMs) *
-              this.transport.rate
-            : 0),
+        audioPositionAtReceiptMs,
         audioPlaybackRate: this.transport.rate,
         record: e.record,
       };
@@ -62,7 +72,7 @@ export class Recorder {
       this.bytes += JSON.stringify(envelope).length;
       if (
         this.bytes > 8 * 1024 * 1024 ||
-        performance.now() - (this.lastAck || this.startedAt) > 5000
+        performance.now() - Math.max(this.lastAck || this.startedAt, this.captureStartedAt) > 5000
       ) {
         this.onFailure("Recording stopped: disk uploads are falling behind");
         return;
@@ -114,6 +124,8 @@ export class Recorder {
     await this.chain;
     if (this.failure)
       throw Error(`Incomplete take retained on disk: ${this.failure.message}`);
+    // A cancelled countdown has no pose samples to finalize into a take.
+    if (this.poseCount < 2) return null;
     return this.request(
       `/api/projects/${this.projectId}/takes/${this.metadata.takeId}/finalize`,
       {

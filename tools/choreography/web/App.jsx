@@ -93,6 +93,7 @@ export default function App() {
     }),
     [recording, setRecording] = useState(false),
     [recordCount, setRecordCount] = useState(0),
+    [recordDelay, setRecordDelay] = useState(3),
     [countdown, setCountdown] = useState(null);
   const [liveTracks, setLiveTracks] = useState(null);
   const liveHistory = useRef({ session: null, seq: null, frames: [] });
@@ -521,7 +522,9 @@ export default function App() {
         throw Error("Connect Android and wait for both players to be detected");
       await saveProject();
       recordEnd.current = project.playableEndMs;
-      await transport.play(project.playableStartMs, 3, 1);
+      if (!Number.isFinite(recordDelay) || recordDelay < 0 || recordDelay > 60)
+        throw Error("Recording delay must be between 0 and 60 seconds");
+      await transport.play(project.playableStartMs, recordDelay, 1);
       const r = new Recorder({
         source,
         transport,
@@ -539,6 +542,7 @@ export default function App() {
       recordStopping.current = false;
       recordingRef.current = true;
       setRecording(true);
+      setCountdown(recordDelay > 0 ? Math.ceil(recordDelay) : null);
       setPlaying(false);
       setMode("both");
       setRecordCount(0);
@@ -557,6 +561,12 @@ export default function App() {
     setBusy(true);
     try {
       const take = await recorder.current.stop(reason);
+      if (!take) {
+        setCursor(projectRef.current.playableStartMs);
+        setNotice("Recording cancelled before enough movement was captured. No take added.");
+        if (reason) setError(reason);
+        return;
+      }
       await attachTake(take);
       if (reason)
         setError(
@@ -865,17 +875,35 @@ export default function App() {
                 </span>
               ))}
             </div>
+            <label>
+              Recording delay (seconds)
+              <input
+                aria-label="Recording delay (seconds)"
+                type="number"
+                min="0"
+                max="60"
+                step="1"
+                value={recordDelay}
+                disabled={recording || busy}
+                onChange={(e) => setRecordDelay(e.target.value === "" ? "" : Number(e.target.value))}
+              />
+            </label>
             <button
               className={`record-button ${recording ? "recording" : ""}`}
               disabled={busy || (!recording && connection.status !== "connected")}
               onClick={() => (recording ? stopRecording() : startRecording())}
             >
-              {recording ? "■ Stop recording" : "● Record new take"}
+              {recording ? countdown ? "Cancel countdown" : "■ Stop recording" : "● Record new take"}
             </button>
+            {recording && countdown !== null && (
+              <div className="record-countdown" role="status" aria-live="polite" aria-atomic="true">
+                <strong>{countdown}</strong>
+                <span>Get ready · recording starts in {countdown}s</span>
+              </div>
+            )}
             {recording && (
               <small>
-                {recordCount} records captured
-                {countdown ? ` · starts in ${countdown}` : ""}
+                {countdown ? "Waiting to record" : `${recordCount} records captured`}
               </small>
             )}
           </div>
@@ -968,8 +996,8 @@ export default function App() {
             <span>
               {recording ? (
                 <>
-                  <i className="dot red" />
-                  LIVE CAPTURE
+                  <i className={`dot ${countdown ? "" : "red"}`} />
+                  {countdown ? `GET READY · ${countdown}s` : "LIVE CAPTURE"}
                 </>
               ) : liveView ? (
                 <>

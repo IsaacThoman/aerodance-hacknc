@@ -50,7 +50,9 @@ Open http://localhost:5175. The API listens on 8082 and writes ignored
    (the board can take about 35 seconds). Recording stays disabled until the first
    pose arrives; wait for both players to be detected before recording. Cancel
    connection stops the wait. Disconnect saves battery, so reconnect initializes
-   again. Music starts after a three-second lead-in.
+   again. Set **Recording delay (seconds)** from 0 to 60 (default 3). A visible
+   countdown gives you time to get into position before music and movement
+   capture start. **Cancel countdown** stops the wait without adding a take.
 3. Scrub the waveform, step samples, or play at 0.25/0.5/1 speed. Switch between
    Skeleton, Frutiger, and Both. The two preview characters have independent rigs.
    Choose **Live view** to preview Android poses without recording or importing

@@ -185,6 +185,15 @@ try {
   await page.getByText("Ready for bundle export", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.waitForTimeout(1500);
+  // A fresh browser context has no prior click to unlock saved-project audio.
+  const freshContext = await browser.newContext();
+  try {
+    const freshPage = await freshContext.newPage();
+    await freshPage.goto("http://127.0.0.1:4175");
+    await freshPage.getByRole("heading", { name: "Browser-tested routine", exact: true }).waitFor();
+  } finally {
+    await freshContext.close();
+  }
   await page.reload();
   await page
     .getByRole("heading", { name: "Browser-tested routine", exact: true })
@@ -253,6 +262,12 @@ try {
   await page.getByLabel("Editable pose skeleton").waitFor();
   assert.equal(await page.getByLabel("Song cursor").inputValue(), savedCursor);
   assert.equal(await page.getByLabel("Landmark X").isEnabled(), true);
+  assert.equal(await page.getByLabel("Recording delay (seconds)").inputValue(), "3");
+  await page.getByRole("button", { name: "Record new take", exact: false }).click();
+  await page.getByRole("status").filter({ hasText: "Get ready" }).waitFor();
+  await page.getByRole("button", { name: "Cancel countdown", exact: true }).click();
+  await page.getByText("Recording cancelled before enough movement was captured. No take added.").waitFor();
+  await page.getByLabel("Recording delay (seconds)").fill("1");
   await page
     .getByRole("button", { name: "Record new take", exact: false })
     .click();
@@ -261,7 +276,7 @@ try {
     .waitFor();
   assert.equal(await page.getByRole("button", { name: "Playback", exact: true }).isEnabled(), false);
   assert.equal(await page.getByRole("button", { name: "Live view", exact: true }).getAttribute("aria-pressed"), "true");
-  await page.waitForTimeout(3600);
+  await page.waitForTimeout(2600);
   await page
     .getByRole("button", { name: "Stop recording", exact: false })
     .click();
@@ -281,7 +296,7 @@ try {
     )
   ).json();
   assert.ok(capture.samples.length > 30);
-  assert.ok(capture.offsetMs < 0);
+  assert.ok(capture.offsetMs >= saved.playableStartMs);
   assert.equal(capture.samples[0].poses[1].playerId, 1);
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await page.getByRole("button", { name: "Live view", exact: true }).click();

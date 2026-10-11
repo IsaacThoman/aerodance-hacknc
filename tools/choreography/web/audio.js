@@ -13,7 +13,10 @@ export class AudioTransport {
     return this.context;
   }
   async load(bytes) {
-    const context = await this.contextReady();
+    // Decoding saved music must work before a user gesture. Resuming here can
+    // wait indefinitely under browser autoplay restrictions and block startup.
+    if (!this.context) this.context = new AudioContext();
+    const context = this.context;
     const buffer = await context.decodeAudioData(bytes.slice(0));
     this.pause();
     this.buffer = buffer;

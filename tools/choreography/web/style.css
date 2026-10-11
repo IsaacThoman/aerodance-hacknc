@@ -440,6 +440,20 @@ small {
   border-color: #cb9585;
   color: #ffd4c6;
 }
+.record-countdown {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 16px;
+  margin-top: 10px;
+  border-radius: 12px;
+  background: #e7f7ff;
+  color: #164e63;
+}
+.record-countdown strong {
+  font-size: 48px;
+  line-height: 1;
+}
 .capture > small {
   display: block;
   margin-top: 10px;
