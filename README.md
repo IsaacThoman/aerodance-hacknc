@@ -15,7 +15,7 @@ The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, ho
 
 ## Captured dance demo
 
-The menu-free two-character Frutiger demo is served at `/dance/` in production and PR previews. It replays pose tracking from the supplied dance video at the same fixed resolution and letterboxing as the main app. See [the capture guide](temp/frutiger-character/README.md) for the locked, reusable tracking script, diagnostics, retargeting details, and validation.
+The menu-free two-character Frutiger demo is served at `/dance/` in production and PR previews. It replays pose tracking from the supplied dance video at the same fixed resolution and letterboxing as the main app, on five switchable in-engine stages: Skyline Sanctuary, Coral Dome, Emerald Falls, Club Aquarium and Sugarsand Sunset. Switch with ← / →, 1–5, or a hash such as `/dance/#club`. See [the capture guide](temp/frutiger-character/README.md) for the locked, reusable tracking script, diagnostics, retargeting details, and validation.
 
 ## Main menu mocks
 

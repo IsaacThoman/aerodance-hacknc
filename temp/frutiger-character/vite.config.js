@@ -9,6 +9,8 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
+    // Allow the repository root so fonts resolve from the root node_modules.
+    fs: { allow: [fileURLToPath(new URL("../..", import.meta.url))] },
     proxy: {
       "/socket.io": { target: "http://localhost:3000", ws: true },
     },
