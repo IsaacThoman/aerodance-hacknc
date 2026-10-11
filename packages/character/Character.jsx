@@ -9,8 +9,9 @@ import {
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createRetargeter } from "./motion.js";
-import { createPoseApplier } from "../../../../packages/character/retarget.js";
+import { createPoseApplier } from "./retarget.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
+import modelUrl from "./assets/aero-character.glb?url";
 
 export default function Character({
   appearance,
@@ -20,7 +21,7 @@ export default function Character({
   playback,
   poseRef,
   calibration,
-  url = `${import.meta.env.BASE_URL}models/aero-character.glb`,
+  url = modelUrl,
 }) {
   const gltf = useLoader(GLTFLoader, url);
   const model = useMemo(() => clone(gltf.scene), [gltf]);

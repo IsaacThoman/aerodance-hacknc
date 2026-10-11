@@ -8,7 +8,7 @@ import {
   validateMotion,
   samplePose,
   createRetargeter,
-} from "../client/src/motion.js";
+} from "../../../packages/character/motion.js";
 
 const data = JSON.parse(
   await readFile(
@@ -16,7 +16,7 @@ const data = JSON.parse(
   ),
 );
 const buffer = await readFile(
-  new URL("../client/public/models/aero-character.glb", import.meta.url),
+  new URL("../../../packages/character/assets/aero-character.glb", import.meta.url),
 );
 const asset = await new GLTFLoader().parseAsync(
   buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),

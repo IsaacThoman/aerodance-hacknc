@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { HUD_HEIGHT, HUD_WIDTH } from '../../../frutiger-character/client/src/stages/shared/hud.jsx';
+import { HUD_HEIGHT, HUD_WIDTH } from '../../../../packages/stages/shared/hud.jsx';
 import { PLAYERS, REVEAL, backOut, clamp01, timeline } from './results.js';
 
 /*

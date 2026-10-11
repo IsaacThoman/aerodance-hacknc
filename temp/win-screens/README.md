@@ -1,6 +1,6 @@
 # Win screens
 
-Temporary mockup of the end-of-song screens for every dance stage. Each screen sits on one of the six stages from [`temp/frutiger-character/client/src/stages`](../frutiger-character/client/src/stages) (Skyline Sanctuary, Coral Dome, Open Reef, Emerald Falls, Club Aquarium, Sugarsand Sunset), used as-is so the win screens always match the dance stages. Like the main app, it renders in-engine at a **640×480 buffer stretched to 16:9**.
+Temporary mockup of the end-of-song screens for every dance stage. Each screen sits on one of the six stages from [`packages/stages`](../../packages/stages) (Skyline Sanctuary, Coral Dome, Open Reef, Emerald Falls, Club Aquarium, Sugarsand Sunset), used as-is so the win screens always match the dance stages. Like the main app, it renders in-engine at a **640×480 buffer stretched to 16:9**.
 
 ## What each screen shows
 

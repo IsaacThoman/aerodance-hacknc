@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import Character from '../../Character.jsx';
+import Character from '../../character/Character.jsx';
 
 // A little more solid than the menu's dancers (default gel opacity 0.72) so they
 // hold up against busy stage backgrounds.

@@ -76,7 +76,7 @@ Browser flow checks skip GPU rasterization in software-only containers. Set
 
 ## Captured dance demo
 
-The menu-free two-character Frutiger demo is served at `/dance/` in production and PR previews. It replays pose tracking from the supplied dance video at the same fixed resolution and letterboxing as the main app, on six switchable in-engine stages: Skyline Sanctuary, Coral Dome, Open Reef, Emerald Falls, Club Aquarium and Sugarsand Sunset. Switch with ← / →, 1–6, or a hash such as `/dance/#club`. See [the capture guide](temp/frutiger-character/README.md) for the locked, reusable tracking script, diagnostics, retargeting details, and validation.
+The menu-free two-character Frutiger demo is served at `/dance/` in production and PR previews. It replays pose tracking from the supplied dance video at the same fixed resolution and letterboxing as the main app, on six switchable in-engine stages: Skyline Sanctuary, Coral Dome, Open Reef, Emerald Falls, Club Aquarium and Sugarsand Sunset. Switch with ← / →, 1–6, or a hash such as `/dance/#club`. The stages live in [`packages/stages`](packages/stages) and the glass character in [`packages/character`](packages/character), shared by the game, `/dance/` and `/win-screens/`. See [the capture guide](temp/frutiger-character/README.md) for the locked, reusable tracking script, diagnostics, retargeting details, and validation.
 
 ## Main menu mocks
 

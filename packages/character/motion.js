@@ -1,6 +1,6 @@
-import { createPoseApplier, calibratePoses } from '../../../../packages/character/retarget.js';
-import { migrateLegacyMotion, validateMotionTake } from '../../../../packages/pose/legacy.js';
-import { sampleSnapshot } from '../../../../packages/pose/choreography.js';
+import { createPoseApplier, calibratePoses } from './retarget.js';
+import { migrateLegacyMotion, validateMotionTake } from '../pose/legacy.js';
+import { sampleSnapshot } from '../pose/choreography.js';
 
 // Compatibility import while older local captures are migrated. Playback is object-only.
 export function validateMotion(data) {

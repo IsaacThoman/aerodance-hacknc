@@ -19,7 +19,7 @@ python3 -m http.server 8080 --directory dist
 
 Open http://localhost:8080/dance/. The normal production/PR preview also serves `/dance/`.
 
-The main app's title menu also shows these dancers (`client/src/menu/MenuDancers.jsx`). It imports `Character.jsx`, `motion.js`, the GLB and `dance.json` straight from this folder, so move them before deleting `temp/`.
+The character (`Character.jsx`, `motion.js` and the GLB) lives in [`packages/character`](../../packages/character) and the stages in [`packages/stages`](../../packages/stages), shared with the main app and `/win-screens/`. The main app's title menu still loads `dance.json` from this folder, so move it before deleting `temp/`.
 
 For standalone development:
 
@@ -43,11 +43,11 @@ The dancers perform on six stages inspired by Frutiger Aero (Frutiger Eco, Helve
 | 5 | `#club` | Club Aquarium (dance club) | Beat-driven LED floor, aquarium walls, curved video wall, mirror ball, moving heads and lasers, DJ blob, speaker stacks, bar, a crowd of bobbing gel blobs, confetti |
 | 6 | `#beach` | Sugarsand Sunset (beach) | Golden-hour beach with open ocean to the horizon: sun path on the waves, a coconut palm, tiki torches, sailboats, cruise ship, leaping dolphins, gulls |
 
-Everything is procedural (geometry, shaders, canvas textures); there are no asset files beyond the character GLB and capture. Code lives in `client/src/`:
+Everything is procedural (geometry, shaders, canvas textures); there are no asset files beyond the character GLB and capture. The host is `client/src/Scene.jsx`; the stages live in [`packages/stages`](../../packages/stages):
 
-- `Scene.jsx`: stage host. Owns the playback clock, switching, the fade, and the dancers (`stages/shared/Dancers.jsx`), which stay mounted across stages.
-- `stages/index.js`: registry. Each stage folder has an eagerly loaded `meta.js` (name card text, accent colors, dancer floor position, post settings) and a lazily loaded `<Name>Stage.jsx`, so only the visible stage is fetched and one broken stage cannot take down the others.
-- `stages/shared/`: `StageCamera` (16:9 projection with slow orbit/sway/pointer parallax), `StageEnvironment` (PMREM reflections; the glass dancers get most of their look from it), `post.jsx` (stage → UnrealBloom → vignette/saturation grade → ACES; bloom works on linear HDR, so each stage sets a threshold above its lit surfaces), the in-engine name card and veil (`hud.jsx`), sky dome and cloud billboards, a 118 bpm beat clock for light pulses, GLSL noise and seeded randomness.
+- `Scene.jsx`: stage host. Owns the playback clock, switching, the fade, and the dancers (`packages/stages/shared/Dancers.jsx`), which stay mounted across stages.
+- `packages/stages/index.js`: registry. Each stage folder has an eagerly loaded `meta.js` (name card text, accent colors, dancer floor position, post settings) and a lazily loaded `<Name>Stage.jsx`, so only the visible stage is fetched and one broken stage cannot take down the others.
+- `packages/stages/shared/`: `StageCamera` (16:9 projection with slow orbit/sway/pointer parallax), `StageEnvironment` (PMREM reflections; the glass dancers get most of their look from it), `post.jsx` (stage → UnrealBloom → vignette/saturation grade → ACES; bloom works on linear HDR, so each stage sets a threshold above its lit surfaces), the in-engine name card and veil (`hud.jsx`), sky dome and cloud billboards, a 118 bpm beat clock for light pulses, GLSL noise and seeded randomness.
 
 In dev, `window.__aeroStats` reports draw calls and triangles. The stages measure 69–134 draw calls and 0.19–0.83M triangles each, including the dancers; switching through all six and back returns geometry and texture counts to their starting values.
 

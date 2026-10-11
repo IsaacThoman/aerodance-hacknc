@@ -2,9 +2,8 @@ import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react
 import { createPortal, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import Character from '../../../temp/frutiger-character/client/src/Character.jsx';
-import { validateMotion } from '../../../temp/frutiger-character/client/src/motion.js';
-import modelUrl from '../../../temp/frutiger-character/client/public/models/aero-character.glb?url';
+import Character from '../../../packages/character/Character.jsx';
+import { validateMotion } from '../../../packages/character/motion.js';
 import motionUrl from '../../../temp/frutiger-character/client/public/motion/dance.json?url';
 
 /**
@@ -142,7 +141,6 @@ export default function MenuDancers({ visible = true }) {
             {DANCERS.map((d, person) => (
               <group key={person} position={[d.x, 0, 0]} scale={[-1, 1, 1]}>
                 <Character
-                  url={modelUrl}
                   motion={motion}
                   person={person}
                   playback={playback}

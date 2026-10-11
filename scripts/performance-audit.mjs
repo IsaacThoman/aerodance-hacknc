@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { createLakeNormalPixels } from '../client/src/aero/lakeNormals.js';
 import { lakeWaves, referenceLakeNormalPixels } from '../client/tests/helpers/lakeNormalsReference.js';
-import { createRetargeter } from '../temp/frutiger-character/client/src/motion.js';
+import { createRetargeter } from '../packages/character/motion.js';
 
 const baseline = process.argv[2] ?? 'f766e1f';
 const source = execFileSync('git', ['show', `${baseline}:temp/frutiger-character/client/src/motion.js`], { encoding: 'utf8' });
@@ -18,7 +18,7 @@ const motionPath = 'temp/frutiger-character/client/public/motion/dance.json';
 const baselineData = JSON.parse(execFileSync('git', ['show', `${baseline}:${motionPath}`], { encoding: 'utf8', maxBuffer: 64 << 20 }));
 const data = JSON.parse(await readFile(new URL(`../${motionPath}`, import.meta.url)));
 const dataFor = (factory) => (factory === createRetargeter ? data : baselineData);
-const bytes = await readFile(new URL('../temp/frutiger-character/client/public/models/aero-character.glb', import.meta.url));
+const bytes = await readFile(new URL('../packages/character/assets/aero-character.glb', import.meta.url));
 const asset = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
 
 const median = (values) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];

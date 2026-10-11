@@ -54,8 +54,8 @@ assets.
   [protocol decoder](../client/src/pose/protocol.js): connection lifecycle,
   bounded decoding, validation, and player-mode boundaries.
 - [Frutiger capture guide](../temp/frutiger-character/README.md),
-  [motion code](../temp/frutiger-character/client/src/motion.js), and
-  [character component](../temp/frutiger-character/client/src/Character.jsx):
+  [motion code](../packages/character/motion.js), and
+  [character component](../packages/character/Character.jsx):
   independent skeleton instances, recorded sampling, calibration, and pose mapping.
 - [Existing video tracker](../temp/frutiger-character/scripts/pose/track.py):
   locked offline capture and diagnostic overlays, as an optional import path.

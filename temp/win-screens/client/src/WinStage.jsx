@@ -1,9 +1,8 @@
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import Character from '../../../frutiger-character/client/src/Character.jsx';
-import { DANCER_LOOKS } from '../../../frutiger-character/client/src/stages/shared/Dancers.jsx';
-import modelUrl from '../../../frutiger-character/client/public/models/aero-character.glb?url';
+import Character from '../../../../packages/character/Character.jsx';
+import { DANCER_LOOKS } from '../../../../packages/stages/shared/Dancers.jsx';
 import { PLAYERS, REVEAL, easeOut, timeline } from './results.js';
 
 /*
@@ -166,7 +165,7 @@ export default function WinStage({ motion, playback, show, floor, accent }) {
           <group key={seat} ref={groups[seat]}>
             {/* Mirrored like a dance coach, on an inner group: the outer one is rescaled every frame. */}
             <group scale={[-1, 1, 1]}>
-              <Character url={modelUrl} motion={motion} person={seat} playback={playback} appearance={DANCER_LOOKS[seat]} />
+              <Character motion={motion} person={seat} playback={playback} appearance={DANCER_LOOKS[seat]} />
             </group>
             <Halo color={featured === null ? GOLD : PLAYERS[seat].color} intensity={halo[seat]} />
           </group>

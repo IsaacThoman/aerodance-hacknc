@@ -2,8 +2,7 @@ import { Component, Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { PMREMGenerator } from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import Character from "../../../temp/frutiger-character/client/src/Character.jsx";
-import modelUrl from "../../../temp/frutiger-character/client/public/models/aero-character.glb?url";
+import Character from "../../../packages/character/Character.jsx";
 import {
   CONNECTIONS,
   JOINT_NAMES,
@@ -41,7 +40,6 @@ function Actor({ pose, calibration, id, mirrored }) {
   return (
     <group position={[(id === 0 ? -1.8 : 1.8) * (mirrored ? -1 : 1), 0, 0]} scale={[mirrored ? -1 : 1, 1, 1]}>
       <Character
-        url={modelUrl}
         poseRef={poseRef}
         calibration={calibration}
         appearance={appearance}
