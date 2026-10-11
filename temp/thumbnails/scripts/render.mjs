@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 // Renders every shot in client/src/shots.js to with-logo/<id>.png and no-logo/<id>.png.
+// With --gifs, renders every clip instead, to with-logo/<id>.gif (or no-logo/ for shots
+// without the wordmark).
 //
 //   node temp/thumbnails/scripts/render.mjs [--only id,id] [--spec shots.json --out dir] [--jobs 2]
+//   node temp/thumbnails/scripts/render.mjs --gifs [--only id,id]
 //
 // Builds the capture page with Vite, opens it in headless Chrome (GPU WebGL), steps each
 // shot's stage to its time and reads back the 540x480 buffer. Each buffer pixel is written
 // as an exact 4x3 block (2160x1440, 3:2) into a lossless PNG: no filtering or resampling.
+// GIFs go through ffmpeg: one 256-color palette for the clip, ordered dithering at the
+// buffer's resolution, then the same exact 4x3 blocks.
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -13,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 import { build, preview } from 'vite';
 import { chromium } from 'playwright-core';
-import { SHOTS, UPSCALE } from '../client/src/shots.js';
+import { BUFFER, CLIPS, SHOTS, UPSCALE } from '../client/src/shots.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -22,7 +29,8 @@ function option(name) {
   return i > 0 ? process.argv[i + 1] : undefined;
 }
 
-let shots = SHOTS;
+const gifs = process.argv.includes('--gifs');
+let shots = gifs ? CLIPS : SHOTS;
 if (option('spec')) shots = JSON.parse(await readFile(option('spec'), 'utf8'));
 if (option('only')) {
   const only = new Set(option('only').split(','));
@@ -30,7 +38,7 @@ if (option('only')) {
 }
 const outDir = path.resolve(option('out') ?? ROOT);
 const jobs = Number(option('jobs') ?? 2);
-if (!shots.length) throw new Error('No shots to render');
+if (!shots.length) throw new Error(`No ${gifs ? 'clips' : 'shots'} to render`);
 
 // --- PNG ----------------------------------------------------------------------------
 
@@ -120,6 +128,64 @@ async function writeImage(file, base64, width, height) {
   await writeFile(file, encodePng(big.width, big.height, big.rgb));
 }
 
+function toRgb(base64) {
+  const rgba = Buffer.from(base64, 'base64');
+  const rgb = Buffer.alloc((rgba.length / 4) * 3);
+  for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+    rgb[j] = rgba[i];
+    rgb[j + 1] = rgba[i + 1];
+    rgb[j + 2] = rgba[i + 2];
+  }
+  return rgb;
+}
+
+// --- GIF ----------------------------------------------------------------------------
+
+// Plays a clip frame by frame into ffmpeg. The palette is shared by the whole clip and
+// dithered at the buffer's resolution; each pixel then becomes a 4x3 block and is mapped
+// back onto the same palette (exact matches, no dithering), so the blocks stay whole.
+async function renderClip(page, clip) {
+  const shot = SHOTS.find((s) => s.id === clip.shot);
+  if (!shot) throw new Error(`Unknown shot "${clip.shot}"`);
+  const every = 60 / clip.fps;
+  if (!Number.isInteger(every)) throw new Error(`fps ${clip.fps} does not divide 60`);
+  await page.goto(`${base}?shot=${encodeURIComponent(shot.id)}&loop=${clip.from},${clip.to}`);
+  await page.waitForFunction(() => window.__thumb, null, { timeout: 60000 });
+  // 60 fps frame indices on the clip's frame grid, which includes the still's frame.
+  const shotFrame = await page.evaluate(() => window.__thumb.shotFrame);
+  const first = shotFrame - Math.round((shot.pose - clip.from) * clip.fps) * every;
+  const count = Math.round((clip.to - clip.from) * clip.fps);
+
+  const file = path.join(outDir, shot.logo ? 'with-logo' : 'no-logo', `${clip.id}.gif`);
+  await mkdir(path.dirname(file), { recursive: true });
+  const [sx, sy] = UPSCALE;
+  const filter = [
+    '[0:v]split[a][b]',
+    '[a]palettegen=stats_mode=full[p]',
+    '[p]split[p1][p2]',
+    '[b][p1]paletteuse=dither=bayer:bayer_scale=5[q]',
+    `[q]scale=iw*${sx}:ih*${sy}:flags=neighbor[s]`,
+    '[s][p2]paletteuse=dither=none',
+  ].join(';');
+  const ffmpeg = spawn('ffmpeg', [
+    '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-video_size', `${BUFFER.width}x${BUFFER.height}`,
+    '-framerate', String(clip.fps), '-i', '-', '-filter_complex', filter, '-loop', '0', '-y', file,
+  ], { stdio: ['pipe', 'inherit', 'inherit'] });
+  const exited = once(ffmpeg, 'close');
+  ffmpeg.on('error', (e) => { throw new Error(`Could not run ffmpeg: ${e.message}`); });
+
+  for (let k = 0; k < count; k++) {
+    const frame = await page.evaluate(
+      ([i, logo]) => window.__thumb.frame(i, { plain: !logo, logo }),
+      [first + k * every, !!shot.logo],
+    );
+    if (!ffmpeg.stdin.write(toRgb(frame.logo ?? frame.plain))) await once(ffmpeg.stdin, 'drain');
+  }
+  ffmpeg.stdin.end();
+  const [code] = await exited;
+  if (code !== 0) throw new Error(`ffmpeg exited with ${code}`);
+}
+
 // --- Capture ------------------------------------------------------------------------
 
 const buildDir = await mkdtemp(path.join(tmpdir(), 'aerodance-thumbnails-'));
@@ -142,16 +208,20 @@ async function worker() {
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     const started = performance.now();
     try {
-      const query = option('spec') ? `spec=${encodeURIComponent(JSON.stringify(shot))}` : `shot=${encodeURIComponent(shot.id)}`;
-      await page.goto(`${base}?${query}`);
-      await page.waitForFunction(() => window.__thumb, null, { timeout: 60000 });
+      if (gifs) {
+        await renderClip(page, shot);
+      } else {
+        const query = option('spec') ? `spec=${encodeURIComponent(JSON.stringify(shot))}` : `shot=${encodeURIComponent(shot.id)}`;
+        await page.goto(`${base}?${query}`);
+        await page.waitForFunction(() => window.__thumb, null, { timeout: 60000 });
+        const frame = await page.evaluate(() => window.__thumb.render());
+        await writeImage(path.join(outDir, 'no-logo', `${shot.id}.png`), frame.plain, frame.width, frame.height);
+        if (frame.logo) await writeImage(path.join(outDir, 'with-logo', `${shot.id}.png`), frame.logo, frame.width, frame.height);
+      }
       if (!logged) {
         logged = true;
         console.log(`WebGL: ${await page.evaluate(() => window.__thumb.renderer)}`);
       }
-      const frame = await page.evaluate(() => window.__thumb.render());
-      await writeImage(path.join(outDir, 'no-logo', `${shot.id}.png`), frame.plain, frame.width, frame.height);
-      if (frame.logo) await writeImage(path.join(outDir, 'with-logo', `${shot.id}.png`), frame.logo, frame.width, frame.height);
       const seconds = ((performance.now() - started) / 1000).toFixed(1);
       console.log(`✓ ${shot.id} (${seconds}s)${errors.length ? `\n  ${errors.join('\n  ')}` : ''}`);
     } catch (e) {

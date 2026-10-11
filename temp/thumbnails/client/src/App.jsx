@@ -2,7 +2,7 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { advance, Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { PCFShadowMap } from 'three';
-import { validateMotion } from '../../../frutiger-character/client/src/motion.js';
+import { samplePose, validateMotion } from '../../../frutiger-character/client/src/motion.js';
 import { STAGES } from '../../../frutiger-character/client/src/stages/index.js';
 import Dancers, { DANCER_LOOKS } from '../../../frutiger-character/client/src/stages/shared/Dancers.jsx';
 import { RenderPipeline, resetPost } from '../../../frutiger-character/client/src/stages/shared/post.jsx';
@@ -19,12 +19,36 @@ import { BUFFER, DESIGN, SHOTS } from './shots.js';
  *
  * The clock is stepped by hand (frameloop="never"): window.__thumb.render() plays the
  * stage forward at 60 fps to the shot's time, then reads back the frame with and
- * without the wordmark. scripts/render.mjs drives it and writes the PNGs.
+ * without the wordmark, with the dancers holding the shot's pose throughout.
+ * For animations, window.__thumb.frame(i) captures 60 fps frame i with the dancers dancing
+ * in step with the stage, reaching the shot's pose at the shot's time. scripts/render.mjs
+ * drives it and writes the PNGs and GIFs.
  *
- * URL: ?shot=<id> (shots.js), or ?spec=<JSON> for a one-off shot.
+ * URL: ?shot=<id> (shots.js), or ?spec=<JSON> for a one-off shot. &loop=<from>,<to> makes
+ * that stretch of the dance loop seamlessly (for GIFs).
  */
 
 const STEP = 1 / 60;
+const LOOP_BLEND = 0.6;
+
+// The dance with its stretch from..to (seconds) made loopable: over the last LOOP_BLEND
+// seconds the poses ease into the ones leading up to `from`, so `to` lands on `from`.
+// The capture loops itself the same way. The rig's scale and floor come from the whole
+// capture, so they shift very slightly (~0.2%).
+function loopMotion(data, from, to) {
+  const scratch = Array.from({ length: 33 }, () => [0, 0, 0, 0]);
+  const poses = data.poses.map((frame, i) => {
+    const k = Math.min(1, (data.times[i] - (to - LOOP_BLEND)) / LOOP_BLEND);
+    // Samples just past `to` are blended fully so playback interpolates into the seam.
+    if (k <= 0 || data.times[i] > to + 0.1) return frame;
+    const a = k * k * (3 - 2 * k);
+    return frame.map((joints, person) => {
+      const target = samplePose(data, person, data.times[i] - (to - from), scratch);
+      return joints.map((joint, j) => joint.map((v, axis) => v + (target[j][axis] - v) * a));
+    });
+  });
+  return { ...data, poses };
+}
 
 function shotFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -128,41 +152,58 @@ function Thumbnail({ shot, motion }) {
   useLayoutEffect(() => resetPost(meta.post), [meta]);
 
   useEffect(() => {
+    const shotFrame = Math.max(1, Math.round(shot.time / STEP));
+    let frame = 0;
+    let layer = null;
+    let loading = null;
+
+    const load = async () => {
+      await until(() => stageReady.current, 'the stage');
+      // Both dancers' rigs are in the scene (the model loads in its own Suspense).
+      await until(() => scene.getObjectsByProperty('name', 'Root').filter((o) => o.isBone).length >= 2, 'the dancers');
+      // The wordmark's two Inter weights (index.html); never fall back to another font.
+      if (shot.logo) {
+        const faces = await Promise.all(['800', '200'].map((wt) => document.fonts.load(`${wt} 64px Inter`, 'aerodance')));
+        if (faces.some((f) => !f.length)) throw new Error('Inter did not load, so the wordmark cannot be drawn');
+        layer = makeLogo(shot.logo);
+      }
+      await nextTask();
+    };
+
+    // Plays the clock forward to 60 fps frame `to` (frames only go forward), letting React
+    // commit between batches, then reads it back without and with the wordmark.
+    // The rig places hands and feet from the previous frame's body, so a held pose is exact
+    // while a danced one trails by a frame, as in the game.
+    const capture = async (to, { dance = false, plain = true, logo = true } = {}) => {
+      await (loading ??= load());
+      if (to < frame) throw new Error(`Frame ${to} is already behind the clock (${frame})`);
+      for (let i = frame + 1; i <= to; i++) {
+        playback.current = dance ? shot.pose + (i - shotFrame) * STEP : shot.pose;
+        advance(i * STEP);
+        frame = i;
+        if (i % 20 === 0) await nextTask();
+      }
+      const result = { width: BUFFER.width, height: BUFFER.height, plain: plain ? readFrame(gl) : null, logo: null };
+      if (logo && layer) {
+        gl.autoClear = false;
+        gl.clearDepth();
+        gl.render(layer.scene, layer.camera);
+        gl.autoClear = true;
+        result.logo = readFrame(gl);
+      }
+      return result;
+    };
+
     window.__thumb = {
       shot,
+      shotFrame,
       renderer: (() => {
         const ctx = gl.getContext();
         const info = ctx.getExtension('WEBGL_debug_renderer_info');
         return info ? ctx.getParameter(info.UNMASKED_RENDERER_WEBGL) : ctx.getParameter(ctx.RENDERER);
       })(),
-      async render() {
-        await until(() => stageReady.current, 'the stage');
-        // Both dancers' rigs are in the scene (the model loads in its own Suspense).
-        await until(() => scene.getObjectsByProperty('name', 'Root').filter((o) => o.isBone).length >= 2, 'the dancers');
-        // The wordmark's two Inter weights (index.html); never fall back to another font.
-        if (shot.logo) {
-          const faces = await Promise.all(['800', '200'].map((wt) => document.fonts.load(`${wt} 64px Inter`, 'aerodance')));
-          if (faces.some((f) => !f.length)) throw new Error('Inter did not load, so the wordmark cannot be drawn');
-        }
-        await nextTask();
-        // Play the stage forward to the shot's time, letting React commit between batches.
-        const frames = Math.max(1, Math.round(shot.time / STEP));
-        for (let i = 1; i <= frames; i++) {
-          advance(i * STEP);
-          if (i % 20 === 0) await nextTask();
-        }
-        const plain = readFrame(gl);
-        let logo = null;
-        if (shot.logo) {
-          const layer = makeLogo(shot.logo);
-          gl.autoClear = false;
-          gl.clearDepth();
-          gl.render(layer.scene, layer.camera);
-          gl.autoClear = true;
-          logo = readFrame(gl);
-        }
-        return { width: BUFFER.width, height: BUFFER.height, plain, logo };
-      },
+      render: () => capture(shotFrame),
+      frame: (i, options) => capture(i, { ...options, dance: true }),
     };
   }, [gl, scene, shot]);
 
@@ -183,9 +224,10 @@ export default function App() {
   const shot = useMemo(shotFromUrl, []);
   const [motion, setMotion] = useState(null);
   useEffect(() => {
+    const loop = new URLSearchParams(window.location.search).get('loop')?.split(',').map(Number);
     fetch(`${import.meta.env.BASE_URL}motion/dance.json`)
       .then((r) => r.json())
-      .then((data) => setMotion(validateMotion(data)));
+      .then((data) => setMotion(loop ? loopMotion(validateMotion(data), ...loop) : validateMotion(data)));
   }, []);
   return (
     <div className="frame">

@@ -253,3 +253,16 @@ export const SHOTS = [
     logo: { y: 215, size: 140, x: 'right' },
   },
 ];
+
+/*
+ * Animated GIFs: a shot's stage and dancers playing together over a stretch of the dance,
+ * with the shot's camera and wordmark. They pass through the shot's own frame.
+ *   shot: shot id
+ *   from, to: dance-capture seconds; the GIF loops from `to` back to `from`, with the
+ *     dancers' last 0.6 s easing into the start so they loop seamlessly
+ *   fps: frames per second (divides 60)
+ */
+export const CLIPS = [
+  // The poses at 5.45 s and 9.75 s are already close, so the blend is gentle.
+  { id: 'reef-inside', shot: 'reef-inside', from: 5.45, to: 9.75, fps: 20 },
+];
