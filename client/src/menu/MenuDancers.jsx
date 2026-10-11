@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import Character from '../../../packages/character/Character.jsx';
 import { validateMotion } from '../../../packages/character/motion.js';
-import motionUrl from '../../../temp/frutiger-character/client/public/motion/dance.json?url';
+import motionUrl from '../../../packages/character/assets/dance.json?url';
 
 /**
  * The two captured Frutiger dancers on a glass puck, pinned to the right of the screen.
@@ -12,7 +12,10 @@ import motionUrl from '../../../temp/frutiger-character/client/public/motion/dan
  * flight instead of being left behind in the city. Drawn after the world and before the
  * menu (useFrame priority 1.5); they slide off to the right while the menu is hidden.
  *
- * <MenuDancers visible />
+ * On Song Select the stage rises to the middle of the screen (`raised`, nothing sits above
+ * it there), and in one-player mode a single dancer stands in the middle of it (`solo`).
+ *
+ * <MenuDancers visible raised solo />
  */
 
 const DANCERS = [
@@ -22,6 +25,8 @@ const DANCERS = [
 const PUCK = { r: 3.1, h: 0.26 };
 // Stage placement in front of the fixed camera (looking down -Z), then turned to face it.
 const STAGE = { x: 4.3, y: -2.6, z: -19, tilt: 0.2, turn: -0.22 };
+// How far the stage rises when it's raised.
+const RAISE = 1.5;
 const SLIDE = 12;
 
 function Environment({ scene }) {
@@ -76,7 +81,7 @@ class Quiet extends Component {
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export default function MenuDancers({ visible = true }) {
+export default function MenuDancers({ visible = true, raised = false, solo = false }) {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
   const [motion, setMotion] = useState(null);
@@ -85,6 +90,8 @@ export default function MenuDancers({ visible = true }) {
   const rig = useRef(null);
   const playback = useRef(0);
   const shown = useRef(0);
+  const lift = useRef(0);
+  const spots = useRef([]);
   const still = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
 
   useEffect(() => {
@@ -107,9 +114,16 @@ export default function MenuDancers({ visible = true }) {
 
     const t = state.clock.elapsedTime;
     const away = 1 - shown.current;
+    // Rise and the solo dancer's step to the middle ease in, unless the stage is off screen.
+    const k = shown.current < 0.05 ? 1 : Math.min(1, dt * 4);
+    lift.current += ((raised ? RAISE : 0) - lift.current) * k;
+    DANCERS.forEach((d, i) => {
+      const spot = spots.current[i];
+      if (spot) spot.position.x += ((solo ? 0 : d.x) - spot.position.x) * k;
+    });
     rig.current.position.set(
       STAGE.x + away * away * SLIDE,
-      STAGE.y + (still ? 0 : Math.sin(t * 1.3) * 0.06),
+      STAGE.y + lift.current + (still ? 0 : Math.sin(t * 1.3) * 0.06),
       STAGE.z,
     );
     rig.current.rotation.set(STAGE.tilt, STAGE.turn, still ? 0 : Math.sin(t * 0.7) * 0.012);
@@ -139,7 +153,13 @@ export default function MenuDancers({ visible = true }) {
           <Suspense fallback={null}>
             <Puck />
             {DANCERS.map((d, person) => (
-              <group key={person} position={[d.x, 0, 0]} scale={[-1, 1, 1]}>
+              <group
+                key={person}
+                ref={(g) => { spots.current[person] = g; }}
+                position={[d.x, 0, 0]}
+                scale={[-1, 1, 1]}
+                visible={!solo || person === 0}
+              >
                 <Character
                   motion={motion}
                   person={person}

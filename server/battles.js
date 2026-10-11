@@ -72,6 +72,7 @@ export async function publicBattle(id) {
     status: b.status,
     createdAt: b.created_at,
     startedAt: b.started_at,
+    danceMs: b.dance_ms ?? null,
     closesAt: finished ? null : b.closes_at,
     players: seats.map((s) => {
       const h = hype.find((x) => x.seat === s.seat);
@@ -210,13 +211,14 @@ export async function seatForToken(id, token) {
   return seat.seat;
 }
 
-// The display pressed Start (it proves it runs this battle with one of its seat tokens).
-export async function startBattle(id, token) {
+// The display started the dance (it proves it runs this battle with one of its seat
+// tokens); danceMs, when known, is how long the countdown and song last.
+export async function startBattle(id, token, danceMs = null) {
   const { rowCount } = await pool.query(
-    `UPDATE battles b SET started_at = now()
+    `UPDATE battles b SET started_at = now(), dance_ms = $3
       WHERE b.id = $1 AND b.status = 'open'
         AND EXISTS (SELECT 1 FROM battle_seats s WHERE s.battle_id = b.id AND s.token = $2)`,
-    [id, token],
+    [id, token, danceMs],
   );
   if (!rowCount) throw new HttpError(409, 'battle not open, or unknown player token');
   changes.emit('battle', id);

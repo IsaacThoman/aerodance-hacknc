@@ -69,11 +69,14 @@ export function publicRoutes() {
     res.json(await reportResult(req.params.id, playerToken, readResult(req.body)));
   });
 
-  // The display pressed Start: phones follow the dance from battle.startedAt.
+  // The display started the dance: phones follow it from battle.startedAt for danceMs.
   api.post('/battles/:id/start', async (req, res) => {
-    const { playerToken } = req.body ?? {};
+    const { playerToken, danceMs = null } = req.body ?? {};
     if (typeof playerToken !== 'string') throw new HttpError(400, 'playerToken required');
-    await startBattle(req.params.id, playerToken);
+    if (danceMs !== null && !(Number.isSafeInteger(danceMs) && danceMs > 0 && danceMs <= 3_600_000)) {
+      throw new HttpError(400, 'danceMs must be a whole number of milliseconds');
+    }
+    await startBattle(req.params.id, playerToken, danceMs);
     res.json({ ok: true });
   });
 

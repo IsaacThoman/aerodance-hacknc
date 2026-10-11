@@ -104,7 +104,7 @@ try {
   await page.getByRole("button", { name: "Playback", exact: true }).click();
   await page
     .getByLabel("Import pose recording")
-    .setInputFiles("temp/frutiger-character/client/public/motion/dance.json");
+    .setInputFiles("packages/character/assets/dance.json");
   await page.getByText(/Imported 420 samples/).waitFor();
   await page.getByRole("button", { name: "Skeleton", exact: true }).click();
   await page.getByLabel("Song cursor").fill("2000");

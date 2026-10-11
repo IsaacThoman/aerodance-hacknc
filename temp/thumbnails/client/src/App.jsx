@@ -3,6 +3,7 @@ import { advance, Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { PCFShadowMap } from 'three';
 import { validateMotion } from '../../../../packages/character/motion.js';
+import motionUrl from '../../../../packages/character/assets/dance.json?url';
 import { STAGES } from '../../../../packages/stages/index.js';
 import Dancers from '../../../../packages/stages/shared/Dancers.jsx';
 import { RenderPipeline, resetPost } from '../../../../packages/stages/shared/post.jsx';
@@ -181,7 +182,7 @@ export default function App() {
   const shot = useMemo(shotFromUrl, []);
   const [motion, setMotion] = useState(null);
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}motion/dance.json`)
+    fetch(motionUrl)
       .then((r) => r.json())
       .then((data) => setMotion(validateMotion(data)));
   }, []);

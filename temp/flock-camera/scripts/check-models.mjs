@@ -2,12 +2,16 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { Box3, Matrix4, Quaternion, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { createFlockInstances, disposeFlockInstances } from '../client/world-instances.js';
+import { createFlockInstances, disposeFlockInstances } from '../../../client/src/aero/flock/world-instances.js';
 
 const root = new URL('../', import.meta.url);
 const scenes = new Map();
 for (const variant of ['', '-low', '-world']) {
-  const raw = await readFile(new URL(`client/public/models/flock-camera${variant}.glb`, root));
+  // The World LOD ships with the game, next to its instancing helper.
+  const modelPath = variant === '-world'
+    ? '../../client/src/aero/flock/flock-camera-world.glb'
+    : `client/public/models/flock-camera${variant}.glb`;
+  const raw = await readFile(new URL(modelPath, root));
   const { scene } = await new GLTFLoader().parseAsync(
     raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength), '',
   );

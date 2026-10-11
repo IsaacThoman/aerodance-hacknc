@@ -3,6 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { PCFShadowMap } from "three";
 import Scene from "./Scene.jsx";
 import { validateMotion } from "../../../../packages/character/motion.js";
+import motionUrl from "../../../../packages/character/assets/dance.json?url";
 
 function FixedRenderResolution() {
   const { gl, size } = useThree();
@@ -31,7 +32,7 @@ export default function App() {
   const [error, setError] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${import.meta.env.BASE_URL}motion/dance.json`, {
+    fetch(motionUrl, {
       signal: controller.signal,
     })
       .then((response) => {

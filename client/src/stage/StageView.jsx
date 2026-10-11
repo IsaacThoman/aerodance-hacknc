@@ -5,6 +5,10 @@ import { STAGES, resolveStage } from '../../../packages/stages/index.js';
 import { RenderPipeline, resetPost } from '../../../packages/stages/shared/post.jsx';
 import Dancers from '../../../packages/stages/shared/Dancers.jsx';
 import { beat } from '../../../packages/stages/shared/hooks.js';
+import { validateMotion } from '../../../packages/character/motion.js';
+import motionUrl from '../../../packages/character/assets/dance.json?url';
+import LivePanels from './LivePanels.jsx';
+import ResultsDancers from './ResultsDancers.jsx';
 
 /**
  * The game's dance stages (packages/stages) inside its canvas, with the routine's dancers.
@@ -19,7 +23,12 @@ import { beat } from '../../../packages/stages/shared/hooks.js';
  * While a stage is mounted it takes the renderer's shadow and tone-mapping settings and the
  * Aero world should pause (onState's `showing`); both are put back when it goes.
  *
+ * During a song, `live` adds the players' own characters in the top corners (LivePanels).
+ * On the results screen, `results` (a ref of { start, results, winner }) swaps the reference
+ * dancers for the celebration (ResultsDancers).
+ *
  * <StageView active stageId="openreef" routine={{ bundle, playerCount, timeMs, playing }}
+ *   live={{ playerCount, livePose(id, now), calibration(id) }} results={showRef}
  *   onState={({ showing, ready, stage, failed, dancersFailed }) => ...} />
  */
 
@@ -77,8 +86,30 @@ function Veil({ fade }) {
   return null;
 }
 
+// The captured demo clip the results dancers celebrate to, loaded once.
+let celebration = null;
+const loadCelebration = () => {
+  celebration ??= fetch(motionUrl).then((r) => {
+    if (!r.ok) throw Error('Celebration clip unavailable');
+    return r.json();
+  }).then(validateMotion);
+  return celebration;
+};
+
+function Results({ show, floor, accent }) {
+  const [motion, setMotion] = useState(null);
+  const playback = useRef(0);
+  useEffect(() => {
+    let alive = true;
+    loadCelebration().then((m) => alive && setMotion(m), (error) => console.warn('[stage] results dancers:', error.message));
+    return () => { alive = false; };
+  }, []);
+  useFrame((_, delta) => { playback.current += Math.min(delta, 0.1); });
+  return motion ? <ResultsDancers motion={motion} playback={playback} show={show} floor={floor} accent={accent} /> : null;
+}
+
 // Everything inside the portal: the pipeline, the stage and its dancers.
-function StageContent({ id, routine, onReady, onDancersFail }) {
+function StageContent({ id, routine, live, results, onReady, onDancersFail }) {
   const gl = useThree((state) => state.gl);
   const { meta, Component: Stage } = byId[id];
 
@@ -122,14 +153,17 @@ function StageContent({ id, routine, onReady, onDancersFail }) {
         </Suspense>
       </StageBoundary>
       {/* A new song or stage gives dancers that failed to load another try. */}
-      <DancerBoundary key={`${id}|${routine?.bundle.song.songId ?? ''}`} onFail={onDancersFail}>
-        <Dancers routine={routine} {...meta.dancers} />
+      <DancerBoundary key={`${id}|${routine?.bundle.song.songId ?? ''}|${results ? 'results' : 'dance'}`} onFail={onDancersFail}>
+        {results
+          ? <Results key={results.current.key} show={results} floor={meta.dancers} accent={meta.accent ?? ['#7fe3ff', '#0a8fd8']} />
+          : <Dancers routine={routine} {...meta.dancers} />}
+        {live && !results && <LivePanels live={live} />}
       </DancerBoundary>
     </>
   );
 }
 
-export default function StageView({ active = false, stageId, routine, onState }) {
+export default function StageView({ active = false, stageId, routine, live = null, results = null, onState }) {
   const scene = useMemo(() => new THREE.Scene(), []);
   const [shown, setShown] = useState(null);
   const fade = useRef({ value: 0, settled: 0 });
@@ -186,7 +220,7 @@ export default function StageView({ active = false, stageId, routine, onState })
 
   return (
     <>
-      {shown && createPortal(<StageContent id={shown} routine={routine ?? lastRoutine.current} onReady={onReady} onDancersFail={onDancersFail} />, scene)}
+      {shown && createPortal(<StageContent id={shown} routine={routine ?? lastRoutine.current} live={live} results={results} onReady={onReady} onDancersFail={onDancersFail} />, scene)}
       <Veil fade={fade} />
     </>
   );

@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+// The World LOD ships with the game, next to its instancing helper.
+import worldModelUrl from '../../../client/src/aero/flock/flock-camera-world.glb?url';
 
 const canvas = document.querySelector('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -84,7 +86,7 @@ const detailLevel = document.querySelector('#detail-level');
 const modelUrls = {
   high: `${import.meta.env.BASE_URL}models/flock-camera.glb?v=down-7`,
   low: `${import.meta.env.BASE_URL}models/flock-camera-low.glb?v=down-7`,
-  world: `${import.meta.env.BASE_URL}models/flock-camera-world.glb?v=down-7`,
+  world: worldModelUrl,
 };
 const variantNames = { high: 'High detail', low: 'Low poly', world: 'World LOD' };
 const requestedVariant = new URLSearchParams(location.search).get('detail');
