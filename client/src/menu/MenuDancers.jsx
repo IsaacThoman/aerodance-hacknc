@@ -28,6 +28,10 @@ const STAGE = { x: 4.3, y: -2.6, z: -19, tilt: 0.2, turn: -0.22 };
 // How far the stage rises when it's raised.
 const RAISE = 1.5;
 const SLIDE = 12;
+// Easing approaches its target forever; snap once the remaining step is imperceptible.
+const SPOT_EPSILON = 0.01;
+const SOLO_HIDE_PROGRESS = 0.95;
+const SOLO_FADE_SECONDS = 0.05;
 
 function Environment({ scene }) {
   const gl = useThree((state) => state.gl);
@@ -92,6 +96,7 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
   const shown = useRef(0);
   const lift = useRef(0);
   const spots = useRef([]);
+  const purpleOpacity = useRef(1);
   const still = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
 
   useEffect(() => {
@@ -114,12 +119,27 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
 
     const t = state.clock.elapsedTime;
     const away = 1 - shown.current;
-    // Rise and the solo dancer's step to the middle ease in, unless the stage is off screen.
+    // Rise and both dancers' steps to the middle ease in, unless the stage is off screen.
     const k = shown.current < 0.05 ? 1 : Math.min(1, dt * 4);
     lift.current += ((raised ? RAISE : 0) - lift.current) * k;
+    // Converge twice as quickly while keeping the return split's existing timing.
+    const move = solo ? Math.min(1, k * 2) : k;
     DANCERS.forEach((d, i) => {
       const spot = spots.current[i];
-      if (spot) spot.position.x += ((solo ? 0 : d.x) - spot.position.x) * k;
+      if (!spot) return;
+      const target = solo ? 0 : d.x;
+      spot.position.x += (target - spot.position.x) * move;
+      if (Math.abs(target - spot.position.x) < SPOT_EPSILON) spot.position.x = target;
+      if (i === 1) {
+        // Fade purple after convergence, and fade it back in as the dancers split out.
+        const show = !solo || Math.abs(spot.position.x) > Math.abs(d.x) * (1 - SOLO_HIDE_PROGRESS);
+        const targetOpacity = show ? 1 : 0;
+        const fadeStep = dt / SOLO_FADE_SECONDS;
+        purpleOpacity.current = Math.abs(targetOpacity - purpleOpacity.current) <= fadeStep + Number.EPSILON
+          ? targetOpacity
+          : purpleOpacity.current + (show ? fadeStep : -fadeStep);
+        spot.visible = purpleOpacity.current > 0;
+      }
     });
     rig.current.position.set(
       STAGE.x + away * away * SLIDE,
@@ -127,7 +147,10 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
       STAGE.z,
     );
     rig.current.rotation.set(STAGE.tilt, STAGE.turn, still ? 0 : Math.sin(t * 0.7) * 0.012);
+  }, 0.5);
 
+  useFrame(() => {
+    if (!motion || !rig.current || shown.current < 0.005) return;
     // Match the world camera's aspect so the stretch to 16:9 is shared.
     if (cam.aspect !== camera.aspect) { cam.aspect = camera.aspect; cam.updateProjectionMatrix(); }
     const ac = gl.autoClear;
@@ -158,13 +181,13 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
                 ref={(g) => { spots.current[person] = g; }}
                 position={[d.x, 0, 0]}
                 scale={[-1, 1, 1]}
-                visible={!solo || person === 0}
               >
                 <Character
                   motion={motion}
                   person={person}
                   playback={playback}
                   appearance={d.appearance}
+                  opacityRef={person === 1 ? purpleOpacity : undefined}
                 />
               </group>
             ))}
