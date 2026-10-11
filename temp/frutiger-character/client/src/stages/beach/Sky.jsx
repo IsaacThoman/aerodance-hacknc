@@ -291,6 +291,7 @@ export function SunFlare() {
     v.current.copy(SUN_DIR).multiplyScalar(1000).add(cam.position).project(cam);
     const u = material.uniforms;
     u.uSun.value.set(v.current.x, v.current.y);
+    u.uAspect.value = cam.aspect;
     const edge = Math.max(Math.abs(v.current.x), Math.abs(v.current.y));
     u.uVis.value = v.current.z < 1 ? THREE.MathUtils.clamp((1.15 - edge) / 0.4, 0, 1) : 0;
     u.uPulse.value = beat.pulse;

@@ -36,6 +36,7 @@ const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uVignette: { value: 0.2 },
+    uAspect: { value: 16 / 9 },
     uSaturation: { value: 1 },
     uTint: { value: new THREE.Color(1, 1, 1) },
   },
@@ -46,13 +47,14 @@ const GradeShader = {
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     uniform float uVignette;
+    uniform float uAspect;
     uniform float uSaturation;
     uniform vec3 uTint;
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       vec2 d = vUv - 0.5;
-      d.x *= 16.0 / 9.0;
+      d.x *= uAspect;
       float v = smoothstep(1.05, 0.3, length(d));
       c.rgb *= mix(1.0, v, uVignette);
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -65,12 +67,13 @@ const GradeShader = {
 /**
  * Takes over rendering: stage -> bloom -> grade -> tone mapping, then the HUD
  * layer on top without post-processing so its text stays crisp.
+ * width/height: the render buffer; aspect: the frame it is displayed at.
  */
-export function RenderPipeline({ hudScene, hudCamera }) {
+export function RenderPipeline({ hudScene, hudCamera, width = RENDER_WIDTH, height = RENDER_HEIGHT, aspect = 16 / 9 }) {
   const gl = useThree((s) => s.gl);
 
   const fx = useMemo(() => {
-    const target = new THREE.WebGLRenderTarget(RENDER_WIDTH, RENDER_HEIGHT, {
+    const target = new THREE.WebGLRenderTarget(width, height, {
       type: THREE.HalfFloatType,
       samples: 4,
     });
@@ -81,9 +84,9 @@ export function RenderPipeline({ hudScene, hudCamera }) {
     composer.renderTarget1.samples = 0;
     composer.renderTarget1.depthBuffer = false;
     composer.setPixelRatio(1);
-    composer.setSize(RENDER_WIDTH, RENDER_HEIGHT);
+    composer.setSize(width, height);
     const render = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
-    const bloom = new UnrealBloomPass(new THREE.Vector2(RENDER_WIDTH, RENDER_HEIGHT), 0.5, 0.5, 0.8);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.5, 0.5, 0.8);
     const grade = new ShaderPass(GradeShader);
     const output = new OutputPass();
     composer.addPass(render);
@@ -91,7 +94,7 @@ export function RenderPipeline({ hudScene, hudCamera }) {
     composer.addPass(grade);
     composer.addPass(output);
     return { composer, render, bloom, grade, output };
-  }, [gl]);
+  }, [gl, width, height]);
 
   useEffect(
     () => () => {
@@ -113,6 +116,7 @@ export function RenderPipeline({ hudScene, hudCamera }) {
     bloom.radius = post.bloomRadius;
     bloom.threshold = post.bloomThreshold;
     grade.uniforms.uVignette.value = post.vignette;
+    grade.uniforms.uAspect.value = aspect;
     grade.uniforms.uSaturation.value = post.saturation;
     grade.uniforms.uTint.value.setRGB(...post.tint);
     gl.toneMapping = post.toneMapping;
