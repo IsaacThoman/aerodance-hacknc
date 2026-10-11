@@ -2,6 +2,19 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AudioTransport } from "../web/audio.js";
 
+test('browser/audio anchor includes the scheduled lead-in and playback rate', async t => {
+  t.mock.method(performance, 'now', () => 1000);
+  const transport = new AudioTransport();
+  transport.buffer = {};
+  transport.context = { state: 'running', currentTime: 5,
+    createBufferSource: () => ({ playbackRate: {}, connect() {}, start() {}, stop() {}, disconnect() {} }) };
+  await transport.play(2000, 3, 2);
+  assert.equal(transport.atBrowserTime(3500), 1000, 'countdown frames precede the starting song position');
+  assert.equal(transport.atBrowserTime(4000), 2000);
+  assert.equal(transport.atBrowserTime(4500), 3000);
+  transport.pause();
+});
+
 test("saved audio loads while autoplay is blocked; playback resumes on demand", async () => {
   let resumes = 0;
   const buffer = { duration: 1, getChannelData: () => new Float32Array(300) };

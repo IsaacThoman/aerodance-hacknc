@@ -41,7 +41,6 @@ const ACTIVE = ['connecting', 'reconnecting'];
 
 // Each player's tracking, from the pose input (reported for tests as data-player-slots).
 function slotStatus(connection, id) {
-  if (connection.status === 'dummy') return { label: 'Preview ready', kind: 'preview' };
   if (connection.snapshot?.poses?.some((p) => p.playerId === id)) return { label: 'Detected', kind: 'detected' };
   if (connection.status === 'initializing') return { label: 'Camera starting…' };
   if (connection.status === 'connected') return { label: 'Step into view' };

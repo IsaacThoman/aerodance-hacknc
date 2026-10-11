@@ -9,7 +9,7 @@ import express from 'express';
 import { chromium } from 'playwright';
 import { bundleFixture } from './fixtures/songBundle.js';
 import { BACK as MENU_BACK, ONE_PLAYER, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
-import { KEYS, MODES, PILL, PRIMARY } from '../src/connect/layout.js';
+import { KEYS, MODES, PILL, PRIMARY, MODEL_RECTS } from '../src/connect/layout.js';
 import {
   BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, RESULTS_RETRY, rowRect,
 } from '../src/game/layout.js';
@@ -38,6 +38,13 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, hasTouch: true });
   testPage = page;
   page.setDefaultTimeout(90000);
+  await page.addInitScript(() => {
+    window.webcamRequests = 0;
+    navigator.mediaDevices.getUserMedia = async () => {
+      window.webcamRequests++;
+      throw new DOMException('Fixture permission denied', 'NotAllowedError');
+    };
+  });
   // Flow assertions exercise the real React/canvas event handlers. Skip GPU
   // rasterization in software-only containers; full visual runs opt in.
   if (process.env.UI_RENDER !== '1') await page.addInitScript(() => {
@@ -98,16 +105,22 @@ try {
   assert.equal((await data()).menuScreen, 'settings', 'Escape closes only the card');
   await shot('settings');
 
-  // The webcam dummy: no address, closes on Ok, and the arrow keys stay in the card.
+  // Webcam selection/model controls do not request permission; Start handles denial.
   await click(PILL);
   await until({ connectReady: 'true' });
   await click(MODES[1]);
-  await until({ connectMode: 'webcam', connectStatus: 'dummy', connectMessage: /Webcam dummy selected/ });
+  await until({ connectMode: 'webcam', connectStatus: 'disconnected' });
+  await click(MODEL_RECTS[1]);
+  await until({ connectModel: 'full' });
+  assert.equal(await page.evaluate(() => webcamRequests), 0);
   await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(300);
   assert.equal((await data()).menuScreen, 'settings');
   await page.mouse.move(frame.x + 10, frame.y + 10);
   await click(PRIMARY);
+  await until({ connectStatus: 'error', connectMessage: /permission was denied/ });
+  assert.equal(await page.evaluate(() => webcamRequests), 1);
+  await page.keyboard.press('Escape');
   await until({ connectOpen: 'false' });
   await click(MENU_BACK);
   await menuOn('main');
@@ -118,12 +131,12 @@ try {
   await menuOn('players');
   await shot('player-select');
   await click(ONE_PLAYER);
-  await until({ songScreen: 'list', songReady: 'true', catalog: 'empty', songCount: '0', playerSlots: 'Preview ready' });
+  await until({ songScreen: 'list', songReady: 'true', catalog: 'empty', songCount: '0', playerSlots: 'Connect Client' });
   await click(BACK);
   await menuOn('players');
   await click(TWO_PLAYERS);
-  await until({ songScreen: 'list', songReady: 'true', catalog: 'empty', playerSlots: 'Preview ready|Preview ready' });
-  assert.equal(deviceRequests, 0, 'Webcam dummy must not contact Android');
+  await until({ songScreen: 'list', songReady: 'true', catalog: 'empty', playerSlots: 'Connect Client|Connect Client' });
+  assert.equal(deviceRequests, 0, 'Webcam must not contact Android');
   await shot('song-select');
 
   // Keyboard: Escape leaves Song Select, arrows and Enter pick Two Players again.
@@ -131,7 +144,7 @@ try {
   await page.keyboard.press('Escape');
   await menuOn('players');
   for (const k of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(k);
-  await until({ songScreen: 'list', songReady: 'true', playerSlots: 'Preview ready|Preview ready' });
+  await until({ songScreen: 'list', songReady: 'true', playerSlots: 'Connect Client|Connect Client' });
 
   // The letterboxed frame on a phone.
   await page.setViewportSize({ width: 390, height: 844 });
@@ -332,7 +345,7 @@ try {
   await until({ songScreen: 'list', songReady: 'true' }, 10000);
   assert.equal((await data()).gamePhase, undefined);
   assert.deepEqual(errors, []);
-  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam dummy), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, each song on its own stage, Android startup, first-pose readiness, disconnect, startup cancellation, a scored two-player song with the autoplay ghost (countdown, pause, resume, results, Play again, quit) and no runtime errors.');
+  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam models and permission denial), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, each song on its own stage, Android startup, first-pose readiness, disconnect, startup cancellation, a scored two-player song with the autoplay ghost (countdown, pause, resume, results, Play again, quit) and no runtime errors.');
 } catch (error) {
   console.error(error);
   if (testPage) console.error(await testPage.locator('canvas').evaluate((c) => JSON.stringify(c.dataset)).catch(() => ''));

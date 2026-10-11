@@ -44,7 +44,7 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    by the browser audio decoder. Set the real artist, authors/choreographers, the
    **Stage** the game shows the routine on (Open Reef by default), and
    distribution licenses or permissions.
-2. Import a pose JSON/Android NDJSON, or connect Android and **Record new take**.
+2. Import a pose JSON/Android NDJSON, or select a pose source and **Record new take**.
    For Android set Allowed Origin to the exact origin printed in the capture panel.
    Close other stream viewers and keep Android active. Connecting starts the
    camera and pose tracker; the panel shows initialization for up to 90 seconds
@@ -55,10 +55,24 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    again. Set **Recording delay (seconds)** from 0 to 60 (default 3). A visible
    countdown gives you time to get into position before music and movement
    capture start. **Cancel countdown** stops the wait without adding a take.
+   For **Webcam**, choose a camera and **Lite / Full / Heavy**, then **Start camera**
+   and allow permission. The mirrored setup preview labels the two camera-side
+   slots. Camera/model preferences are remembered in this browser. Changes restart
+   tracking; controls are locked during recording and countdown. Use HTTPS or
+   localhost for camera access. Models run in a worker; the status shows GPU/CPU
+   and measured pose cadence. Video stays local; recording saves pose records.
+   Stand upright with shoulders, hips, and feet visible while body calibration
+   collects 20 reliable frames per player. The preview compensates for changes in
+   apparent body size when you step back, including the floor and hip anchor.
+   Use **Recalibrate body** at your final dancing position if the starting stance
+   was poor. This button is locked during recording. Webcam-only exports retain
+   the same distance compensation for playback; existing Android bundles retain
+   their original calibration mode. This handles body size in the image, rather
+   than correcting optical lens distortion.
 3. Scrub the waveform, step samples, or play at 0.25/0.5/1 speed. Switch between
    Skeleton, Frutiger, and Both. The two preview characters have independent rigs.
-   Choose **Live view** to preview Android poses without recording or importing
-   music. Connect Android in the capture panel first, then step into view. Live
+   Choose **Live view** to preview Android or webcam poses without recording or importing
+   music. Connect a pose source in the capture panel first, then step into view. Live
    poses are read-only in all three display modes; music can play for rehearsal.
    Choose **Playback** to return to the timeline and edit the routine. Recording
    automatically uses the live preview.
@@ -69,10 +83,18 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    the source take. Drag the selection start/end handles on the waveform to select a timeline
    range (arrow keys adjust a focused handle) to swap tracks, mirror, smooth, repair
    a short gap, approve references, or exclude reference scoring.
-5. Adjust take offset in seconds for audio alignment. Selecting a take does not
-   automatically overwrite current clips. **Replace selected phrase** uses the
-   selected take's full source range on the selected player, splitting existing
-   clips around the destination. It reports the need to review speed/joins.
+5. Select a take to open **Take view**, a read-only preview immediately before
+   **Live view**. Scrub, step, and play the take without changing the routine.
+   Take playback also works without music. A completed recording opens its new
+   take automatically. Imports and recordings remain in the library until assigned.
+   Open its **⋯** menu and choose **Overwrite P1 track**, **Overwrite P2 track**, or
+   **Overwrite both tracks**. Each action copies the corresponding source player
+   into independent track storage and uses the take's original audio alignment;
+   it replaces the entire destination track, including its edits.
+   Adjust each track's **Offset (seconds)** independently in Playback. Positive
+   offsets delay poses; negative offsets advance them. Poses before song time zero
+   are omitted from playback/export but retained for later realignment. Track
+   offsets, edits, overwrite, clear, and interpolation support undo/redo.
 6. Check music/pose alignment near both ends, set the playable range if needed,
    then confirm alignment in Song details. Review references and missing intervals
    in **Review**. Approvals require a reason; exclusions always override approvals.
@@ -81,9 +103,16 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    timing review, long missing references, rights, and empty score coverage.
 
 Changes autosave after a short idle interval. **Save** forces persistence.
+This editor uses project format 2 and migrates format 1 projects when opened.
+Saved projects in unsupported formats are
+reported and skipped at startup; the next compatible project opens instead.
+If none can be opened, **Create new project** starts a separate project. Incompatible
+files stay on disk and require an editor that supports their project format.
+Project format versions are separate from the supported character calibration
+profiles 1 and 2.
 Revision conflicts report an error; reloading fetches the saved project instead
 of silently overwriting it. Upload/capture errors show in the message bar. Hidden
-tabs and lost Android connections interrupt recording; acknowledged source data
+tabs and lost pose connections interrupt recording; acknowledged source data
 stays on disk. Failed uploads retain a recoverable capture prefix under `capture/`.
 
 The committed capture at
@@ -91,11 +120,35 @@ The committed capture at
 editor. Its combined legacy confidence cannot be split into visibility/presence;
 review/approve its reference poses explicitly before publication. It has no music.
 
-**Repair short gap** reconstructs the selected player between two available
-endpoint poses within one second. Reconstructed confidence is null and scoring
-is disabled until explicitly approved. Longer gaps need another take or a score
-exclusion. The Frutiger rig is stylized 2.5D; elbows/knees remain editable in the
+**Interpolate P1/P2 missing intervals** fills every bounded gap on that player
+track, including gaps longer than one second. It preserves available poses and
+linearly interpolates missing XYZ coordinates at 30 Hz. Missing beginnings and
+endings remain unchanged because they lack two endpoints. Generated poses have
+unknown confidence and scoring remains disabled until explicitly approved.
+The existing **Repair short gap** action still repairs a selected range within
+one second. Interpolation does not modify the library take.
+
+All deletion actions ask for confirmation. **Delete P1/P2 track** clears only that
+track and resets its offset; it is undoable. **Delete** in a take's menu removes
+that take and its raw capture while preserving assigned track poses and their
+source provenance. **Delete project/song** permanently removes the whole routine,
+including audio, tracks, takes, capture files, and revisions. It opens another
+project, or a blank project when the library is empty. Deleting a project or a take
+cannot be undone; use **Backup** before deleting material you want to retain.
+
+Projects now use schema v2 with independent immutable track snapshots in
+`tracks/`. Backups include snapshots required by current tracks and edit history,
+so they still restore after source takes are deleted. Existing schema-v1 projects
+are migrated when opened, and old backups are migrated on restore. Migration
+preserves the current routine, review masks, original comparison poses, and
+pre-zero data; it starts a fresh edit history. Runtime song bundle schemas remain
+unchanged. The Frutiger rig is stylized 2.5D; elbows/knees remain editable in the
 skeleton even though the character has no articulated elbow/knee bones.
+The character uses the original wrist and foot mapping. Live Frutiger previews
+smooth landmark movement and distance estimates for display; skeletons, saved
+takes, edits, and recorded playback use their original coordinates. Distance
+compensation uses the torso's image size so noisy inferred depth cannot resize
+the whole character. Recalibrate after choosing your dancing position.
 
 ## Install a song in the game
 
@@ -143,6 +196,13 @@ batches, backup restore, deterministic bundle checksums, and unsafe archives.
 
 ## Current limits
 
+- Webcam capture uses browser frame observations and an audio-clock anchor,
+  preserving video frame intervals through variable inference delays. Camera
+  buffering and audio output delay remain uncalibrated; review start/end alignment.
+  Takes retain model/hash, runtime version, delegate, timing method, and cadence.
+  Webcam fixtures cover Chromium runtime/capture integration; real duet accuracy,
+  hardware performance, and Safari/Firefox/mobile compatibility need manual checks.
+
 - Captures subtract the measured Android processing delay (`resultTimeMs` minus
   `frameReceivedTimeMs`) from the first pose's audio receipt position. Subsequent
   movement timing uses frame-arrival differences, so changing inference delays
@@ -153,9 +213,9 @@ batches, backup restore, deterministic bundle checksums, and unsafe archives.
 - The editor imports JSON/NDJSON and its own project backups. Uploading video and
   running the optional Python tracker inside the website are future work. The
   existing offline tracker can produce a take for import.
-- Replacement takes must have matching inference dimensions. Automatic normalization
-  of different camera placements, articulated IK, and curve/clip transition controls
-  are future work; inspect replacement joins visually.
+- Automatic normalization of different camera placements, articulated IK, and
+  curve/clip transition controls are future work; review poses after overwriting
+  a track. Each independent player track retains its own inference dimensions.
 - Audio decode/write validation uses the local browser's measured duration. Server
   transcoding and format-independent audio inspection are not implemented.
 - Publication requires some eligible poses on both tracks and explicit gap review.

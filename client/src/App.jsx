@@ -19,7 +19,7 @@ import { recordResults } from './game/bestScores.js';
 import { PLAYERS, winnerOf } from './game/results.js';
 import StageView from './stage/StageView.jsx';
 import { resolveStage } from '../../packages/stages/catalog.js';
-import { AndroidPoseSource } from './pose/AndroidPoseSource.js';
+import { PoseSourceController } from './pose/PoseSourceController.js';
 import { ReplayPoseSource, parseRecording } from './pose/ReplayPoseSource.js';
 
 function FixedRenderResolution() {
@@ -98,23 +98,20 @@ function DisplayApp() {
   // The menu screen actually showing; the Connect Client pill lives on Settings.
   const [menuShown, setMenuShown] = useState('main');
   const [playerCount, setPlayerCount] = useState(1);
-  // The pose input: the Android client, or the webcam dummy (menus only, no tracking), or a
-  // replay from the URL (?input=ghost) in place of both.
+  // Shared live input for Android or webcam, with optional URL replay.
   const [inputMode, setInputMode] = useState('android');
-  const [source] = useState(() => new AndroidPoseSource());
+  const [source] = useState(() => new PoseSourceController());
   const [replay] = useState(replaySource);
   const [connection, setConnection] = useState(source.view);
   const [replayView, setReplayView] = useState(replay?.view ?? null);
-  const activeSource = replay ?? (inputMode === 'android' ? source : null);
+  const activeSource = replay ?? source;
   // The Connect Client card holds the menus while it's open.
   const [connectOpen, setConnectOpen] = useState(false);
   // Song Select's preview: the routine to dance, and how its stage is doing.
   const [preview, setPreview] = useState(null);
   const [stage, setStage] = useState({ showing: false, ready: false, stage: null, failed: false });
   const menuOpen = screen === 'menu';
-  const selectedConnection = replay ? replayView : inputMode === 'webcam'
-    ? { status: 'dummy', snapshot: null, message: 'Webcam dummy selected. Continue through the menus to test the flow.' }
-    : connection;
+  const selectedConnection = replay ? replayView : connection;
   // The song being danced, its phase, and the results screen's reveal (StageView and
   // GameScreen both read it).
   const [game, setGame] = useState(null);
@@ -165,7 +162,7 @@ function DisplayApp() {
 
   useEffect(() => {
     const unsubscribe = source.subscribe(setConnection);
-    // Leaving the page releases the Android camera (it saves the board's battery).
+    // Leaving the page releases the active Android or browser camera.
     const disconnect = () => source.disconnect();
     window.addEventListener('pagehide', disconnect);
     return () => {
@@ -176,22 +173,21 @@ function DisplayApp() {
   }, [source]);
 
   const changeInputMode = useCallback((mode) => {
-    source.disconnect();
+    source.setMode(mode);
     setInputMode(mode);
-    source.setPlayerCount(playerCount).catch(() => {});
-  }, [source, playerCount]);
+  }, [source]);
 
   // One or two players picked: Android switches modes at its next stream boundary.
   const applyPlayerCount = useCallback((count) => {
     setPlayerCount(count);
     replay?.setPlayerCount(count);
-    if (inputMode === 'android') source.setPlayerCount(count).catch(() => {});
-  }, [inputMode, source, replay]);
+    source.setPlayerCount(count).catch(() => {});
+  }, [source, replay]);
   const choosePlayers = useCallback((count) => {
-    if (inputMode === 'android' && source.view.configuring) return;
+    if (source.view.configuring) return;
     applyPlayerCount(count);
     setScreen('songs');
-  }, [inputMode, source, applyPlayerCount]);
+  }, [source, applyPlayerCount]);
   const leaveSongs = useCallback(() => {
     if (battleId) { setBattleStage('lobby'); return; }
     setMenuScreen('players');

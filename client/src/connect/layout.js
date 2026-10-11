@@ -9,13 +9,17 @@ export const CARD = { x: 800, y: 112, w: 764, h: 736 };
 export const CLOSE = { x: CARD.x + CARD.w - 46, y: CARD.y + 46, r: 26 };
 export const MODES = [
   { id: 'android', label: 'Android Client', rect: { x: CARD.x + 32, y: CARD.y + 92, w: 350, h: 58 } },
-  { id: 'webcam', label: 'Webcam (dummy)', rect: { x: CARD.x + 382, y: CARD.y + 92, w: 350, h: 58 } },
+  { id: 'webcam', label: 'Webcam', rect: { x: CARD.x + 382, y: CARD.y + 92, w: 350, h: 58 } },
 ];
 export const COLUMN = { x: CARD.x + 32, w: 404 };
 export const FIELD = { x: COLUMN.x, y: CARD.y + 214, w: COLUMN.w, h: 72 };
 export const PRIMARY = { x: COLUMN.x, y: CARD.y + CARD.h - 100, w: COLUMN.w, h: 70 };
 // Connection messages run the full width between the keypad and the button.
 export const STATUS = { x: COLUMN.x, y: CARD.y + 540, w: CARD.w - 64 };
+export const CAMERA_PREV = { x: COLUMN.x, y: FIELD.y, w: 80, h: 58 };
+export const CAMERA_NEXT = { x: CARD.x + CARD.w - 112, y: FIELD.y, w: 80, h: 58 };
+export const MODEL_RECTS = [0, 1, 2].map(i => ({ x: COLUMN.x + i * 235, y: FIELD.y + 88, w: 222, h: 58 }));
+export const WEBCAM_PREVIEW = { x: COLUMN.x, y: FIELD.y + 160, w: 280, h: 150 };
 
 const KEY = { w: 80, h: 64, gap: 12, x: CARD.x + CARD.w - 32 - (80 * 3 + 12 * 2), y: FIELD.y };
 export const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'Backspace'].map((key, i) => ({

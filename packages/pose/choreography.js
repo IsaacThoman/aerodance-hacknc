@@ -58,6 +58,8 @@ export function validateChoreography(data) {
   for (const track of data.tracks) {
     const c = track.calibration;
     if (!c || !['inputWidth','inputHeight','torsoLength'].every(k => finite(c[k]) && c[k] > 0) || !finite(c.floorY) || !c.baseHip || !['x','y','z'].every(k => finite(c.baseHip[k]))) fail('Invalid track calibration');
+    if(c.cameraScaleMode!==undefined && c.cameraScaleMode!=='body-relative') fail('Unsupported camera scale mode');
+    if(c.cameraScaleMode==='body-relative' && (!finite(c.bodyTorsoLength) || c.bodyTorsoLength<=0)) fail('Invalid body-relative calibration');
   }
   if (!Array.isArray(data.samples) || data.samples.length < 2) fail('Choreography needs at least two samples');
   let last = -Infinity;

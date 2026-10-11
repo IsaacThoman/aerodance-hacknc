@@ -14,6 +14,10 @@ COPY --from=build /app ./
 RUN npm install --no-save --package-lock=false playwright@1.58.2
 CMD ["node", "client/tests/ui-flow.browser.mjs"]
 
+FROM ui-test AS webcam-test
+RUN npm run studio:build
+CMD ["node", "client/tests/webcam.browser.mjs"]
+
 FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production

@@ -164,7 +164,7 @@ export class ReplayPoseSource {
 export function createPoseRecorder(source, { songId, songTimeAt, playerCount }) {
   const lines = [JSON.stringify({ schema: 'aerodance.pose-recording', schemaVersion: 1, songId, playerCount, recordedAt: new Date().toISOString() })];
   const off = source.subscribeRecords(({ record, captureBrowserTimeMs, timing }) => {
-    if (record.type !== 'pose' || !Number.isFinite(captureBrowserTimeMs)) return;
+    if (record?.type !== 'pose' || !Number.isFinite(captureBrowserTimeMs)) return;
     lines.push(JSON.stringify({ songTimeMs: Math.round(songTimeAt(captureBrowserTimeMs) * 10) / 10, timing: timing?.method, record }));
   });
   return {

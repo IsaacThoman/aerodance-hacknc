@@ -2,10 +2,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import {
+  COMPILER_VERSION,
   validateProject,
   validateTake,
   compileProject,
   reviewReport,
+  trackDataIds,
+  validateTrackData,
+  migrateProject,
 } from "../core.js";
 export const sha = (b) => createHash("sha256").update(b).digest("hex");
 export const json = (v) => Buffer.from(JSON.stringify(v, null, 2) + "\n");
@@ -46,9 +50,9 @@ export class Store {
       if (this.queues.get(key) === next) this.queues.delete(key);
     }
   }
-  async save(project, expectedRevision) {
+  async save(project, expectedRevision, alreadyLocked = false) {
     validateProject(project);
-    return this.locked(project.projectId, async () => {
+    const persist = async () => {
       let current;
       try {
         current = await this.read(project.projectId, "project.json");
@@ -79,6 +83,24 @@ export class Store {
         await fs.access(
           this.location(project.projectId, "takes", `${id(t.takeId)}.json`),
         );
+      for (const dataId of trackDataIds(project))
+        await fs.access(
+          this.location(project.projectId, "tracks", `${id(dataId)}.json`),
+        );
+      if (project.schemaVersion === 2) {
+        for (const track of project.tracks)
+          for (const dataId of new Set(
+            [track.dataId, track.originalDataId].filter(Boolean),
+          )) {
+            const data = await this.read(
+              project.projectId,
+              "tracks",
+              `${id(dataId)}.json`,
+            );
+            if (data.playerId !== track.playerId || data.dataId !== dataId)
+              throw Error("Track snapshot belongs to another player");
+          }
+      }
       const next = {
         ...project,
         revision: (current?.revision || 0) + 1,
@@ -94,7 +116,8 @@ export class Store {
         json(next),
       );
       return next;
-    });
+    };
+    return alreadyLocked ? persist() : this.locked(project.projectId, persist);
   }
   async list() {
     await fs.mkdir(path.join(this.root, "projects"), { recursive: true });
@@ -105,6 +128,7 @@ export class Store {
         const p = await this.read(folder, "project.json");
         projects.push({
           projectId: p.projectId,
+          schemaVersion: p.schemaVersion,
           title: p.metadata.title,
           artist: p.metadata.artist,
           updatedAt: p.updatedAt,
@@ -134,7 +158,83 @@ export class Store {
         await this.read(p.projectId, "takes", `${id(t.takeId)}.json`),
       ]),
     );
+    for (const dataId of trackDataIds(p))
+      entries.push([
+        dataId,
+        await this.read(p.projectId, "tracks", `${id(dataId)}.json`),
+      ]);
     return new Map(entries);
+  }
+  async open(projectId) {
+    return this.locked(projectId, async () => {
+      const p = await this.read(projectId, "project.json");
+      validateProject(p);
+      if (p.schemaVersion === 2) return p;
+      const assets = await this.takes(p),
+        next = migrateProject(p, assets);
+      for (const dataId of trackDataIds(next))
+        await this.writeTrack(projectId, assets.get(dataId), false, true);
+      return this.save(next, p.revision, true);
+    });
+  }
+  async writeTrack(
+    projectId,
+    data,
+    requireProject = false,
+    alreadyLocked = false,
+  ) {
+    validateTrackData(data);
+    const persist = async () => {
+      if (requireProject) await this.read(projectId, "project.json");
+      const filename = this.location(
+        projectId,
+        "tracks",
+        `${id(data.dataId)}.json`,
+      );
+      try {
+        const current = await fs.readFile(filename);
+        if (!current.equals(json(data)))
+          throw Error("Track snapshot is immutable");
+      } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+        await this.atomic(filename, json(data));
+      }
+      return { dataId: data.dataId };
+    };
+    return alreadyLocked ? persist() : this.locked(projectId, persist);
+  }
+  async remove(projectId, expectedRevision, takeId = null) {
+    return this.locked(projectId, async () => {
+      const p = await this.read(projectId, "project.json");
+      if (p.revision !== expectedRevision)
+        throw Object.assign(Error("Project changed. Reload before deleting."), {
+          status: 409,
+        });
+      if (!takeId) {
+        await fs.rm(this.location(projectId), { recursive: true });
+        return { deleted: true };
+      }
+      if (p.schemaVersion !== 2)
+        throw Error("Open the project before deleting takes");
+      if (!p.takes.some((t) => t.takeId === takeId))
+        throw Object.assign(Error("Take not found"), { status: 404 });
+      p.takes = p.takes.filter((t) => t.takeId !== takeId);
+      p.revision++;
+      p.updatedAt = new Date().toISOString();
+      await this.atomic(
+        this.location(projectId, "revisions", `${p.revision}.json`),
+        json(p),
+      );
+      await this.atomic(this.location(projectId, "project.json"), json(p));
+      await fs.rm(this.location(projectId, "takes", `${id(takeId)}.json`), {
+        force: true,
+      });
+      await fs.rm(this.location(projectId, "capture", id(takeId)), {
+        recursive: true,
+        force: true,
+      });
+      return p;
+    });
   }
   async compile(p) {
     const data = compileProject(p, await this.takes(p));
@@ -173,7 +273,7 @@ export class Store {
       rigProfile: "frutiger-seven-bone-v1",
       createdAt: p.createdAt,
       publishedAt: p.updatedAt,
-      build: { compilerVersion: "1.0.0", projectRevision: p.revision },
+      build: { compilerVersion: COMPILER_VERSION, projectRevision: p.revision },
     };
     const files = new Map([
       ["song.json", json(song)],

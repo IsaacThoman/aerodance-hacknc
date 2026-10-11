@@ -10,8 +10,11 @@ import {
   takeFromRecords,
   validateProject,
   validateTake,
+  trackDataIds,
+  migrateProject,
 } from "../core.js";
 import { validate as validateWire } from "../../../client/src/pose/protocol.js";
+import { validateWebcamRecord } from '../../../packages/pose/webcamRecord.js';
 
 export function createStudio({
   dataDir = process.env.STUDIO_DATA_DIR || path.resolve("studio-data"),
@@ -43,14 +46,42 @@ export function createStudio({
   app.post("/api/projects", body, async (_req, res) =>
     res.status(201).json(await store.save(newProject(), null)),
   );
-  app.get("/api/projects/:projectId", async (req, res) =>
-    res.json(await store.read(req.params.projectId, "project.json")),
-  );
+  app.get("/api/projects/:projectId", async (req, res) => {
+    const project = await store.open(req.params.projectId);
+    validateProject(project);
+    res.json(project);
+  });
   app.put("/api/projects/:projectId", body, async (req, res) => {
     if (req.body.projectId !== req.params.projectId)
       throw Error("Project ID mismatch");
     res.json(await store.save(req.body, req.body.revision));
   });
+  app.delete("/api/projects/:projectId", body, async (req, res) =>
+    res.json(await store.remove(id(req.params.projectId), req.body.revision)),
+  );
+  app.delete("/api/projects/:projectId/takes/:takeId", body, async (req, res) =>
+    res.json(
+      await store.remove(
+        id(req.params.projectId),
+        req.body.revision,
+        id(req.params.takeId),
+      ),
+    ),
+  );
+  app.post("/api/projects/:projectId/tracks", body, async (req, res) =>
+    res
+      .status(201)
+      .json(await store.writeTrack(id(req.params.projectId), req.body, true)),
+  );
+  app.get("/api/projects/:projectId/tracks/:dataId", async (req, res) =>
+    res.json(
+      await store.read(
+        req.params.projectId,
+        "tracks",
+        `${id(req.params.dataId)}.json`,
+      ),
+    ),
+  );
   app.get("/api/projects/:projectId/takes/:takeId", async (req, res) =>
     res.json(
       await store.read(
@@ -61,8 +92,12 @@ export function createStudio({
     ),
   );
   app.post("/api/projects/:projectId/import", body, async (req, res) => {
-    await store.read(req.params.projectId, "project.json");
-    res.status(201).json(await store.writeTake(req.params.projectId, req.body));
+    const projectId = id(req.params.projectId);
+    const take = await store.locked(projectId, async () => {
+      validateProject(await store.read(projectId, "project.json"));
+      return store.writeTake(projectId, req.body);
+    });
+    res.status(201).json(take);
   });
   app.post("/api/projects/:projectId/audio", raw, async (req, res) => {
     const projectId = id(req.params.projectId),
@@ -89,6 +124,7 @@ export function createStudio({
     };
     const next = await store.locked(projectId, async () => {
       const p = await store.read(projectId, "project.json");
+      validateProject(p);
       if (p.revision !== Number(req.query.revision))
         throw Object.assign(
           Error("Project changed. Save/reload before uploading."),
@@ -128,19 +164,24 @@ export function createStudio({
       );
   });
   app.post("/api/projects/:projectId/takes", body, async (req, res) => {
+    if (!['android', 'webcam'].includes(req.body.sourceKind || 'android')) throw Error('Invalid capture source');
     const projectId = id(req.params.projectId);
-    await store.read(projectId, "project.json");
-    const takeId = randomUUID(),
-      metadata = {
-        takeId,
-        projectId,
-        name: String(req.body.name || "Android take").slice(0, 200),
-        createdAt: new Date().toISOString(),
-        status: req.body.status || null,
-      };
-    const folder = store.location(projectId, "capture", takeId);
-    await fs.mkdir(path.join(folder, "batches"), { recursive: true });
-    await store.atomic(path.join(folder, "capture.json"), json(metadata));
+    const metadata = await store.locked(projectId, async () => {
+      validateProject(await store.read(projectId, "project.json"));
+      const takeId = randomUUID(),
+        metadata = {
+          takeId,
+          projectId,
+          name: String(req.body.name || "Android take").slice(0, 200),
+          createdAt: new Date().toISOString(),
+          status: req.body.status || null,
+          sourceKind: req.body.sourceKind || "android",
+        };
+      const folder = store.location(projectId, "capture", takeId);
+      await fs.mkdir(path.join(folder, "batches"), { recursive: true });
+      await store.atomic(path.join(folder, "capture.json"), json(metadata));
+      return metadata;
+    });
     res.status(201).json(metadata);
   });
   app.post(
@@ -158,6 +199,7 @@ export function createStudio({
         records.length > 500
       )
         throw Error("Invalid record batch");
+      const metadata = JSON.parse(await fs.readFile(path.join(folder, 'capture.json'), 'utf8'));
       for (const e of records) {
         if (
           !Number.isSafeInteger(e.ordinal) ||
@@ -171,10 +213,14 @@ export function createStudio({
         if (e.record) {
           if (Buffer.byteLength(JSON.stringify(e.record)) > 16384)
             throw Error("Wire record exceeds 16 KiB");
-          validateWire(e.record);
+          if (metadata.sourceKind === 'webcam') {
+            validateWebcamRecord(e.record);
+            if (!Number.isFinite(e.audioPositionAtFrameMs)) throw Error('Missing webcam audio anchor');
+          } else validateWire(e.record);
         } else if (!e.event) throw Error("Missing record/event");
       }
-      await store.locked(`${projectId}/${takeId}`, async () => {
+      await store.locked(projectId, async () => {
+        await store.read(projectId, "project.json");
         await fs.access(path.join(folder, "capture.json"));
         if (
           await fs.access(path.join(folder, "sealed")).then(
@@ -204,7 +250,8 @@ export function createStudio({
       const projectId = id(req.params.projectId),
         takeId = id(req.params.takeId),
         folder = store.location(projectId, "capture", takeId);
-      const take = await store.locked(`${projectId}/${takeId}`, async () => {
+      const take = await store.locked(projectId, async () => {
+        await store.read(projectId, "project.json");
         if (
           await fs.access(path.join(folder, "sealed")).then(
             () => true,
@@ -291,6 +338,13 @@ export function createStudio({
         if (e.code !== "ENOENT") throw e;
       }
     }
+    for (const dataId of trackDataIds(p))
+      files.set(
+        `tracks/${dataId}.json`,
+        await fs.readFile(
+          store.location(p.projectId, "tracks", `${id(dataId)}.json`),
+        ),
+      );
     if (p.audio)
       files.set(
         `assets/${p.audio.sha256}.${p.audio.extension}`,
@@ -309,7 +363,8 @@ export function createStudio({
   });
   app.post("/api/restore", raw, async (req, res) => {
     const files = readZip(req.body),
-      p = JSON.parse(files.get("project.json")?.toString() || "null");
+      restored = JSON.parse(files.get("project.json")?.toString() || "null");
+    let p = restored;
     validateProject(p);
     p.projectId = randomUUID();
     p.revision = 0;
@@ -325,6 +380,21 @@ export function createStudio({
           store.location(p.projectId, "capture", ref.takeId, "records.ndjson"),
           raw,
         );
+    }
+    if (p.schemaVersion === 1) {
+      const assets = await store.takes(p);
+      p = migrateProject(p, assets);
+      for (const dataId of trackDataIds(p))
+        await store.writeTrack(p.projectId, assets.get(dataId));
+    } else {
+      for (const dataId of trackDataIds(p)) {
+        const data = JSON.parse(
+          files.get(`tracks/${dataId}.json`)?.toString() || "null",
+        );
+        if (data?.dataId !== dataId)
+          throw Error("Backup track reference mismatch");
+        await store.writeTrack(p.projectId, data);
+      }
     }
     if (p.audio) {
       if (
@@ -355,11 +425,9 @@ export function createStudio({
   );
   app.use((err, _req, res, _next) => {
     const status = err.status || (err.code === "ENOENT" ? 404 : 400);
-    res
-      .status(status)
-      .json({
-        error: status === 404 ? "Project/asset not found" : err.message,
-      });
+    res.status(status).json({
+      error: status === 404 ? "Project/asset not found" : err.message,
+    });
   });
   return { app, store };
 }

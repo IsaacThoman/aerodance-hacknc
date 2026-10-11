@@ -6,14 +6,15 @@ import {
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { playUISound } from '../audio/uiSounds.js';
-import { CARD, CLOSE, COLUMN, FIELD, KEYS, MODES, PILL, PRIMARY, STATUS } from './layout.js';
+import { CARD, CLOSE, COLUMN, FIELD, KEYS, MODES, PILL, PRIMARY, STATUS, CAMERA_PREV, CAMERA_NEXT, MODEL_RECTS, WEBCAM_PREVIEW } from './layout.js';
+import { MODELS } from '../../../packages/pose/browser/models.js';
+import { drawWebcamPreview } from '../../../packages/pose/browser/preview.js';
 
 /**
- * Connect Client, drawn in-engine: a status pill in the top-right corner of Settings and,
- * when it's pressed (or a Song Select player slot is), a card for choosing the pose input.
- * Android needs its IP address, typed on the card's keypad (so the phone remote and touch
- * screens can enter it) or the keyboard; the webcam dummy just lets the menus be tested without a device. The source is
- * pose/AndroidPoseSource.js; it remembers the last address that connected.
+ * Connect Client, drawn in-engine: a status pill in the top-right corner of Settings
+ * opens a card for choosing the pose input. Android needs its IP address, typed on the
+ * card keypad or keyboard. Webcam runs the chosen MediaPipe model locally and previews
+ * player placement in the card.
  *
  * While the card is open the rest of the menus are held (App passes them `blocked`).
  * The canvas reports data-connect-open / -ready / -status / -mode / -message / -address for tests.
@@ -28,7 +29,6 @@ const savedAddress = () => {
 };
 const ACTIVE = ['connecting', 'initializing', 'connected', 'reconnecting'];
 const LABELS = {
-  dummy: 'Webcam · Dummy',
   connected: 'Client Connected',
   connecting: 'Connecting…',
   initializing: 'Camera starting…',
@@ -101,10 +101,12 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
   const close = () => props.current.onOpenChange?.(false);
   const submit = () => {
     const p = props.current;
-    if (p.inputMode === 'webcam') { close(); return; }
     if (connecting()) { p.source.disconnect(); return; }
     // An invalid address throws before anything is disconnected.
-    try { p.source.connect(st.address); st.error = ''; } catch (err) { st.error = err.message; }
+    try {
+      const result = p.source.connect(p.inputMode === 'android' ? st.address : undefined);
+      result?.catch(err => { st.error = err.message; }); st.error = '';
+    } catch (err) { st.error = err.message; }
   };
   const edit = (key) => {
     if (!typing()) return;
@@ -124,6 +126,11 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
         { id: 'close', circle: CLOSE, sound: 'back' },
         ...MODES.map((m) => ({ id: `mode-${m.id}`, mode: m.id, rect: m.rect })),
         ...(typing() ? KEYS.map((k) => ({ id: `key-${k.key}`, key: k.key, rect: k.rect })) : []),
+        ...(props.current.inputMode === 'webcam' ? [
+          { id: 'camera-prev', rect: CAMERA_PREV, cameraDelta: -1 },
+          { id: 'camera-next', rect: CAMERA_NEXT, cameraDelta: 1 },
+          ...MODELS.map((model, i) => ({ id: `model-${model.id}`, rect: MODEL_RECTS[i], modelId: model.id })),
+        ] : []),
         { id: 'primary', rect: PRIMARY },
         { id: 'pill', rect: PILL, nav: false, sound: 'back' },
       ];
@@ -134,6 +141,14 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
       else if (wdg.id === 'close') close();
       else if (wdg.mode && wdg.mode !== p.inputMode) { st.error = ''; p.onInputModeChange?.(wdg.mode); }
       else if (wdg.key) edit(wdg.key);
+      else if (wdg.modelId) {
+        st.error = ''; void p.source.configure({ modelId: wdg.modelId }).catch(err => { st.error = err.message; });
+      } else if (wdg.cameraDelta) {
+        const cameras = [{ deviceId: '', label: 'Default camera' }, ...(p.connection.cameras || [])];
+        const index = Math.max(0, cameras.findIndex(camera => camera.deviceId === p.connection.cameraId));
+        const camera = cameras[(index + wdg.cameraDelta + cameras.length) % cameras.length];
+        st.error = ''; void p.source.configure({ cameraId: camera.deviceId }).catch(err => { st.error = err.message; });
+      }
       else if (wdg.id === 'primary') submit();
       s.invalidate();
     },
@@ -162,13 +177,17 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
       if (blink !== st.blink && p.open && typing()) { st.blink = blink; s.invalidate(); }
       const { status } = p.connection;
       const ready = p.open && st.k >= 0.5 && st.alpha > 0.3;
-      const key = `${status}|${message()}|${p.inputMode}|${p.open}|${st.address}|${ready}`;
+      if (p.open && p.inputMode === 'webcam' && p.source.video && s.time - (st.lastPreview || 0) > 1 / 15) {
+        st.lastPreview = s.time; s.invalidate();
+      }
+      const key = `${status}|${message()}|${p.inputMode}|${p.open}|${st.address}|${ready}|${p.connection.model}|${p.connection.cameraId}|${p.connection.cameras?.length}`;
       if (key !== st.drawn) {
         st.drawn = key;
         s.invalidate();
         Object.assign(gl.domElement.dataset, {
           connectOpen: String(p.open), connectReady: String(ready), connectStatus: status, connectMode: p.inputMode,
           connectMessage: message(), connectAddress: st.address,
+          connectModel: p.connection.model || '', connectCamera: p.connection.cameraId || '',
         });
       }
     },
@@ -213,14 +232,26 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
           }
           for (const k2 of KEYS) drawKey(g, k2, h[`key-${k2.key}`] ?? 0, press(`key-${k2.key}`), !active);
         } else {
-          paragraph(g, 'Webcam capture and tracking are not implemented yet. This dummy option lets you continue through the menus without connecting Android.',
-            COLUMN.x + 4, FIELD.y - 10, CARD.w - 72, { size: 26, lineH: 36 });
+          text(g, 'Camera · use arrows to choose', COLUMN.x + 4, FIELD.y - 26, { size: 22, weight: 700, color: '#bff4ff' });
+          drawPill(g, CAMERA_PREV, { label: '', icon: 'left', hover: h['camera-prev'] ?? 0 });
+          drawPill(g, CAMERA_NEXT, { label: '', icon: 'right', hover: h['camera-next'] ?? 0 });
+          const camera = p.connection.cameras?.find(camera => camera.deviceId === p.connection.cameraId);
+          g.font = `700 24px ${FONT}`;
+          text(g, ellipsize(g, camera?.label || 'Default camera', 470), CARD.x + CARD.w / 2, FIELD.y + 29, { size: 24, align: 'center' });
+          MODELS.forEach((model, i) => drawPill(g, MODEL_RECTS[i], {
+            label: `${p.connection.model === model.id ? '● ' : ''}${model.label}`, icon: 'gear', hover: h[`model-${model.id}`] ?? 0,
+          }));
+          drawWebcamPreview(g, p.source.video, p.connection.snapshot, WEBCAM_PREVIEW, p.source.playerCount);
+          paragraph(g, MODELS.find(model => model.id === p.connection.model)?.description || '',
+            WEBCAM_PREVIEW.x + WEBCAM_PREVIEW.w + 20, WEBCAM_PREVIEW.y + 20, 365, { size: 21, lineH: 27 });
+          paragraph(g, 'Keep your full body visible. Video stays in this browser. Camera access needs HTTPS or localhost.',
+            WEBCAM_PREVIEW.x + WEBCAM_PREVIEW.w + 20, WEBCAM_PREVIEW.y + 78, 365, { size: 19, lineH: 24 });
         }
 
         paragraph(g, message(), STATUS.x + 4, STATUS.y, STATUS.w - 8, { size: 21, lineH: 28, color: st.error || status === 'error' ? '#ffb38a' : '#ffffff' });
 
-        const active = p.inputMode === 'android' && connecting();
-        const label = p.inputMode === 'webcam' ? 'Ok' : active ? (status === 'connected' ? 'Disconnect' : 'Cancel connection') : 'Connect';
+        const active = connecting();
+        const label = active ? (status === 'connected' ? 'Disconnect' : 'Cancel connection') : p.inputMode === 'webcam' ? 'Start camera' : 'Connect';
         drawPill(g, PRIMARY, { label, icon: active ? 'close' : p.inputMode === 'webcam' ? 'play' : 'camera', hover: h.primary ?? 0, press: press('primary') });
         g.restore();
       }

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { Group, Vector3 } from "three";
+import { Box3, Group, Vector3 } from "three";
+import { createPoseApplier, calibratePoses } from '../../../packages/character/retarget.js';
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import {
@@ -22,6 +23,82 @@ const asset = await new GLTFLoader().parseAsync(
   buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
   "",
 );
+
+function meshBounds(model, prefix) {
+  let mesh;
+  model.traverse(o => { if (o.isSkinnedMesh && o.name.startsWith(prefix)) mesh = o; });
+  mesh.skeleton.update();
+  const bounds = new Box3(), vertex = new Vector3();
+  for (let i = 0; i < mesh.geometry.attributes.position.count; i++)
+    bounds.expandByPoint(mesh.getVertexPosition(i, vertex).applyMatrix4(mesh.matrixWorld));
+  return bounds;
+}
+function standingPose() {
+  const landmarks = Array.from({ length: 33 }, () => ({ x: .5, y: .2, z: 0, visibility: 1, presence: 1 }));
+  for (const [i, x, y] of [[11,.56,.3],[12,.44,.3],[23,.56,.55],[24,.44,.55],
+    [15,.67,.3],[16,.33,.3],[27,.56,.9],[28,.44,.9]]) Object.assign(landmarks[i], { x, y });
+  return { playerId: 0, landmarks };
+}
+test('webcam distance compensation keeps hands, feet and root consistent across framing and aspect ratios', () => {
+  const reference = standingPose();
+  reference.landmarks.forEach((p,i) => { p.x -= .2; p.z=(i-20)*.003; });
+  const names=['Root','Body','Head','ArmL','ArmR','FootL','FootR'];
+  const project=(pose,zoom,aspect)=>({ ...pose, landmarks:pose.landmarks.map(p=>({ ...p,
+    x:.5+(p.x-.5)*zoom*(4/3)/aspect,y:.5+(p.y-.5)*zoom,z:p.z*zoom*(4/3)/aspect,
+  })) });
+  const baseline=clone(asset.scene);
+  createPoseApplier(baseline,calibratePoses([reference],{width:640,height:480},{adaptiveDistance:true}))(reference);
+  for(const input of [{width:640,height:480},{width:1280,height:720},{width:480,height:640}]) {
+    const aspect=input.width/input.height;
+    const neutral=project(reference,1,aspect), model=clone(asset.scene);
+    // Retain the near calibration while the dancer moves back; do not silently
+    // recalibrate every frame to make the regression pass.
+    const apply=createPoseApplier(model,calibratePoses([neutral],input,{adaptiveDistance:true}));
+    for(const zoom of [.35,.6,1,1.2]) {
+      const projected=project(reference,zoom,aspect), raw=structuredClone(projected);
+      apply(projected);
+      for(const name of names) {
+        const expected=baseline.getObjectByName(name), actual=model.getObjectByName(name);
+        assert.ok(actual.position.distanceTo(expected.position)<1e-6, `${name} position at framing ${zoom}, aspect ${aspect}`);
+        assert.ok(actual.quaternion.angleTo(expected.quaternion)<1e-6, `${name} orientation`);
+      }
+      assert.deepEqual(projected,raw);
+    }
+  }
+});
+test('original wrist reach and continuous foot depth are preserved', () => {
+  const model=clone(asset.scene), standing=standingPose();
+  const calibration=calibratePoses([standing]);
+  const apply=createPoseApplier(model,calibration);
+  apply(standing);
+  assert.ok(Math.abs(meshBounds(model,'ArmR').getCenter(new Vector3()).x-.952)<1e-5);
+  assert.ok(Math.abs(meshBounds(model,'ArmL').getCenter(new Vector3()).x+.952)<1e-5);
+  for(const y of [.9,.897,.894,.85,.65]) {
+    const lifted=structuredClone(standing); lifted.landmarks[27].y=lifted.landmarks[28].y=y;
+    const raw=structuredClone(lifted); apply(lifted);
+    for(const side of ['L','R']) {
+      const foot=meshBounds(model,`Foot${side}`);
+      assert.ok(Math.abs(foot.getCenter(new Vector3()).z)<1e-5,'feet do not snap forward at the torso boundary');
+      assert.ok(foot.min.y>=0,'feet stay above the floor');
+    }
+    assert.deepEqual(lifted,raw);
+  }
+});
+test('live distance smoothing damps torso noise without changing recorded playback', () => {
+  const standing=standingPose(), calibration=calibratePoses([standing],undefined,{adaptiveDistance:true});
+  const live=clone(asset.scene), recorded=clone(asset.scene);
+  const applyLive=createPoseApplier(live,calibration,{smoothDistance:true});
+  const applyRecorded=createPoseApplier(recorded,calibration);
+  applyLive(standing); applyRecorded(standing);
+  const initial=meshBounds(live,'ArmR').getCenter(new Vector3()).x;
+  const noise=structuredClone(standing); noise.landmarks[11].y-=.01; noise.landmarks[12].y-=.01;
+  applyLive(noise,1/60); applyRecorded(noise);
+  const liveJump=Math.abs(meshBounds(live,'ArmR').getCenter(new Vector3()).x-initial);
+  const recordedJump=Math.abs(meshBounds(recorded,'ArmR').getCenter(new Vector3()).x-initial);
+  assert.ok(liveJump<recordedJump/5,'a single noisy torso measurement cannot resize the whole avatar');
+  for(let i=0;i<150;i++) applyLive(standing,1/60);
+  assert.ok(Math.abs(meshBounds(live,'ArmR').getCenter(new Vector3()).x-initial)<1e-5);
+});
 
 
 test("capture has two finite, timestamped tracks and usable tracking coverage", () => {

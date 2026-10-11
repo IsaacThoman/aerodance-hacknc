@@ -79,7 +79,7 @@ export class GameSession {
   }
 
   onRecord({ record, captureBrowserTimeMs }) {
-    if (record.type !== 'pose' || record.playerCount !== this.playerCount) return;
+    if (record?.type !== 'pose' || record.playerCount !== this.playerCount) return;
     const now = this.now();
     for (let id = 0; id < this.playerCount; id++) {
       const pose = record.poses.find((p) => p.playerId === id);
