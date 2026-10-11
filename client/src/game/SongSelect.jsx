@@ -10,9 +10,11 @@ import { duckMenuMusic } from '../audio/mixer.js';
 import { createSongPlayer } from '../audio/songPlayer.js';
 import { loadSongBundle } from '../songs/loadBundle.js';
 import { validateCatalog } from '../../../packages/pose/song.js';
+import { SCORER_VERSION } from '../../../packages/score/scorer.js';
+import { bestScore } from './bestScores.js';
 import { STAGE_LIST, preloadStage, resolveStage, stageName } from '../../../packages/stages/index.js';
 import {
-  BACK, BAR, LINK_Y, PAGE_DOWN, PAGE_UP, PLAY, READY, RETRY, ROWS, SCRUB, STAGE_CARD, STAGE_NEXT, STAGE_PREV, rowRect, slotRect,
+  BACK, BAR, DANCE, LINK_Y, PAGE_DOWN, PAGE_UP, PLAY, READY, RETRY, ROWS, SCRUB, STAGE_CARD, STAGE_NEXT, STAGE_PREV, rowRect, slotRect,
 } from './layout.js';
 
 /**
@@ -21,8 +23,9 @@ import {
  *   list     the published songs (songs/manifest.json, found by server/songCatalog.js),
  *            four to a page, and each player's readiness from the pose input
  *   preview  a song's music with its reference dancers on the song's stage (StageView,
- *            mounted by App from onPreviewChange), a stage picker, play / pause and a
- *            scrubbable timeline; the menu music ducks underneath
+ *            mounted by App from onPreviewChange), a stage picker, play / pause, a
+ *            scrubbable timeline and Dance!, which hands the bundle to the game (onDance);
+ *            the menu music ducks underneath
  *
  * Bundles are fully verified before they play (songs/loadBundle.js). Back / Escape / the
  * remote's B go from the preview to the list and from the list to the player count.
@@ -30,7 +33,7 @@ import {
  * and -preview-time-ms for tests.
  *
  * <SongSelect visible blocked playerCount={1} connection={view} onBack onOpenConnect
- *   stageId stageState={{ showing, ready, stage, failed }} onStageChange onPreviewChange />
+ *   stageId stageState={{ showing, ready, stage, failed }} onStageChange onPreviewChange onDance />
  */
 
 const CATALOG_URL = () => new URL(`${import.meta.env.BASE_URL}songs/manifest.json`, window.location.href).href;
@@ -56,7 +59,8 @@ function cuesFor(connection, playerCount) {
   const cues = [];
   if (connection.status === 'connected' && connection.model === 'synthetic') cues.push(['Synthetic test source · tracking is simulated.']);
   if (connection.status === 'initializing' && connection.message) cues.push([connection.message]);
-  if (connection.status === 'dummy') cues.push(['Webcam dummy · menu testing enabled · camera capture and tracking are not implemented.']);
+  if (connection.status === 'dummy') cues.push(['Webcam dummy · menu testing only · without tracking, songs play unscored.']);
+  if (connection.model === 'replay') cues.push([connection.message]);
   if (playerCount === 2 && connection.status !== 'dummy') cues.push([PLACEMENT_CUE, '#ffe27a']);
   return cues;
 }
@@ -137,11 +141,11 @@ function drawStageCard(g, stageId, songStage, stageState, hover, press) {
 
 export default function SongSelect({
   visible = false, blocked = false, playerCount = 1, connection, onBack, onOpenConnect,
-  stageId, stageState = {}, onStageChange, onPreviewChange,
+  stageId, stageState = {}, onStageChange, onPreviewChange, onDance,
 }) {
   const gl = useThree((state) => state.gl);
   const props = useRef({});
-  props.current = { visible, blocked, playerCount, connection, onBack, onOpenConnect, stageId, stageState, onStageChange, onPreviewChange };
+  props.current = { visible, blocked, playerCount, connection, onBack, onOpenConnect, stageId, stageState, onStageChange, onPreviewChange, onDance };
   const st = useRef({
     alpha: 0, screen: 'list', next: 'list', swap: 1, page: 0,
     catalog: { status: 'idle', songs: [], error: '' }, catalogCtl: null,
@@ -253,6 +257,12 @@ export default function SongSelect({
     preloadStage(STAGE_LIST[(i + dir * 2 + STAGE_LIST.length * 2) % STAGE_LIST.length].id);
     props.current.onStageChange?.(next);
   };
+  const dance = () => {
+    const { bundle } = st;
+    if (!bundle) return;
+    closePreview();
+    props.current.onDance?.(bundle);
+  };
   const togglePlay = () => {
     const { player } = st;
     if (!player) return;
@@ -270,6 +280,7 @@ export default function SongSelect({
           { id: 'back', circle: BACK },
           { id: 'stage-prev', circle: STAGE_PREV },
           { id: 'stage-next', circle: STAGE_NEXT },
+          { id: 'dance', rect: DANCE },
         ];
         if (st.player) list.push({ id: 'play', rect: PLAY }, { id: 'scrub', drag: true, rect: SCRUB_HIT });
         return list;
@@ -297,6 +308,7 @@ export default function SongSelect({
       else if (wdg.id === 'stage-prev') stepStage(-1);
       else if (wdg.id === 'stage-next') stepStage(1);
       else if (wdg.id === 'play') togglePlay();
+      else if (wdg.id === 'dance') dance();
       s.invalidate();
     },
     onDrag: (_wdg, p) => {
@@ -395,7 +407,9 @@ export default function SongSelect({
             const loadingThis = st.loading?.id === song.id;
             g.font = `700 ${Math.round(rect.h * 0.34)}px ${FONT}`;
             const label = ellipsize(g, song.title, rect.w - rect.h - 44);
-            const sub = loadingThis ? `Loading bundle${dots}` : [song.artist, song.difficulty ?? 'Routine', song.stage ? stageName(song.stage) : null].filter(Boolean).join(' · ');
+            const best = bestScore(song.id, p.playerCount, SCORER_VERSION);
+            const sub = loadingThis ? `Loading bundle${dots}` : [song.artist, song.difficulty ?? 'Routine', song.stage ? stageName(song.stage) : null,
+              best ? `Best ${best.score.toLocaleString('en-US')} ${best.grade}` : null].filter(Boolean).join(' · ');
             g.font = `600 ${Math.round(rect.h * 0.22)}px ${FONT}`;
             drawPill(g, rect, {
               label, sub: ellipsize(g, sub, rect.w - rect.h - 44), icon: 'note',
@@ -427,7 +441,7 @@ export default function SongSelect({
         g.shadowOffsetY = 2;
         st.linkRect = drawLink(g, 'Watch the captured dance preview ↗', ROWS.x, LINK_Y, (h.demo ?? 0) > 0.5, { size: 26 });
         g.restore();
-        drawShadowText(g, 'Music and reference dancers · no scoring yet', ROWS.x, LINK_Y + 50, { size: 22, weight: 600, color: '#e6f8ff' });
+        drawShadowText(g, 'Copy the dancers to score · best scores stay on this browser', ROWS.x, LINK_Y + 50, { size: 22, weight: 600, color: '#e6f8ff' });
 
         // Readiness: one slot per player, then whatever the pose input needs to say.
         const c = p.connection;
@@ -455,7 +469,8 @@ export default function SongSelect({
 
         const error = st.previewError || (p.stageState.dancersFailed ? 'Character preview could not load.' : '');
         if (error) drawShadowText(g, error, BAR.x, BAR.y - 86, { size: 26, color: '#ffb38a' });
-        drawShadowText(g, 'Music and reference choreography preview · scoring and countdown are still in development.', BAR.x, BAR.y - 34, { size: 21, weight: 600, color: '#e6f8ff' });
+        drawShadowText(g, 'Preview the routine, then press Dance! to play it for a score.', BAR.x, BAR.y - 34, { size: 21, weight: 600, color: '#e6f8ff' });
+        drawPill(g, DANCE, { label: 'Dance!', sub: p.playerCount === 1 ? 'One player' : 'Two players', icon: 'play', hover: h.dance ?? 0, press: press('dance') });
         drawGlassPanel(g, BAR, 30);
         const playing = st.previewState === 'playing';
         drawPill(g, PLAY, {

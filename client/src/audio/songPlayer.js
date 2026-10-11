@@ -25,6 +25,7 @@ export async function createSongPlayer(blob, { startMs, endMs }) {
   let source = null;
   let positionMs = startMs;
   let startedAt = 0; // ctx time at which song time 0 would have been scheduled
+  let playFrom = startMs; // where the current play() starts: song time holds here until then
   const clamp = (ms) => Math.min(end, Math.max(startMs, ms));
 
   const stop = () => {
@@ -49,7 +50,8 @@ export async function createSongPlayer(blob, { startMs, endMs }) {
     endMs: end,
     ended: false,
     timeMs() {
-      return clamp(player.rawTimeMs());
+      const raw = player.rawTimeMs();
+      return clamp(player.state === 'playing' ? Math.max(raw, playFrom) : raw);
     },
     rawTimeMs() {
       if (player.state !== 'playing') return positionMs;
@@ -65,6 +67,7 @@ export async function createSongPlayer(blob, { startMs, endMs }) {
       if (ctx.state === 'suspended') ctx.resume();
       if (positionMs >= end - 1) positionMs = startMs;
       player.ended = false;
+      playFrom = positionMs;
       source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(out);
