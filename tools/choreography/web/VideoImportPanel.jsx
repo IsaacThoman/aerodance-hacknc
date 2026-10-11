@@ -5,7 +5,8 @@ import { VideoImporter } from './videoImport.js';
 
 export default function VideoImportPanel({ file, projectId, request, onImported, onClose, onBusy }) {
   const [url] = useState(() => URL.createObjectURL(file));
-  const [model, setModel] = useState('lite'), [fps, setFps] = useState(30);
+  const [model, setModel] = useState('lite'), [fps, setFps] = useState('30');
+  const rate = /^\d+$/.test(fps) && +fps >= 1 && +fps <= 30 ? +fps : null;
   const [ready, setReady] = useState(false), [working, setWorking] = useState(false);
   const [processed, setProcessed] = useState(false), [calibration, setCalibration] = useState(null);
   const [detections, setDetections] = useState([]);
@@ -19,7 +20,7 @@ export default function VideoImportPanel({ file, projectId, request, onImported,
   }, [url, onBusy]);
   const close = () => { active.current = false; importer.current?.abort(); onClose(); };
   const getImporter = () => {
-    importer.current ||= new VideoImporter({ video: video.current, file, modelId: model, sampleRate: fps, projectId, request, onProgress: setProgress });
+    importer.current ||= new VideoImporter({ video: video.current, file, modelId: model, sampleRate: rate, projectId, request, onProgress: setProgress });
     return importer.current;
   };
   const run = async action => {
@@ -74,10 +75,11 @@ export default function VideoImportPanel({ file, projectId, request, onImported,
       }}>{MODELS.map(m => <option key={m.id} value={m.id}>{m.label} · {m.description}</option>)}</select>
     </label>
     <label>Sample rate
-      <select aria-label="Video sample rate" value={fps} disabled={working} onChange={event => {
-        importer.current?.abort(); importer.current = null;
-        setFps(Number(event.target.value)); setProcessed(false); setProgress(null); setError('');
-      }}><option value={30}>30 fps</option><option value={15}>15 fps · faster processing</option></select>
+      <input type="number" aria-label="Video sample rate" min={1} max={30} step={1} value={fps} disabled={working}
+        aria-invalid={rate === null} onChange={event => {
+          importer.current?.abort(); importer.current = null;
+          setFps(event.target.value); setProcessed(false); setProgress(null); setError('');
+        }} /> fps{rate === null && ' · enter a whole number from 1 to 30'}
     </label>
     <video ref={video} src={url} controls={!working} muted playsInline preload="auto" aria-label="Source video"
       onLoadedData={() => {
@@ -86,7 +88,7 @@ export default function VideoImportPanel({ file, projectId, request, onImported,
         setReady(valid);
         if (!valid) setError('Choose a video between zero and one hour long');
       }} onError={() => { setReady(false); setError('This browser could not decode the video. Try MP4 or WebM with a supported codec.'); }} />
-    <button disabled={!ready || working} onClick={selectFrame}>Use current frame for calibration</button>
+    <button disabled={!ready || !rate || working} onClick={selectFrame}>Use current frame for calibration</button>
     <div className="video-calibration" hidden={!calibration}>
       <canvas ref={canvas} aria-label="Selected calibration frame" />
       {calibration && <p role="status">Calibration at {(calibration.mediaTimeMs / 1000).toFixed(2)}s · {calibration.poses.length
@@ -100,7 +102,7 @@ export default function VideoImportPanel({ file, projectId, request, onImported,
     <p className="muted">Up to two dancers are detected using the webcam’s left/right regions. Song audio stays unchanged. The source video is available only for this session; poses and calibration are saved.</p>
     <div className="video-import-actions">
       <button onClick={close}>{working ? 'Cancel import' : 'Cancel'}</button>
-      <button disabled={!ready || !calibration?.poses.length || detections.some(p => !p.ready) || working} onClick={process}>{processed ? 'Save take' : 'Process video'}</button>
+      <button disabled={!ready || !rate || !calibration?.poses.length || detections.some(p => !p.ready) || working} onClick={process}>{processed ? 'Save take' : 'Process video'}</button>
     </div>
   </dialog>;
 }
