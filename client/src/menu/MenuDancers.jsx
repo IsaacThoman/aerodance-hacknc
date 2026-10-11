@@ -1,7 +1,9 @@
 import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal, useFrame, useThree } from '@react-three/fiber';
+import { createPortal, useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import flockCameraUrl from '../aero/flock/flock-camera-world.glb?url';
 import Character from '../../../packages/character/Character.jsx';
 import { validateMotion } from '../../../packages/character/motion.js';
 import motionUrl from '../../../packages/character/assets/dance.json?url';
@@ -78,6 +80,15 @@ function Puck() {
   );
 }
 
+function FlockCamera() {
+  const { scene } = useLoader(GLTFLoader, flockCameraUrl);
+  const model = useMemo(() => scene.clone(true), [scene]);
+  return (
+    // The model faces +Z. Cancel the platform's turn to aim 30° toward screen left.
+    <primitive object={model} position={[0, 0, -2.2]} rotation={[0, -Math.PI / 6 - STAGE.turn, 0]} dispose={null} />
+  );
+}
+
 class Quiet extends Component {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -85,7 +96,7 @@ class Quiet extends Component {
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export default function MenuDancers({ visible = true, raised = false, solo = false }) {
+export default function MenuDancers({ visible = true, raised = false, solo = false, androidConnected = false }) {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
   const [motion, setMotion] = useState(null);
@@ -172,6 +183,13 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
       <directionalLight position={[-6, 12, 8]} intensity={2.5} />
       <pointLight position={[0, 1.3, 3]} color="#65f7ff" intensity={8} distance={9} />
       <group ref={rig} position={[STAGE.x + SLIDE, STAGE.y, STAGE.z]}>
+        {androidConnected && (
+          <Quiet>
+            <Suspense fallback={null}>
+              <FlockCamera />
+            </Suspense>
+          </Quiet>
+        )}
         <Quiet>
           <Suspense fallback={null}>
             <Puck />

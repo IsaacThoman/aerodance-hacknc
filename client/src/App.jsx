@@ -284,6 +284,7 @@ function DisplayApp() {
           visible={(menuOpen || songsOpen || (!!battleId && !inBattleSong)) && !stage.showing}
           raised={songsOpen}
           solo={songsOpen && playerCount === 1}
+          androidConnected={!replay && connection.sourceKind === 'android' && connection.status === 'connected'}
         />
         <MainMenu
           visible={menuOpen && !battleId}
