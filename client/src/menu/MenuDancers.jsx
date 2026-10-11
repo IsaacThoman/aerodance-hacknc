@@ -27,6 +27,7 @@ const DANCERS = [
 const PUCK = { r: 3.1, h: 0.26 };
 // Stage placement in front of the fixed camera (looking down -Z), then turned to face it.
 const STAGE = { x: 4.3, y: -2.6, z: -19, tilt: 0.2, turn: -0.22 };
+const FLOCK_SCALE = 4;
 // How far the stage rises when it's raised.
 const RAISE = 1.5;
 const SLIDE = 12;
@@ -82,10 +83,25 @@ function Puck() {
 
 function FlockCamera() {
   const { scene } = useLoader(GLTFLoader, flockCameraUrl);
-  const model = useMemo(() => scene.clone(true), [scene]);
+  const model = useMemo(() => {
+    const copy = scene.clone(true);
+    const assembly = copy.getObjectByName('Flock_Falcon_World');
+    const pole = copy.getObjectByName('Pole_|_simplified_12-foot_pole');
+    const top = new THREE.Box3().setFromObject(copy, true).max.y;
+    const poleHeight = new THREE.Box3().setFromObject(pole, true).max.y;
+    // Enlarge the hardware uniformly, keeping the original top height and pole foot.
+    // Lower the upper assembly and shorten only the shaft before scaling everything.
+    const drop = top * (1 - 1 / FLOCK_SCALE);
+    for (const part of assembly.children) {
+      if (part !== pole) part.position.y -= drop;
+    }
+    pole.scale.y = (poleHeight - drop) / poleHeight;
+    pole.position.y *= pole.scale.y;
+    return copy;
+  }, [scene]);
   return (
     // The model faces +Z. Cancel the platform's turn to aim 30° toward screen left.
-    <primitive object={model} position={[0, 0, -2.2]} rotation={[0, -Math.PI / 6 - STAGE.turn, 0]} dispose={null} />
+    <primitive object={model} position={[0, 0, -2.2]} rotation={[0, -Math.PI / 6 - STAGE.turn, 0]} scale={FLOCK_SCALE} dispose={null} />
   );
 }
 
