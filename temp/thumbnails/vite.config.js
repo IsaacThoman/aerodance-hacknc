@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   root: fileURLToPath(new URL('./client', import.meta.url)),
-  // The character model and dance capture come from the dance demo.
+  // The dance capture comes from the dance demo (the character model from packages/character).
   publicDir: fileURLToPath(new URL('../frutiger-character/client/public', import.meta.url)),
   plugins: [react()],
   // The stages, dancers and wordmark come from elsewhere in the repo; keep one copy of each runtime.

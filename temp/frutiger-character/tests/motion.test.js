@@ -8,7 +8,7 @@ import {
   validateMotion,
   samplePose,
   createRetargeter,
-} from "../client/src/motion.js";
+} from "../../../packages/character/motion.js";
 
 const data = JSON.parse(
   await readFile(
@@ -16,33 +16,33 @@ const data = JSON.parse(
   ),
 );
 const buffer = await readFile(
-  new URL("../client/public/models/aero-character.glb", import.meta.url),
+  new URL("../../../packages/character/assets/aero-character.glb", import.meta.url),
 );
 const asset = await new GLTFLoader().parseAsync(
   buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
   "",
 );
-const output = () => Array.from({ length: 33 }, () => [0, 0, 0, 0]);
+
 
 test("capture has two finite, timestamped tracks and usable tracking coverage", () => {
   assert.equal(validateMotion(data), data);
-  assert.ok(data.times.length > 300);
-  assert.ok(data.report.reliableJointFraction.every((n) => n > 0.9));
-  assert.ok(data.report.longestMissingRun.every((n) => n <= 10));
-  assert.throws(() => validateMotion({ ...data, poses: [] }));
+  assert.ok(data.samples.length > 300);
+  assert.ok(data.provenance.report.reliableJointFraction.every((n) => n > 0.9));
+  assert.ok(data.provenance.report.longestMissingRun.every((n) => n <= 10));
+  assert.throws(() => validateMotion({ ...data, samples: [] }));
 });
 
 test("timestamp interpolation, negative time and loop seam remain continuous", () => {
-  const a = samplePose(data, 0, 4, output());
-  assert.deepEqual(samplePose(data, 0, 4 + data.duration, output()), a);
-  const first = samplePose(data, 0, 0, output());
-  const end = samplePose(data, 0, -0.0001, output());
-  assert.ok(Math.abs(first[15][0] - end[15][0]) < 0.0001);
-  const mid = (data.times[30] + data.times[31]) / 2;
+  const a = samplePose(data, 0, 4);
+  assert.deepEqual(samplePose(data, 0, 4 + (data.durationMs / 1000)), a);
+  const first = samplePose(data, 0, 0);
+  const end = samplePose(data, 0, -0.0001);
+  assert.ok(Math.abs(first.landmarks[15].x - end.landmarks[15].x) < 0.0001);
+  const mid = (data.samples[30].takeTimeMs + data.samples[31].takeTimeMs) / 2000;
   assert.ok(
     Math.abs(
-      samplePose(data, 1, mid, output())[15][0] -
-        (data.poses[30][1][15][0] + data.poses[31][1][15][0]) / 2,
+      samplePose(data, 1, mid).landmarks[15].x -
+        (data.samples[30].poses[1].landmarks[15].x + data.samples[31].poses[1].landmarks[15].x) / 2,
     ) < 1e-8,
   );
 });
@@ -55,7 +55,7 @@ test("cloned skeletons move independently, remain finite and keep feet above the
   assert.deepEqual(models[1].getObjectByName("ArmR").position, fixed);
   let minX = Infinity,
     maxX = -Infinity;
-  for (let t = 0; t < data.duration; t += 1 / 30)
+  for (let t = 0; t < (data.durationMs / 1000); t += 1 / 30)
     for (let p = 0; p < 2; p++) {
       apply[p](t);
       models[p].updateMatrixWorld(true);
@@ -88,7 +88,7 @@ test("retargeting preserves the pose under moving, rotated and nonuniformly scal
     grandparent.add(parent);
     const applyLocal = createRetargeter(local, data, person);
     const applyTransformed = createRetargeter(transformed, data, person);
-    for (let t = -0.1; t < data.duration + 0.1; t += 1 / 30) {
+    for (let t = -0.1; t < data.durationMs / 1000 + 0.1; t += 1 / 30) {
       parent.position.set(Math.sin(t), 0.4, 3);
       parent.rotation.set(0.2, Math.sin(t) * 0.7, -0.1);
       parent.scale.set(1.3, 0.8, 0.9);

@@ -7,7 +7,7 @@ export const DESIGN = { width: 1350, height: 900 };
 
 /*
  * One entry per thumbnail. Each renders with and without the wordmark.
- *   stage: stage id (temp/frutiger-character/client/src/stages)
+ *   stage: stage id (packages/stages)
  *   time: seconds the stage plays before the capture (lights, water, creatures, beat)
  *   pose: seconds into the dance capture the dancers hold (0-14)
  *   camera: { position, target, fov, near?, far? }

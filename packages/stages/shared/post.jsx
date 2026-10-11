@@ -66,8 +66,10 @@ const GradeShader = {
 
 /**
  * Takes over rendering: stage -> bloom -> grade -> tone mapping, then the HUD
- * layer on top without post-processing so its text stays crisp.
+ * layer (optional) on top without post-processing so its text stays crisp.
  * width/height: the render buffer; aspect: the frame it is displayed at.
+ * It renders the scene and camera of the store it is mounted in, so inside a
+ * createPortal it draws that portal's stage.
  */
 export function RenderPipeline({ hudScene, hudCamera, width = RENDER_WIDTH, height = RENDER_HEIGHT, aspect = 16 / 9 }) {
   const gl = useThree((s) => s.gl);
@@ -132,9 +134,11 @@ export function RenderPipeline({ hudScene, hudCamera, width = RENDER_WIDTH, heig
       };
     }
 
-    gl.autoClear = false;
-    gl.clearDepth();
-    gl.render(hudScene, hudCamera);
+    if (hudScene) {
+      gl.autoClear = false;
+      gl.clearDepth();
+      gl.render(hudScene, hudCamera);
+    }
     gl.autoClear = true;
   }, 1);
 

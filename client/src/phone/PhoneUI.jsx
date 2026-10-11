@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import {
-  FONT, NAVY, drawBubble, drawCaps, drawGlassPanel, drawMedal, drawPill, drawPlayerLeds, drawSparkle, drawSunburst,
-  drawTitle, ellipsize, roundRect, titleWidth, wrapText,
+  FONT, drawBubble, drawCaps, drawChip, drawField, drawGlassPanel, drawLink, drawMedal, drawPill, drawPlayerLeds,
+  drawSparkle, drawSunburst, drawTitle, ellipsize, paragraph, roundRect, text, titleWidth, wrapText,
 } from '../ui/draw.js';
 import { FAKE_DANCE_MS } from '../battle/fakeDance.js';
 import { STICKERS, drawSticker } from '../ui/stickers.js';
@@ -38,65 +38,6 @@ const IMESSAGE = {
   off: ['iMessage is off here', '#bff4ff'],
   none: ['No phone linked', '#bff4ff'],
 };
-
-function text(g, str, x, y, { size = 28, weight = 600, color = '#ffffff', align = 'left' } = {}) {
-  g.font = `${weight} ${size}px ${FONT}`;
-  g.fillStyle = color;
-  g.textAlign = align;
-  g.textBaseline = 'middle';
-  g.fillText(str, x, y);
-}
-
-function paragraph(g, str, x, y, maxW, { size = 26, weight = 600, color = 'rgba(255,255,255,0.88)', align = 'left', lineH = size * 1.35 } = {}) {
-  g.font = `${weight} ${size}px ${FONT}`;
-  const lines = wrapText(g, str, maxW);
-  lines.forEach((line, i) => text(g, line, x, y + i * lineH, { size, weight, color, align }));
-  return lines.length * lineH;
-}
-
-function drawField(g, rect, { value, placeholder, focused, blink }) {
-  roundRect(g, rect.x, rect.y, rect.w, rect.h, 22);
-  g.fillStyle = 'rgba(255,255,255,0.94)';
-  g.fill();
-  g.lineWidth = focused ? 5 : 3;
-  g.strokeStyle = focused ? '#4fd8e8' : 'rgba(255,255,255,0.9)';
-  g.stroke();
-  g.save();
-  roundRect(g, rect.x + 4, rect.y, rect.w - 8, rect.h, 20);
-  g.clip();
-  g.font = `600 32px ${FONT}`;
-  const tw = g.measureText(value).width;
-  // Keep the end of long input in view.
-  const tx = rect.x + 26 - Math.max(0, tw - (rect.w - 60));
-  text(g, value || placeholder, tx, rect.y + rect.h / 2 + 1, { size: 32, color: value ? NAVY : 'rgba(12,47,82,0.42)' });
-  if (focused && blink) {
-    g.fillStyle = NAVY;
-    g.fillRect(tx + (value ? tw : 0) + 2, rect.y + rect.h / 2 - 20, 3, 40);
-  }
-  g.restore();
-}
-
-function drawChip(g, x, y, label, color) {
-  g.font = `700 22px ${FONT}`;
-  const w = g.measureText(label).width + 40;
-  roundRect(g, x, y, w, 44, 22);
-  g.fillStyle = 'rgba(0, 30, 70, 0.4)';
-  g.fill();
-  g.lineWidth = 2;
-  g.strokeStyle = color;
-  g.stroke();
-  text(g, label, x + 20, y + 23, { size: 22, weight: 700, color });
-}
-
-function drawLink(g, label, x, y, hover, { align = 'left', size = 26 } = {}) {
-  text(g, label, x, y, { size, weight: 700, color: hover ? '#ffffff' : '#bff4ff', align });
-  g.font = `700 ${size}px ${FONT}`;
-  const w = g.measureText(label).width;
-  const x0 = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
-  g.fillStyle = hover ? '#ffffff' : 'rgba(191,244,255,0.7)';
-  g.fillRect(x0, y + size * 0.62, w, 2);
-  return { x: x0 - 12, y: y - size, w: w + 24, h: size * 2 };
-}
 
 export default function PhoneUI(props) {
   const ref = useRef({});

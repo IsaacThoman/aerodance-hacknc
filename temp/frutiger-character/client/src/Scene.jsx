@@ -1,9 +1,9 @@
 import { Component, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import Dancers from './stages/shared/Dancers.jsx';
-import { RenderPipeline, resetPost } from './stages/shared/post.jsx';
-import { StageHud, useHudLayer } from './stages/shared/hud.jsx';
-import { STAGES } from './stages/index.js';
+import Dancers from '../../../../packages/stages/shared/Dancers.jsx';
+import { RenderPipeline, resetPost } from '../../../../packages/stages/shared/post.jsx';
+import { StageHud, useHudLayer } from '../../../../packages/stages/shared/hud.jsx';
+import { STAGES } from '../../../../packages/stages/index.js';
 
 // Keeps one broken stage from taking down the dancers.
 class StageBoundary extends Component {
