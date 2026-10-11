@@ -9,10 +9,10 @@ import { playUISound } from '../audio/uiSounds.js';
 import { CARD, CLOSE, COLUMN, FIELD, KEYS, MODES, PILL, PRIMARY, STATUS } from './layout.js';
 
 /**
- * Connect Client, drawn in-engine: a status pill in the top-right corner and, when it's
- * pressed, a card for choosing the pose input. Android needs its IP address, typed on the
- * card's keypad (so the phone remote and touch screens can enter it) or the keyboard; the
- * webcam dummy just lets the menus be tested without a device. The source is
+ * Connect Client, drawn in-engine: a status pill in the top-right corner of Settings and,
+ * when it's pressed (or a Song Select player slot is), a card for choosing the pose input.
+ * Android needs its IP address, typed on the card's keypad (so the phone remote and touch
+ * screens can enter it) or the keyboard; the webcam dummy just lets the menus be tested without a device. The source is
  * pose/AndroidPoseSource.js; it remembers the last address that connected.
  *
  * While the card is open the rest of the menus are held (App passes them `blocked`).

@@ -57,6 +57,8 @@ function DisplayApp() {
   // 'menu' (MainMenu, opening on menuScreen) or 'songs' (Song Select).
   const [screen, setScreen] = useState('menu');
   const [menuScreen, setMenuScreen] = useState('main');
+  // The menu screen actually showing; the Connect Client pill lives on Settings.
+  const [menuShown, setMenuShown] = useState('main');
   const [playerCount, setPlayerCount] = useState(1);
   // The pose input: the Android client, or the webcam dummy (menus only, no tracking yet).
   const [inputMode, setInputMode] = useState('android');
@@ -181,6 +183,7 @@ function DisplayApp() {
           initialScreen={menuScreen}
           onStart={choosePlayers}
           onBattle={newBattle}
+          onScreenChange={setMenuShown}
           sound={sound}
           onSoundChange={setSound}
         />
@@ -209,8 +212,9 @@ function DisplayApp() {
           onMenu={() => openBattle(null)}
         />
         <DebugPanel battle={battleId ? battle : null} />
+        {/* Song Select's player slots can also open the card, so it stays up while open. */}
         <ConnectionPanel
-          visible={!battleId}
+          visible={!battleId && ((menuOpen && menuShown === 'settings') || connectOpen)}
           open={connectOpen}
           onOpenChange={setConnectOpen}
           source={source}
