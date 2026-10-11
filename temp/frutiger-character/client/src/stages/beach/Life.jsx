@@ -214,11 +214,14 @@ function JetSkis() {
         fragmentShader: /* glsl */ `
           varying vec2 vUv;
           void main() {
-            float age = vUv.x;
+            // Interpolation can push age a hair past 1, and pow() of a negative
+            // base is NaN on some GPUs (Apple/Metal); bloom then spreads it over the frame.
+            float age = clamp(vUv.x, 0.0, 1.0);
             float side = abs(vUv.y);
             // Bright churned center and two spreading V arms, fading with age.
             float center = exp(-side * side * 30.0) * (1.0 - smoothstep(0.0, 0.5, age));
-            float arms = exp(-pow((side - 0.85) * 7.0, 2.0));
+            float arm = (side - 0.85) * 7.0;
+            float arms = exp(-arm * arm);
             float a = max(center, arms * 0.8) * pow(1.0 - age, 1.6) * smoothstep(0.0, 0.03, age);
             gl_FragColor = vec4(vec3(1.0, 0.97, 0.94), a * 0.85);
           }

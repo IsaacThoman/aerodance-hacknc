@@ -384,7 +384,7 @@ function Flames() {
             float t = uTime * 2.6 + vSeed;
             float wob = snoise(vec2(y * 2.5 - t, vSeed)) * 0.18 * y;
             float x = (vUv.x - 0.5 + wob) * 2.0;
-            float width = 0.95 * pow(1.0 - y, 0.9) * smoothstep(0.0, 0.25, y) + 0.001;
+            float width = 0.95 * pow(max(1.0 - y, 0.0), 0.9) * smoothstep(0.0, 0.25, y) + 0.001;
             float d = abs(x) / width;
             float body = 1.0 - smoothstep(0.55, 1.0, d);
             float tongue = smoothstep(0.2, 0.8, snoise(vec2(x * 2.0, y * 3.0 - t * 1.4)) * 0.5 + 0.5 + (1.0 - y) * 0.6);
