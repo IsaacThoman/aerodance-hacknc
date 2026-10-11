@@ -140,7 +140,7 @@ export default function MenuDancers({ visible = true }) {
           <Suspense fallback={null}>
             <Puck />
             {DANCERS.map((d, person) => (
-              <group key={person} position={[d.x, 0, 0]}>
+              <group key={person} position={[d.x, 0, 0]} scale={[-1, 1, 1]}>
                 <Character
                   url={modelUrl}
                   motion={motion}

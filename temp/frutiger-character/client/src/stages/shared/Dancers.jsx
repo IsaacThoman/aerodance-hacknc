@@ -23,7 +23,7 @@ export default function Dancers({ motion, playback, position = [0, 0, 0], rotati
     <group position={[position[0], position[1] + FOOT_CLEARANCE * scale, position[2]]} rotation={[0, rotationY, 0]} scale={scale}>
       <Suspense fallback={null}>
         {[0, 1].map((person) => (
-          <group key={person} position={[(person === 0 ? -1 : 1) * (spacing / 2), 0, 0]}>
+          <group key={person} position={[(person === 0 ? -1 : 1) * (spacing / 2), 0, 0]} scale={[-1, 1, 1]}>
             <Character motion={motion} person={person} playback={playback} appearance={looks[person]} />
           </group>
         ))}

@@ -6,6 +6,14 @@ Dance battles: the display shows a QR code, the first phones to scan it take the
 
 The server still records `spin` events in the `spins` hypertable, but the current client no longer sends them.
 
+See [the Android/game integration plan](docs/android-game-integration-plan.md) for pairing, player selection, live character animation, latency-aware scoring, and choreography recording/editing work.
+
+See [the song and dance authoring workflow](docs/song-dance-authoring-workflow.md) for the proposed Docker-hosted editor, Android-compatible pose format, raw landmark editing, Frutiger playback, and portable song bundle contract.
+
+The editor is implemented as [Dance Studio](tools/choreography/README.md).
+Run `docker compose -f tools/choreography/compose.yaml up --build -d` and open
+http://localhost:8082 to record/import, edit, preview, save, and export song bundles.
+
 ## Aero background
 
 The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, hot-air balloons, gulls, flower meadow). The display is one letterboxed 16:9 frame rendered at a fixed 640x480 buffer and scaled up with `image-rendering: pixelated`; the HUD sits inside the frame. The phone view (`/join`) is a portrait frame filling the screen, 360 px wide with a height that follows the screen.
@@ -21,6 +29,50 @@ The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, ho
 `client/src/audio/mixer.js` runs all audio through one Web Audio context. Settings → Sound drives it: **Master** (everything), **Music** (all music, menu and in-game), **Effects** (button sounds), **Menu music** (switches off just the menu's background track; in-game songs go straight to the music channel) and **Mute all** (silences everything). Settings are saved per browser (`menu/soundSettings.js`).
 
 Every in-game button (menus, battle screens, the phone view, the debug strip) makes Wii-menu-style sounds through `useCanvasUI`: a soft tick when the mouse or remote cursor reaches a button, a bubbly pop on press, a falling pop for back, chimes for switches, and ticks as a slider moves. They're synthesised in `client/src/audio/uiSounds.js` rather than recorded, and a widget can override its press sound with `sound`.
+
+## Main UI flow
+
+**Start → One Player / Two Players → Song Select** is now wired into the main app.
+Back from Song Select returns to player selection. The bottom-right **Connect Client**
+opens an Android IP field defaulting to `192.168.43.1`, with Ok, Cancel, connection
+status, and Disconnect. Successfully connected addresses are remembered. The server
+HUD describes the separate backend connection. Choose **Webcam (dummy)** in
+Connect Client to test both player modes without Android. It skips device pairing
+and does not request camera access or provide tracking.
+
+The game consumes Android protocol v2 directly, applies player count at the stream's
+sequence boundary, and clears missing/stale tracking. Set the Android allowed origin
+to the exact origin shown in the connection panel. Real-device pairing from deployed
+HTTPS still needs validation.
+
+Connecting opens the stream and starts the Android camera and pose tracker.
+The game shows **Camera starting…** until the first pose result, allowing up to
+90 seconds on each connection/reconnect. Disconnect releases capture to save
+battery, so reconnecting includes initialization again. The authoring tool uses
+the same startup state and keeps recording disabled while it waits.
+
+Extract Studio song ZIPs into `client/public/songs/`; Song Select discovers the
+exported folders automatically, with no manual manifest edits. Builds generate
+the catalog for static hosting. Rebuild/redeploy to publish source folder changes.
+The local catalog includes the exported “Rockefeller Street Bad Test” routine.
+Song Select loads
+validated song bundles and offers
+a finite music/reference-character preview in either player mode. Countdown, live
+characters, calibrated timing, scoring, and results remain future integration work.
+See [game song bundles and pose migration](docs/game-song-bundles.md) for installation,
+loader behavior, and the migrated Android-shaped silent capture.
+
+Containerized build and protocol/adapter checks (use `podman` in place of `docker`
+when using Podman):
+
+```sh
+docker build --target test -t aerodance-ui-test .
+docker build --target ui-test -t aerodance-ui-browser-test .
+docker run --rm aerodance-ui-browser-test
+```
+
+Browser flow checks skip GPU rasterization in software-only containers. Set
+`UI_RENDER=1` for a full rendered check on a capable GPU.
 
 ## Captured dance demo
 
@@ -66,6 +118,20 @@ All menus and battle screens are drawn on 2D canvases that share the render buff
 - Phones can't open `localhost`. To try the phone view from a real phone in dev, run `node --watch server/index.js` and `npx vite --host` instead of `npm run dev`, then open the display by the LAN address Vite prints (or use a tunnel). The QR code uses whatever address the display was opened with.
 
 ## Run locally with Docker Compose
+
+To rebuild and deploy the main app locally in the background:
+
+```sh
+./deploy.sh
+```
+
+The script runs from any working directory, uses Podman when available (otherwise
+Docker), and checks app/database health after startup. Create `.env` from
+`.env.example` before the first run. Set `CONTAINER_ENGINE=docker` or
+`CONTAINER_ENGINE=podman` to choose the runtime explicitly. Existing database
+data is retained. Each deployment rebuilds the app image and replaces the app
+container so Podman Compose serves the new build. This script deploys locally;
+public hosting uses Coolify below.
 
 ```sh
 cp .env.example .env

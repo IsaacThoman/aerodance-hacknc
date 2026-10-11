@@ -164,7 +164,10 @@ export default function WinStage({ motion, playback, show, floor, accent }) {
       <Suspense fallback={null}>
         {seats.map((seat) => (
           <group key={seat} ref={groups[seat]}>
-            <Character url={modelUrl} motion={motion} person={seat} playback={playback} appearance={DANCER_LOOKS[seat]} />
+            {/* Mirrored like a dance coach, on an inner group: the outer one is rescaled every frame. */}
+            <group scale={[-1, 1, 1]}>
+              <Character url={modelUrl} motion={motion} person={seat} playback={playback} appearance={DANCER_LOOKS[seat]} />
+            </group>
             <Halo color={featured === null ? GOLD : PLAYERS[seat].color} intensity={halo[seat]} />
           </group>
         ))}

@@ -73,7 +73,7 @@ Use **newline-delimited JSON (NDJSON)**: one JSON object per line.
 Rules:
 
 - Each message ends with `\n`.
-- `sessionId` changes whenever the producer restarts, including camera/model configuration changes. Player-count changes preserve the session, camera, model and stream. Reconnecting the browser alone does not change it.
+- `sessionId` changes whenever the server/pipeline restarts, including camera/model configuration changes. Player-count changes preserve the session, camera, model and stream. Reconnecting the browser alone does not change it; on-demand camera/GPU release and recreation preserve the session and sequence counter.
 - Assign `seq` to completed pose results before publishing; it increases within a session. Replacement may create gaps. Heartbeats use `lastPoseSeq` (null before the first result), without consuming pose sequence numbers.
 - On reconnect, a fresh snapshot may repeat the latest sequence. Reset per-connection duplicate handling, then ignore out-of-order/duplicate poses within that connection.
 - Send a heartbeat after five seconds without a record. It proves transport liveness, not successful camera capture or pose freshness.
@@ -95,7 +95,7 @@ The two example pose records above demonstrate **no person detected**, not a wor
 - Send `poses: []` for every completed inference with no pose. Do not silently retain the last detected person.
 - `frameReceivedTimeMs` is arrival at the Android capture callback; `resultTimeMs` is callback completion from inference. Both use the same Android monotonic clock. They are not wall-clock timestamps or proven sensor exposure times.
 - This sensor reports an unknown clock source. Optional `sensorTimestampNs`, if added, must be a decimal string to avoid JavaScript integer precision loss, with its clock relationship explicitly documented.
-- Status/heartbeat `pipelineState` is one of `starting`, `running`, `error`, or `stopping`. A running pipeline can legitimately return no pose.
+- Status/heartbeat `pipelineState` is one of `starting`, `running`, `error`, or `stopping`. While idle, `running` means ready to accept a stream. Opening a live stream changes it to `starting` until the first successful inference, then `running`. Accept `starting` heartbeats during initialization. Config snapshots are withheld during initialization; the first streamed pose proves inference readiness even when `poses: []`. Disconnect restores idle server readiness.
 - Protocol version 2 is required for both live and synthetic output. Reject other versions explicitly; route names retain `/v1`.
 
 **Pose results are state; delivery favors freshness:**
@@ -203,8 +203,14 @@ When the user clicks **Connect**:
 3. Let Chrome display its local-network permission prompt.
 4. Require `protocolVersion: 2` and the advertised player-count capability.
 5. POST the game’s selected count to `/v1/config`. Reapply it on every connection.
-6. Poll status until `running`, permitting up to 90 seconds for initial camera/GPU startup with cancellation and explicit errors.
-7. Open `/v1/stream` with an AbortController-managed lifetime. Later count changes use POST on this same open stream.
+6. Require status `running` (server ready), polling if necessary with cancellation and explicit errors.
+7. Open `/v1/stream` with an AbortController-managed lifetime. This starts camera/GPU initialization; allow up to 90 seconds for the first pose, with heartbeats proving transport liveness during startup. Later count changes use POST on this same open stream. Status/config requests alone leave capture off. Disconnect releases capture/inference resources once the server detects socket closure or a failed/timed-out write.
+
+Show “Camera starting…” after the stream opens. Keep a separate 90-second
+first-pose deadline, reset for each connection/reconnect; heartbeats must not
+extend it. Mark the camera ready only after an accepted pose matching the selected
+mode/config boundary. Keep recording disabled until readiness and required player
+detections. Cancel must close the initializing stream so Android can release it.
 
 Use ordinary CORS requests, with cookies omitted. Do **not** use `mode: "no-cors"`; JavaScript would be unable to read the response.
 
