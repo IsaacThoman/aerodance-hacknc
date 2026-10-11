@@ -48,6 +48,12 @@ export async function createBattle(players = 2) {
   return battle.id;
 }
 
+// Start pressed: phones follow the dance from battle.startedAt.
+export function startBattle(battleId) {
+  const [token] = Object.values(seatTokens.get(battleId));
+  return token ? api('POST', `/battles/${battleId}/start`, { playerToken: token }) : Promise.resolve();
+}
+
 export const reportResult = (battleId, token, result) =>
   api('POST', `/battles/${battleId}/result`, { playerToken: token, ...result });
 

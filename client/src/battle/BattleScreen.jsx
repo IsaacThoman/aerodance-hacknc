@@ -1,18 +1,21 @@
 import { useCallback, useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
 import {
-  FONT, drawBubble, drawCaps, drawGlassPanel, drawHeader, drawPill, drawQR, drawShadowText, ellipsize, roundRect,
+  FONT, drawBubble, drawCaps, drawGlassPanel, drawHeader, drawMedal, drawPill, drawQR, drawShadowText, drawSparkle,
+  drawSunburst, ellipsize, roundRect,
 } from '../ui/draw.js';
 import { drawSticker, stickerLabel } from '../ui/stickers.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { joinUrl, useHype } from './api.js';
+import { FAKE_DANCE_MS } from './fakeDance.js';
 
 /**
  * The game display's side of a battle, drawn in-engine over the world and the menu
  * dancers (useFrame priority 2.5). Phases follow the battle:
  *   lobby    QR code to join, seat tags over the dancers, Start
- *   playing  seat tags and hype only (the dance itself hooks in here)
- *   results  winner, scores, hype totals, the on-chain receipt and the winner's trophy NFT
+ *   playing  seat tags, hype and the fake dance's countdown (battle/fakeDance.js)
+ *   results  winner, scores, hype totals, the on-chain receipt and the winner's trophy NFT;
+ *            the winner gets a Frutiger Aero moment (sunburst, orb pop, medal, sparkles)
  * Hype from phones rises as bubbles from the dancer it was sent to; stickers rise as themselves.
  *
  * <BattleScreen visible battle={publicBattle} playing onPlay onBack onRematch onMenu />
@@ -45,6 +48,32 @@ const fmtClock = (ms) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 const short = (sig) => `${sig.slice(0, 4)}…${sig.slice(-4)}`;
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+// Overshoots a little, then settles at 1: things pop in.
+const popIn = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2);
+// Fixed sparkle spots around a seat tag, as offsets and phases.
+const SPARKLES = Array.from({ length: 9 }, (_, i) => ({
+  dx: Math.cos(i * 2.4) * (130 + (i % 3) * 60),
+  dy: Math.sin(i * 2.4) * (90 + (i % 2) * 70) + 40,
+  size: 14 + (i % 4) * 7,
+  phase: i * 0.7,
+}));
+
+// The winner's moment over their seat: light rays, a glossy orb that grows and pops,
+// a medal bouncing in and sparkles twinkling. t is seconds since the results showed.
+function drawWinnerMoment(g, x, y, t) {
+  const grow = popIn(clamp01(t / 0.9));
+  drawSunburst(g, x, y + 60, 430 * grow, { angle: t * 0.25, alpha: 0.75 });
+  if (t < 0.75) {
+    const k = t / 0.75;
+    drawBubble(g, x, y + 40, 40 + 150 * k * k, 1 - k * 0.3);
+  }
+  for (const sp of SPARKLES) {
+    const tw = 0.5 + 0.5 * Math.sin(t * 3.2 + sp.phase);
+    drawSparkle(g, x + sp.dx, y + sp.dy, sp.size * tw * clamp01((t - 0.5) * 2), tw);
+  }
+  drawMedal(g, x, y - 92 + Math.sin(t * 2.2) * 5, 40 * popIn(clamp01((t - 0.55) / 0.5)));
+}
 
 function phaseOf(battle, playing) {
   if (battle?.status === 'finished') return 'results';
@@ -102,7 +131,7 @@ function drawScoreCard(g, rect, player, { winner }) {
 export default function BattleScreen({ visible, battle, playing, onPlay, onBack, onRematch, onMenu }) {
   const props = useRef({});
   props.current = { visible, battle, playing, onPlay, onBack, onRematch, onMenu };
-  const st = useRef({ alpha: 0, bubbles: [], phase: null, seen: null }).current;
+  const st = useRef({ alpha: 0, bubbles: [], phase: null, seen: null, drawn: null, danceStart: 0, resultsAt: 0 }).current;
 
   const id = battle?.id;
   const url = id ? joinUrl(id) : null;
@@ -164,15 +193,31 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
       if (phaseOf(p.battle, p.playing) === 'results') p.onMenu?.();
       else p.onBack?.();
     },
+    // The phone remote's B button, like Escape.
+    onBack: () => {
+      const p = props.current;
+      if (phaseOf(p.battle, p.playing) === 'results') p.onMenu?.();
+      else p.onBack?.();
+    },
     update: (dt, s) => {
       const p = props.current;
       st.alpha = s.ease(st.alpha, p.visible && p.battle?.players ? 1 : 0, p.visible ? 3 : 6);
       const phase = phaseOf(p.battle, p.playing);
-      if (phase !== st.phase) { st.phase = phase; s.invalidate(); }
-      // Celebrate when a battle finishes while we're watching it.
+      if (phase !== st.phase) {
+        if (phase === 'playing') st.danceStart = s.time;
+        if (phase === 'results') st.resultsAt = s.time;
+        st.phase = phase;
+        s.invalidate();
+      }
+      // Each push is a new battle object: redraw so joins show up straight away.
+      if (p.battle !== st.drawn) s.invalidate();
+      if (phase === 'playing' || phase === 'results') s.invalidate(); // countdown, celebration
+      // Celebrate when a battle finishes while we're watching it: the winner's orb pops.
       if (p.battle?.status) {
         if (st.seen?.id === p.battle.id && st.seen.status === 'open' && p.battle.status === 'finished') {
           for (let i = 0; i < 6; i++) spawn(200 + i * 260, 5, { spread: 120, y: 940 });
+          const w = p.battle.winnerSeat;
+          if (w !== null) setTimeout(() => spawn(seatX(w, p.battle.players.length), 16, { spread: 170, y: TAG_Y + 60 }), 750);
         }
         st.seen = { id: p.battle.id, status: p.battle.status };
       }
@@ -190,6 +235,7 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
     draw: (g, s) => {
       const p = props.current;
       const b = p.battle;
+      st.drawn = b;
       if (!b?.players) return;
       const phase = phaseOf(b, p.playing);
       const h = s.hover;
@@ -222,6 +268,20 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
         });
       } else if (phase === 'playing') {
         drawHeader(g, BACK, `BATTLE ${b.id.toUpperCase()}`, h.back ?? 0);
+        const left = FAKE_DANCE_MS / 1000 - (s.time - st.danceStart);
+        const done = left <= 0;
+        drawShadowText(g, done ? 'Scoring…' : 'DANCE!', 128, 330, { size: 96, weight: 800 });
+        drawShadowText(g, done ? 'tallying the bubbles' : `${Math.ceil(left)}`, 132, 410, { size: 44, weight: 700, color: '#bff4ff' });
+        const bar = { x: 128, y: 450, w: 452, h: 22 };
+        roundRect(g, bar.x, bar.y, bar.w, bar.h, bar.h / 2);
+        g.fillStyle = 'rgba(255,255,255,0.35)';
+        g.fill();
+        const k = Math.min(1, Math.max(0, 1 - left / (FAKE_DANCE_MS / 1000)));
+        if (k > 0) {
+          roundRect(g, bar.x, bar.y, Math.max(bar.h, bar.w * k), bar.h, bar.h / 2);
+          g.fillStyle = '#6ff3d6';
+          g.fill();
+        }
       }
 
       if (phase === 'results') {
@@ -249,6 +309,8 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
         drawPill(g, REMATCH, { label: 'Run it back', icon: 'replay', hover: h.rematch ?? 0, press: s.press * (h.rematch ?? 0) });
         drawPill(g, MENU, { label: 'Menu', icon: 'home', hover: h.menu ?? 0, press: s.press * (h.menu ?? 0) });
       }
+
+      if (phase === 'results' && b.winnerSeat !== null) drawWinnerMoment(g, seatX(b.winnerSeat, count), TAG_Y, s.time - st.resultsAt);
 
       // Seat tags over the dancers.
       b.players.forEach((pl) => {

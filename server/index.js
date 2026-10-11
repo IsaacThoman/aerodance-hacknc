@@ -8,6 +8,7 @@ import { listen, migrate, pool, recordSpin, spinHistory, spinsSince } from './db
 import { publicBattle, startSweeper, stickerMetadata, trophyMetadata } from './battles.js';
 import { changes } from './events.js';
 import { profileByDevice } from './profiles.js';
+import { attachRemote } from './remote.js';
 import { internalApp, publicRoutes, requestBaseUrl } from './routes.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -97,6 +98,8 @@ listen('changes', (payload) => {
     console.warn('ignoring malformed change notification');
   }
 });
+
+attachRemote(io);
 
 io.on('connection', (socket) => {
   broadcastStats();

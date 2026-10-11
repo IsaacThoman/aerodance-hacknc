@@ -70,6 +70,7 @@ export async function publicBattle(id) {
     id: b.id,
     status: b.status,
     createdAt: b.created_at,
+    startedAt: b.started_at,
     closesAt: finished ? null : b.closes_at,
     players: seats.map((s) => {
       const h = hype.find((x) => x.seat === s.seat);
@@ -190,6 +191,32 @@ export async function seatForToken(id, token) {
   return seat.seat;
 }
 
+// The display pressed Start (it proves it runs this battle with one of its seat tokens).
+export async function startBattle(id, token) {
+  const { rowCount } = await pool.query(
+    `UPDATE battles b SET started_at = now()
+      WHERE b.id = $1 AND b.status = 'open'
+        AND EXISTS (SELECT 1 FROM battle_seats s WHERE s.battle_id = b.id AND s.token = $2)`,
+    [id, token],
+  );
+  if (!rowCount) throw new HttpError(409, 'battle not open, or unknown player token');
+  changes.emit('battle', id);
+}
+
+// Wii-remote style player number for a phone: dancers by seat (1, 2, …), then the crowd
+// in the order they joined, with everyone past the fourth sharing 4.
+async function playerNumber(db, id, joined) {
+  if (joined.role === 'dancer') return Math.min(4, joined.seat + 1);
+  const { rows: [r] } = await db.query(
+    `SELECT (SELECT count(*)::int FROM battle_seats WHERE battle_id = $1) AS seats,
+            (SELECT count(*)::int FROM battle_spectators s, battle_spectators me
+              WHERE s.battle_id = $1 AND me.battle_id = $1 AND me.profile_id = $2
+                AND (s.joined_at, s.profile_id) < (me.joined_at, me.profile_id)) AS before`,
+    [id, joined.profileId],
+  );
+  return Math.min(4, r.seats + r.before + 1);
+}
+
 // First people to scan get the empty seats; everyone after spectates.
 export async function joinBattle(id, profileId) {
   const joined = await tx(async (db) => {
@@ -202,7 +229,7 @@ export async function joinBattle(id, profileId) {
       'SELECT seat FROM battle_seats WHERE battle_id = $1 AND profile_id = $2',
       [id, profileId],
     );
-    if (mine) return { role: 'dancer', seat: mine.seat };
+    if (mine) return { role: 'dancer', seat: mine.seat, player: await playerNumber(db, id, { role: 'dancer', seat: mine.seat }) };
     if (battle.status === 'open' && !battle.first_result_at) {
       const { rows: [free] } = await db.query(
         `UPDATE battle_seats SET profile_id = $2
@@ -211,13 +238,13 @@ export async function joinBattle(id, profileId) {
           RETURNING seat`,
         [id, profileId],
       );
-      if (free) return { role: 'dancer', seat: free.seat };
+      if (free) return { role: 'dancer', seat: free.seat, player: await playerNumber(db, id, { role: 'dancer', seat: free.seat }) };
     }
     await db.query(
       'INSERT INTO battle_spectators (battle_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [id, profileId],
     );
-    return { role: 'spectator', seat: null };
+    return { role: 'spectator', seat: null, player: await playerNumber(db, id, { role: 'spectator', profileId }) };
   });
   changes.emit('battle', id);
   return joined;

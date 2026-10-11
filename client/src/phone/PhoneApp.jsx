@@ -11,10 +11,24 @@ import PhoneUI from './PhoneUI.jsx';
  * the Home Screen app). Same aero world and pixelated canvas as the display, in portrait.
  * First-timers pick a name and optionally link an iPhone number; then the first two
  * phones take the dancer seats and everyone after is the crowd, who can hype a dancer.
+ * /join?remote=<code> (the menu screen's QR) hands off to the Wii remote (/remote.html)
+ * once the phone has a profile.
  */
 
 // Render buffer width; the height follows the screen, so pixels stay square.
 const BUFFER_W = 360;
+// The 3D world is the battery hog: it renders this often, and the canvas only redraws
+// otherwise when the UI changes (frameloop="demand", see ui/useCanvasUI.js).
+const WORLD_FPS = 15;
+
+function WorldTicker({ fps }) {
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    const t = setInterval(() => { if (!document.hidden) invalidate(); }, 1000 / fps);
+    return () => clearInterval(t);
+  }, [invalidate, fps]);
+  return null;
+}
 
 function PhoneResolution() {
   const gl = useThree((state) => state.gl);
@@ -34,6 +48,7 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 
 export default function PhoneApp() {
   const battleId = useMemo(() => location.pathname.match(/^\/join\/([a-z0-9]+)/)?.[1] ?? null, []);
+  const remoteCode = useMemo(() => new URLSearchParams(location.search).get('remote')?.toUpperCase() || null, []);
   const suggested = useMemo(() => `${pick(ADJECTIVES)} ${pick(NOUNS)}`, []);
   const [me, setMe] = useState(null);
   const [ready, setReady] = useState(false);
@@ -87,6 +102,10 @@ export default function PhoneApp() {
     };
   }, [me?.id, refreshMe]);
 
+  useEffect(() => {
+    if (me && remoteCode) location.replace(`/remote.html?code=${encodeURIComponent(remoteCode)}`);
+  }, [me, remoteCode]);
+
   // Take a seat (or join the crowd) once we have a profile.
   useEffect(() => {
     if (!me || !battleId || role) return;
@@ -99,9 +118,15 @@ export default function PhoneApp() {
     );
   }, [me, battleId, role, say]);
 
-  // Stats change when a battle finishes.
+  // Stats change when a battle finishes; every phone buzzes when it's decided (Android:
+  // iOS Safari has no vibration API).
   const status = battle?.status;
-  useEffect(() => { if (status === 'finished') refreshMe(); }, [status, refreshMe]);
+  const lastStatus = useRef(status);
+  useEffect(() => {
+    if (status === 'finished') refreshMe();
+    if (lastStatus.current === 'open' && status === 'finished') navigator.vibrate?.([120, 80, 120, 80, 320]);
+    lastStatus.current = status;
+  }, [status, refreshMe]);
 
   const submit = useCallback(async () => {
     if (saving) return;
@@ -153,9 +178,10 @@ export default function PhoneApp() {
 
   return (
     <div className="canvas-frame phone">
-      <Canvas dpr={1} flat camera={{ fov: 66, near: 0.3, far: 6500 }}>
+      <Canvas dpr={1} flat frameloop="demand" camera={{ fov: 66, near: 0.3, far: 6500 }}>
         <PhoneResolution />
-        <AeroWorld speed={0.7} quality="low" />
+        <WorldTicker fps={WORLD_FPS} />
+        <AeroWorld speed={0.7} quality="low" fps={WORLD_FPS} />
         <PhoneUI
           ready={ready}
           me={me}

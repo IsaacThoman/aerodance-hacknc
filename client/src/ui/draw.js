@@ -509,3 +509,123 @@ export function wrapText(g, text, maxW) {
   if (line) lines.push(line);
   return lines;
 }
+
+// ---------- Frutiger Aero celebration ----------
+
+// Soft rotating light rays with a glowing aqua core, like a 2007 desktop wallpaper.
+export function drawSunburst(g, x, y, r, { angle = 0, alpha = 1, rays = 14 } = {}) {
+  if (r <= 0 || alpha <= 0) return;
+  g.save();
+  g.globalAlpha *= alpha;
+  g.translate(x, y);
+  g.rotate(angle);
+  const fade = g.createRadialGradient(0, 0, r * 0.08, 0, 0, r);
+  fade.addColorStop(0, 'rgba(255,255,255,0.75)');
+  fade.addColorStop(0.45, 'rgba(200,245,255,0.32)');
+  fade.addColorStop(1, 'rgba(160,235,255,0)');
+  g.fillStyle = fade;
+  const half = (Math.PI / rays) * 0.5;
+  g.beginPath();
+  for (let i = 0; i < rays; i++) {
+    const a = (i / rays) * TAU;
+    g.moveTo(0, 0);
+    g.arc(0, 0, r, a - half, a + half);
+    g.closePath();
+  }
+  g.fill();
+  const core = g.createRadialGradient(0, 0, 0, 0, 0, r * 0.42);
+  core.addColorStop(0, 'rgba(255,255,255,0.9)');
+  core.addColorStop(0.35, 'rgba(150,240,230,0.45)');
+  core.addColorStop(1, 'rgba(90,200,255,0)');
+  g.fillStyle = core;
+  g.beginPath();
+  g.arc(0, 0, r * 0.42, 0, TAU);
+  g.fill();
+  g.restore();
+}
+
+// Four-point glint.
+export function drawSparkle(g, x, y, size, alpha = 1) {
+  if (size <= 0 || alpha <= 0) return;
+  g.save();
+  g.globalAlpha *= alpha;
+  g.translate(x, y);
+  g.beginPath();
+  const w = size * 0.16;
+  g.moveTo(0, -size);
+  g.quadraticCurveTo(w, -w, size, 0);
+  g.quadraticCurveTo(w, w, 0, size);
+  g.quadraticCurveTo(-w, w, -size, 0);
+  g.quadraticCurveTo(-w, -w, 0, -size);
+  g.fillStyle = '#ffffff';
+  g.shadowColor = 'rgba(160,240,255,0.9)';
+  g.shadowBlur = size * 0.8;
+  g.fill();
+  g.restore();
+}
+
+// Glossy gold medal with a star: the winner's badge.
+export function drawMedal(g, x, y, r) {
+  if (r <= 0) return;
+  g.save();
+  g.shadowColor = 'rgba(120, 70, 0, 0.45)';
+  g.shadowBlur = r * 0.4;
+  g.shadowOffsetY = r * 0.12;
+  const body = g.createLinearGradient(0, y - r, 0, y + r);
+  body.addColorStop(0, '#fff3b0');
+  body.addColorStop(0.45, '#ffd34d');
+  body.addColorStop(1, '#e09a12');
+  g.beginPath();
+  g.arc(x, y, r, 0, TAU);
+  g.fillStyle = body;
+  g.fill();
+  g.shadowColor = 'transparent';
+  g.lineWidth = Math.max(2, r * 0.08);
+  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.stroke();
+  g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const rr = i % 2 ? r * 0.25 : r * 0.58;
+    g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  g.closePath();
+  g.fillStyle = '#ffffff';
+  g.fill();
+  g.beginPath();
+  g.ellipse(x - r * 0.1, y - r * 0.5, r * 0.6, r * 0.28, -0.2, 0, TAU);
+  g.fillStyle = 'rgba(255,255,255,0.35)';
+  g.fill();
+  g.restore();
+}
+
+// The four player LEDs off a Wii remote: `player` (1-4) lit and glowing, `glow` 0..1 pulses it.
+export function drawPlayerLeds(g, cx, cy, { player, glow = 1, scale = 1 } = {}) {
+  const gap = 46 * scale;
+  const size = 22 * scale;
+  const bar = { x: cx - gap * 2 - 4 * scale, y: cy - 30 * scale, w: gap * 4 + 8 * scale, h: 60 * scale };
+  g.save();
+  roundRect(g, bar.x, bar.y, bar.w, bar.h, bar.h / 2);
+  const body = g.createLinearGradient(0, bar.y, 0, bar.y + bar.h);
+  body.addColorStop(0, '#ffffff');
+  body.addColorStop(1, '#dfe6ec');
+  g.fillStyle = body;
+  g.shadowColor = 'rgba(0, 34, 84, 0.35)';
+  g.shadowBlur = 14 * scale;
+  g.shadowOffsetY = 4 * scale;
+  g.fill();
+  g.restore();
+  for (let i = 0; i < 4; i++) {
+    const x = cx + (i - 1.5) * gap;
+    const lit = i + 1 === player;
+    g.save();
+    roundRect(g, x - size / 2, cy - size / 2, size, size, 5 * scale);
+    if (lit) {
+      g.shadowColor = '#34b9ff';
+      g.shadowBlur = (10 + 14 * glow) * scale;
+    }
+    g.fillStyle = lit ? '#34b9ff' : '#cdd6dd';
+    g.fill();
+    g.restore();
+  }
+}

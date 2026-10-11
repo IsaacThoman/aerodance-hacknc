@@ -9,6 +9,9 @@ import useCanvasUI from '../ui/useCanvasUI.js';
  * Screens: main (Start, Battle, Settings), start (random / select song), songs (song list),
  * settings (sound). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
  *
+ * Input comes from the mouse/touch on the canvas or from a paired phone remote
+ * (remote/remoteLink.js; B goes back).
+ *
  * <MainMenu visible onStart={(mode, song) => ...} onBattle={() => ...} sound={sound} onSoundChange={setSound} />
  */
 
@@ -171,6 +174,7 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
       const active = props.current.visible && m.alpha > 0.3 && m.screen === m.next;
       if (e.key === 'Escape' && active && PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); }
     },
+    onBack: (s) => { if (PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); } },
     update: (dt, s) => {
       const shown = props.current.visible;
       // Screen change: fade the current screen out, swap, fade the next one in.
