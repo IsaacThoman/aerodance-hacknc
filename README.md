@@ -45,7 +45,8 @@ the same startup state and keeps recording disabled while it waits.
 Extract Studio song ZIPs into `client/public/songs/`; Song Select discovers the
 exported folders automatically, with no manual manifest edits. Builds generate
 the catalog for static hosting. Rebuild/redeploy to publish source folder changes.
-The catalog remains empty until an authored song is ready. Song Select now loads
+The local catalog includes the exported “Rockefeller Street Bad Test” routine.
+Song Select loads
 validated song bundles and offers
 a finite music/reference-character preview in either player mode. Countdown, live
 characters, calibrated timing, scoring, and results remain future integration work.
@@ -93,7 +94,9 @@ The script runs from any working directory, uses Podman when available (otherwis
 Docker), and checks app/database health after startup. Create `.env` from
 `.env.example` before the first run. Set `CONTAINER_ENGINE=docker` or
 `CONTAINER_ENGINE=podman` to choose the runtime explicitly. Existing database
-data is retained. This script deploys locally; public hosting uses Coolify below.
+data is retained. Each deployment rebuilds the app image and replaces the app
+container so Podman Compose serves the new build. This script deploys locally;
+public hosting uses Coolify below.
 
 ```sh
 cp .env.example .env

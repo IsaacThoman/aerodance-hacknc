@@ -26,7 +26,8 @@ Exported metadata supplies title, artist, duration, player counts, revision,
 difficulty, optional cover, and a SHA-256 pin for `song.json`. Re-exported songs
 are discovered with their updated revision. Install the complete directory before
 opening Song Select. The game does not extract ZIP files or publish editor
-projects. The public catalog remains empty until an authored song is ready.
+projects. The local songs directory includes the exported “Rockefeller Street Bad
+Test” routine, available in both preview modes after rebuilding.
 
 Catalog paths resolve relative to the catalog; media paths resolve relative to
 `song.json`. Only safe relative file paths are accepted. The loader checks
@@ -87,4 +88,5 @@ Tests cover migration, wire-payload compatibility, integrity failures, revision
 pinning, unsafe paths, cancellation, missing-player/gap behavior, exclusions,
 track-0 equivalence, independent skeletons, both browser preview modes, and finite
 music playback. Browser fixtures are private synthetic assets; they do not populate
-the public catalog. Real authored music and device timing still require validation.
+the public catalog. Browser checks also load installed authored bundles and play
+their audio in both supported player modes. Device timing still requires validation.

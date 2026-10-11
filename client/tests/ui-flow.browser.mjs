@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { bundleFixture } from './fixtures/songBundle.js';
 import express from 'express';
 import { chromium } from 'playwright';
@@ -31,6 +32,10 @@ try {
   page.on('request', request => { if (new URL(request.url()).port === '1337') deviceRequests++; });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  // Keep empty-catalog coverage independent of installed authored songs.
+  await page.route('**/songs/manifest.json', route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ version: 1, songs: [] }),
+  }));
   await page.goto('http://127.0.0.1:4173');
   await page.locator('canvas').waitFor();
   const frame = await page.locator('.canvas-frame').boundingBox();
@@ -95,9 +100,31 @@ try {
   await page.getByRole('button', { name: 'Webcam · Dummy', exact: true }).click();
   const connectionPanel = await page.locator('.connection-form').boundingBox();
   assert.ok(connectionPanel.y >= mobile.y && connectionPanel.y + connectionPanel.height <= mobile.y + mobile.height);
-  // Install a private fixture over HTTP routing; the public catalog stays empty.
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.setViewportSize({ width:1280, height:800 });
+  // Load installed exports through the built catalog and actual HTTP assets.
+  await page.unroute('**/songs/manifest.json');
+  const installed = JSON.parse(await readFile('dist/songs/manifest.json', 'utf8'));
+  for (const song of installed.songs) {
+    for (const [count, y] of [[1,598],[2,714]]) {
+      if (!song.supportedPlayerCounts.includes(count)) continue;
+      await page.getByRole('button', { name:'Back', exact:false }).click();
+      await page.locator('canvas[data-menu-screen="players"][data-menu-ready="true"]').waitFor();
+      await clickDesign(350, y);
+      await page.locator('.song-list button').filter({ hasText: song.title }).click();
+      await page.getByRole('heading', { name: song.title, exact: true }).waitFor();
+      await page.getByText(`${count} player preview`, { exact: true }).waitFor();
+      await page.waitForFunction(() => document.querySelector('audio')?.readyState >= 2);
+      await page.locator('audio').evaluate(a => a.play());
+      await page.waitForFunction(() => {
+        const a = document.querySelector('audio'); return !a.paused && a.currentTime > .1;
+      });
+      assert.equal(await page.getByRole('alert').count(), 0);
+      await page.getByRole('button', { name:'Songs', exact:false }).click();
+      assert.equal(await page.locator('audio').count(), 0);
+    }
+  }
+  // Private fixtures cover exact playable boundaries independently of authored music.
   const fixture = bundleFixture();
   const files = new Map([['song.json',Buffer.from(JSON.stringify(fixture.song))],['choreography.json',Buffer.from(JSON.stringify(fixture.choreography))],['audio.wav',Buffer.from(fixture.audio)]]);
   files.set('checksums.json',Buffer.from(JSON.stringify({schema:'aerodance.checksums',schemaVersion:1,files:[...files].map(([path,body])=>({path,bytes:body.length,sha256:createHash('sha256').update(body).digest('hex')}))})));

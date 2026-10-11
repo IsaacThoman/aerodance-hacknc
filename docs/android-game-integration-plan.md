@@ -11,9 +11,11 @@ a stream starts capture on demand; the game shows “Camera starting…” until
 first pose, allowing up to 90 seconds on every connection/reconnect. Startup
 heartbeats keep the stream alive without marking tracking ready. Song Select
 shows each player's detection status. **Webcam (dummy)** is an explicit menu-testing
-option that bypasses Android pairing without camera capture or pose/scoring data. The published catalog is empty; the existing
-silent recording is available as a preview. Audio/countdown, live character mapping,
-scoring, and results are not implemented yet. Container checks cover the transport;
+option that bypasses Android pairing without camera capture or pose/scoring data.
+Song Select discovers exported song bundles and previews music with one or two
+reference characters. The local catalog includes “Rockefeller Street Bad Test”;
+the silent recording remains a separate preview. Gameplay countdown, live player
+panels, calibrated timing, scoring, and results are not implemented yet. Container checks cover the transport;
 real-board and deployed HTTPS acceptance remain outstanding.
 
 ## Intended experience
@@ -30,7 +32,7 @@ Default decisions: one Android device captures both people; two-player participa
 
 | Area | Current evidence | Required change |
 | --- | --- | --- |
-| Game flow | Start opens player selection, then Song Select with an empty published catalog. Webcam dummy bypasses device pairing for menu testing. | Real songs, audio, countdown, gameplay, and results. |
+| Game flow | Start opens player selection, then Song Select with discovered song bundles and finite music/reference preview. Webcam dummy bypasses device pairing for menu testing. | Countdown, live player panels, calibrated timing, scoring, and results. |
 | Android connection | The game adapter consumes protocol v2 status/config/NDJSON with bounded startup, freshness, and reconnect handling. | Validate real-board pairing from deployed HTTPS and integrate the shared pose model. |
 | Player slots | Android emits explicit `playerId: 0/1`; two-player IDs represent fixed camera halves. | Map IDs to player panels and tracks; never use pose-array position as identity. |
 | Recorded characters | `temp/frutiger-character/client/src/Character.jsx` and `motion.js` animate the GLB from recorded `dance.json`. The main menu imports these assets. | Promote reusable code/assets out of `temp/`; add live pose support. |

@@ -27,7 +27,11 @@ fi
 
 compose=("$engine" compose -f compose.yaml -f compose.local.yaml)
 echo "Rebuilding and deploying the main app locally with $engine…"
-"${compose[@]}" up --build -d
+"${compose[@]}" build app
+"${compose[@]}" up -d db
+# Podman Compose can retain a container when only its image has changed.
+# Replace the app explicitly; keep the database container and volume intact.
+"${compose[@]}" up --no-build --no-deps --force-recreate -d app
 
 echo 'Waiting for the app and database to become ready…'
 for ((attempt = 1; attempt <= 60; attempt++)); do
