@@ -2,3 +2,6 @@ node_modules/
 dist/
 .env
 .DS_Store
+
+# Local Cloudflare tunnel state (scripts/dev-tunnel.sh)
+.dev-tunnel/
