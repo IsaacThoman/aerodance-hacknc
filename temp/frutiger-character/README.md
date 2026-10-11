@@ -1,6 +1,6 @@
 # Frutiger dance capture
 
-Two independently cloned glass characters replay the two foreground dancers from the supplied “Movie on 10-10-26 at 2.14 PM.mov”. The studio, menus, free-roam controls, and socket connection have been removed from this app's runtime. The garden and original seven-bone GLB are retained.
+Two independently cloned glass characters replay the two foreground dancers from the supplied “Movie on 10-10-26 at 2.14 PM.mov”. The studio, menus, free-roam controls, and socket connection have been removed from this app's runtime. The dancers perform on six switchable in-engine stages (see [Dance stages](#dance-stages)); the original seven-bone GLB is retained.
 
 The canvas fills the available screen inside black 16:9 letterboxing. Like the main app, it uses a **640×480 drawing buffer stretched to 16:9**, DPR 1, and pixelated scaling. No backend, webcam, Python, or inference service is needed for playback.
 
@@ -28,7 +28,28 @@ npm --prefix temp/frutiger-character ci
 npm --prefix temp/frutiger-character run dev
 ```
 
-Open http://localhost:5174. Playback loops automatically. Space pauses/resumes the dancers; reduced-motion preferences start them paused. For reproducible visual comparisons, append `?t=6` to hold the characters at six seconds (the garden bubbles still move). Remove the query to resume normal playback.
+Open http://localhost:5174. Playback loops automatically. Space pauses/resumes the dancers; reduced-motion preferences start them paused. For reproducible visual comparisons, append `?t=6` to hold the characters at six seconds (the stage itself keeps moving). Remove the query to resume normal playback. Append `?nohud` to hide the stage name card.
+
+## Dance stages
+
+The dancers perform on six stages inspired by Frutiger Aero (Frutiger Eco, Helvetica Aqua Aero, Funky Metro, Wii Sports Resort's Wuhu Island, and the Roblox game *Frutiger Sanctuary*). Switch with ← / →, 1–6, the orbs on the name card at the bottom (it appears on switch or pointer movement), or a hash such as `/dance/#club`. Stages cross-fade through a white veil.
+
+| Key | Hash | Stage | Highlights |
+| --- | --- | --- | --- |
+| 1 | `#sanctuary` | Skyline Sanctuary (city) | Rooftop sky-garden terrace over a glass eco-city: infinity pool, solar canopy, wind flowers, ~150 towers, monorail loops, airship with a beat-synced screen, balloons, eco-pods, gulls, sailboats on the river |
+| 2 | `#reef` | Coral Dome (water) | Glass dome on a sunlit reef: caustics, light shafts, coral gardens, eight fish species in schools, dolphins, sea turtle, manta, jellyfish, bubble columns, glass tunnel |
+| 3 | `#openreef` | Open Reef (water) | The Coral Dome reef without the dome: the dancers stand on the open sand among the coral gardens, fish schools, dolphins, sea turtle, manta, jellyfish and light shafts |
+| 4 | `#falls` | Emerald Falls (landscape) | Clifftop meadow over a turquoise lake: eight waterfalls with mist and a rainbow, floating islands, wind-swept grass and wildflowers, solar-flower sculptures, turbines, observatory cable car, balloons, butterflies, birds |
+| 5 | `#club` | Club Aquarium (dance club) | Beat-driven LED floor, aquarium walls, curved video wall, mirror ball, moving heads and lasers, DJ blob, speaker stacks, bar, a crowd of bobbing gel blobs, confetti |
+| 6 | `#beach` | Sugarsand Sunset (beach) | Golden-hour beach with open ocean to the horizon: sun path on the waves, a coconut palm, tiki torches, sailboats, cruise ship, leaping dolphins, gulls |
+
+Everything is procedural (geometry, shaders, canvas textures); there are no asset files beyond the character GLB and capture. Code lives in `client/src/`:
+
+- `Scene.jsx`: stage host. Owns the playback clock, switching, the fade, and the dancers (`stages/shared/Dancers.jsx`), which stay mounted across stages.
+- `stages/index.js`: registry. Each stage folder has an eagerly loaded `meta.js` (name card text, accent colors, dancer floor position, post settings) and a lazily loaded `<Name>Stage.jsx`, so only the visible stage is fetched and one broken stage cannot take down the others.
+- `stages/shared/`: `StageCamera` (16:9 projection with slow orbit/sway/pointer parallax), `StageEnvironment` (PMREM reflections; the glass dancers get most of their look from it), `post.jsx` (stage → UnrealBloom → vignette/saturation grade → ACES; bloom works on linear HDR, so each stage sets a threshold above its lit surfaces), the in-engine name card and veil (`hud.jsx`), sky dome and cloud billboards, a 118 bpm beat clock for light pulses, GLSL noise and seeded randomness.
+
+In dev, `window.__aeroStats` reports draw calls and triangles. The stages measure 69–134 draw calls and 0.19–0.83M triangles each, including the dancers; switching through all six and back returns geometry and texture counts to their starting values.
 
 ## Capture another video
 

@@ -12,6 +12,7 @@
     "character:build": "blender -b -t 2 -P scripts/build-character.py"
   },
   "dependencies": {
+    "@fontsource/nunito": "^5.3.0",
     "@react-three/fiber": "^9.8.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

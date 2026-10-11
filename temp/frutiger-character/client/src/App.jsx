@@ -57,11 +57,12 @@ export default function App() {
         <p role="status">Loading dance…</p>
       ) : (
         <SceneBoundary>
+          {/* Stages project at 16:9 into the 640x480 buffer, which the frame stretches back out. */}
           <Canvas
             dpr={1}
             shadows={{ type: PCFShadowMap }}
-            camera={{ position: [0, 4.2, 13.5], fov: 40, near: 0.1, far: 150 }}
-            gl={{ antialias: false, alpha: false }}
+            camera={{ position: [0, 4.2, 13.5], fov: 40, aspect: 16 / 9 }}
+            gl={{ antialias: false, alpha: false, powerPreference: "high-performance" }}
           >
             <FixedRenderResolution />
             <Scene motion={motion} />
