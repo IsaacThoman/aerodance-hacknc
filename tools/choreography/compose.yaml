@@ -1,0 +1,14 @@
+services:
+  studio:
+    build:
+      context: ../..
+      dockerfile: tools/choreography/Dockerfile
+    ports:
+      - "127.0.0.1:${STUDIO_PORT:-8082}:3000"
+    environment:
+      STUDIO_DATA_DIR: /data
+    volumes:
+      - studio-data:/data
+    restart: unless-stopped
+volumes:
+  studio-data:

@@ -14,8 +14,8 @@ import { useRemoteStatus } from './remoteLink.js';
  *   cursors the Wii hand (ui/wiiCursor.js) for the remote and the mouse, over every other overlay
  * The card starts tucked into the button and hides while a remote is connected. When the
  * remote drops it comes back for 15 seconds, then whooshes away on its own; opened by hand
- * it stays until closed. Corner controls only appear on the main menu; the cursors stay
- * available on other screens for navigation.
+ * it stays until closed. Corner controls slide off to the right outside the main menu; the
+ * cursors stay available on other screens for navigation.
  *
  * <RemoteDock visible={() => isMainScreen} />
  */
@@ -26,6 +26,7 @@ const CARD = { x: 1262, y: 304, w: 300, h: 364 };
 const QR_BOX = { x: 1282, y: 336, w: 260, h: 260 };
 const CLOSE = { x: 1550, y: 316, r: 22 };
 const REOPEN_MS = 15000;
+const SLIDE_SECONDS = 0.3;
 
 const smooth = (k) => k * k * (3 - 2 * k);
 
@@ -88,7 +89,7 @@ export default function RemoteDock({ visible = () => true }) {
   const props = useRef({});
   props.current = { status, fullscreen, visible };
   // open: where the card is heading; k: how far out it is (0 tucked into the button, 1 out).
-  const st = useRef({ open: false, k: 0, hideAt: null, holder: null, drawn: null, visible: null, drawnFullscreen: null }).current;
+  const st = useRef({ open: false, k: 0, slide: 0, hideAt: null, holder: null, drawn: null, visible: null, drawnFullscreen: null }).current;
 
   const qr = useMemo(() => (status.joinUrl ? QRCode.create(status.joinUrl, { errorCorrectionLevel: 'M' }).modules : null), [status.joinUrl]);
   const qrRef = useRef(qr);
@@ -96,7 +97,7 @@ export default function RemoteDock({ visible = () => true }) {
 
   useCanvasUI({
     priority: 3.5,
-    active: () => props.current.visible(),
+    active: () => props.current.visible() && st.slide === 0,
     widgets: () => {
       const widgets = st.k > 0.9 && st.open ? [{ id: 'close', circle: CLOSE }, { id: 'icon', circle: ICON }] : [{ id: 'icon', circle: ICON }];
       if (props.current.fullscreen.supported) widgets.push({ id: 'fullscreen', circle: FULLSCREEN });
@@ -109,7 +110,7 @@ export default function RemoteDock({ visible = () => true }) {
       st.hideAt = null;
       s.invalidate();
     },
-    update: (_dt, s) => {
+    update: (dt, s) => {
       const { holder } = props.current.status;
       const shown = props.current.visible();
       if (shown !== st.visible) {
@@ -117,6 +118,8 @@ export default function RemoteDock({ visible = () => true }) {
         if (!shown) { st.open = false; st.hideAt = null; st.k = 0; }
         s.invalidate();
       }
+      const slide = Math.max(0, Math.min(1, st.slide + (shown ? -1 : 1) * dt / SLIDE_SECONDS));
+      if (slide !== st.slide) { st.slide = slide; s.invalidate(); }
       // Connected: tuck the card away. Dropped: show it again for a while.
       if (holder !== st.holder) {
         if (holder) { st.open = false; st.hideAt = null; }
@@ -135,7 +138,7 @@ export default function RemoteDock({ visible = () => true }) {
       const { holder, error } = props.current.status;
       const fs = props.current.fullscreen;
       st.drawnFullscreen = fs;
-      if (!props.current.visible()) {
+      if (st.slide === 1) {
         drawCursors(g, s);
         return;
       }
@@ -162,6 +165,9 @@ export default function RemoteDock({ visible = () => true }) {
         g.restore();
       }
 
+      // Keep both bubbles opaque while they travel beyond the frame's right edge.
+      g.save();
+      g.translate(smooth(st.slide) * (s.w - ICON.x + ICON.r + 24), 0);
       drawGlassCircle(g, ICON, h.icon ?? 0);
       drawRemoteIcon(g, ICON, { lit: !!holder, dim: !!error && !holder });
       g.save();
@@ -173,14 +179,15 @@ export default function RemoteDock({ visible = () => true }) {
       g.strokeStyle = '#ffffff';
       ICONS.fullscreen(g, FULLSCREEN.x, FULLSCREEN.y, FULLSCREEN.r, fs.active);
       g.restore();
-      if (fs.error) {
+      if (st.visible && fs.error) {
         drawShadowText(g, fs.error, FULLSCREEN.x - FULLSCREEN.r - 18, FULLSCREEN.y, { size: 24, align: 'right' });
       }
-      if (holder && k < 0.5) {
+      if (st.visible && holder && k < 0.5) {
         drawCaps(g, 'REMOTE', ICON.x - ICON.r - 18, ICON.y - 14, { size: 18, align: 'right' });
         g.font = `700 26px ${FONT}`;
         drawShadowText(g, ellipsize(g, holder, 360), ICON.x - ICON.r - 18, ICON.y + 18, { size: 26, align: 'right' });
       }
+      g.restore();
 
       drawCursors(g, s);
     },

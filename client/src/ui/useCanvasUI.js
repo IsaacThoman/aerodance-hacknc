@@ -19,6 +19,7 @@ import { playUISound } from '../audio/uiSounds.js';
  *   onActivate: (wdg, ui) => {},          // press and release on the same widget
  *   onDrag: (wdg, point, ui) => {},       // widgets with drag: true (sliders)
  *   onKey: (event, ui) => {},
+ *   keyNav: bool | (ui) => bool,          // arrow keys step through the widgets, Enter/Space presses
  *   onBack: (ui) => {},                   // the phone remote's B button
  *   remote: EventTarget | null,           // phone remote input (default: remote/remoteLink.js):
  *                                         // move / down / up / back / leave, in design units
@@ -32,6 +33,8 @@ import { playUISound } from '../audio/uiSounds.js';
  * is grabbed. A widget's sound (a name, a function of the widget returning one, or false)
  * overrides the press sound.
  *
+ * With keyNav, Up/Down move a keyboard cursor (ui.pointer, pointerKind 'key') to the next
+ * widget while the overlay is active, skipping sliders and widgets with nav: false.
  * Content taller than the design height scrolls by drag or wheel: draw sets ui.contentHeight.
  * Works with <Canvas frameloop="demand">: input, ui.invalidate() and running animations
  * (anything that marks the overlay dirty) request the next frame.
@@ -165,18 +168,19 @@ export default function useCanvasUI(options) {
       }
       return wdg;
     };
+    const activate = (wdg) => {
+      s.press = 1;
+      const sound = typeof wdg.sound === 'function' ? wdg.sound(wdg) : wdg.sound;
+      if (sound !== false) playUISound(sound ?? (wdg.id === 'back' ? 'back' : 'select'));
+      opts.current.onActivate?.(wdg, s);
+    };
     const releaseAt = (p) => {
       if (s.drag) { s.drag = null; return; }
       const id = s.pressed;
       s.pressed = null;
       if (!id) return;
       const wdg = widgetAt(p);
-      if (wdg?.id === id) {
-        s.press = 1;
-        const sound = typeof wdg.sound === 'function' ? wdg.sound(wdg) : wdg.sound;
-        if (sound !== false) playUISound(sound ?? (id === 'back' ? 'back' : 'select'));
-        opts.current.onActivate?.(wdg, s);
-      }
+      if (wdg?.id === id) activate(wdg);
     };
     const onDown = (e) => {
       if (e.button !== 0) return;
@@ -205,7 +209,31 @@ export default function useCanvasUI(options) {
       s.scroll = Math.min(s.maxScroll, Math.max(0, s.scroll + (e.deltaY / rect.height) * s.h));
       s.dirty = true;
     };
-    const onKey = (e) => opts.current.onKey?.(e, s);
+    const center = (wdg) => (wdg.rect ? { x: wdg.rect.x + wdg.rect.w / 2, y: wdg.rect.y + wdg.rect.h / 2 } : { x: wdg.circle.x, y: wdg.circle.y });
+    const onKey = (e) => {
+      opts.current.onKey?.(e, s);
+      const { keyNav } = opts.current;
+      if (e.defaultPrevented || !(typeof keyNav === 'function' ? keyNav(s) : keyNav) || !active()) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const list = (opts.current.widgets?.(s) ?? []).filter((wdg) => !wdg.drag && wdg.nav !== false);
+        if (!list.length) return;
+        e.preventDefault();
+        const at = list.findIndex((wdg) => hit(s.pointer, wdg));
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        const next = at < 0 ? (step > 0 ? 0 : list.length - 1) : (at + step + list.length) % list.length;
+        s.pointer = center(list[next]);
+        s.pointerKind = 'key';
+        s.pointerMoved = true;
+        s.dirty = true;
+      } else if ((e.key === 'Enter' || e.key === ' ') && s.pointerKind === 'key') {
+        const wdg = widgetAt(s.pointer);
+        if (!wdg || wdg.drag) return;
+        e.preventDefault();
+        activate(wdg);
+      }
+    };
 
     // Each input asks for a frame (frameloop="demand" renders nothing otherwise).
     const framed = (fn) => (e) => { fn(e); s.requestFrame(); };

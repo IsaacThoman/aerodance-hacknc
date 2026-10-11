@@ -1,0 +1,49 @@
+{
+  "schema": "aerodance.song",
+  "schemaVersion": 1,
+  "songId": "song-70c63c8e",
+  "bundleRevision": 38,
+  "title": "Rockefeller Street Bad Test",
+  "artist": "Nightcore",
+  "songwriters": [],
+  "choreographers": [
+    "Austin Mann"
+  ],
+  "difficulty": "normal",
+  "tags": [],
+  "bpm": null,
+  "description": "Cult classic",
+  "rights": {
+    "audio": {
+      "license": "Free",
+      "attribution": ""
+    },
+    "choreography": {
+      "license": "Free",
+      "attribution": ""
+    }
+  },
+  "durationMs": 28390,
+  "playableStartMs": 0,
+  "playableEndMs": 28390,
+  "supportedPlayerCounts": [
+    1,
+    2
+  ],
+  "audio": {
+    "path": "audio.mp3",
+    "mimeType": "audio/mpeg"
+  },
+  "choreography": {
+    "path": "choreography.json",
+    "schemaVersion": 1
+  },
+  "coachMode": "mirror-player",
+  "rigProfile": "frutiger-seven-bone-v1",
+  "createdAt": "2026-10-11T01:00:27.568Z",
+  "publishedAt": "2026-10-11T03:37:36.129Z",
+  "build": {
+    "compilerVersion": "1.0.0",
+    "projectRevision": 38
+  }
+}

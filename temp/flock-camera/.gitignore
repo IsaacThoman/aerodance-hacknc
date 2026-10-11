@@ -1,0 +1,4 @@
+dist/
+*.blend1
+.cache/
+assets/renders/

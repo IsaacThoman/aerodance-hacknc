@@ -10,6 +10,7 @@ import { changes } from './events.js';
 import { profileByDevice } from './profiles.js';
 import { attachRemote } from './remote.js';
 import { internalApp, publicRoutes, requestBaseUrl } from './routes.js';
+import { songCatalogMiddleware } from './songCatalog.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const INTERNAL_PORT = Number(process.env.INTERNAL_PORT) || 3001;
@@ -53,7 +54,10 @@ app.get('/nft/:id.json', async (req, res) => {
 });
 
 // In production Express serves the Vite build; in dev Vite serves the client.
+app.get('/songs/manifest.json', songCatalogMiddleware(path.join(distDir, 'songs')));
 if (existsSync(distDir)) {
+  // A missing song file is a 404, not the app's index.html (the loader would misreport it).
+  app.use('/songs', express.static(path.join(distDir, 'songs'), { fallthrough: false }));
   app.use(express.static(distDir));
   app.get('/{*splat}', (_req, res) => res.sendFile(path.join(distDir, 'index.html')));
 }

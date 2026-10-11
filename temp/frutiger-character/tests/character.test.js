@@ -10,7 +10,7 @@ import {
 import { movementInput } from "../client/src/movement.js";
 
 const bytes = await readFile(
-  new URL("../client/public/models/aero-character.glb", import.meta.url),
+  new URL("../../../packages/character/assets/aero-character.glb", import.meta.url),
 );
 const asset = await new GLTFLoader().parseAsync(
   bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
