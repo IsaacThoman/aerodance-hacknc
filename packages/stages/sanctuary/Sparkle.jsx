@@ -366,6 +366,7 @@ export function LensFlare({ strength = 1 }) {
     sun.copy(SUN_DIR).multiplyScalar(1000).add(camera.position).project(camera);
     const u = material.uniforms;
     u.uSun.value.set(sun.x, sun.y);
+    u.uAspect.value = camera.aspect;
     const edge = Math.max(Math.abs(sun.x), Math.abs(sun.y));
     u.uVis.value = sun.z < 1 ? (1 - THREE.MathUtils.smoothstep(edge, 1.0, 1.8)) * strength : 0;
   });
