@@ -120,11 +120,13 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
     // Rise and both dancers' steps to the middle ease in, unless the stage is off screen.
     const k = shown.current < 0.05 ? 1 : Math.min(1, dt * 4);
     lift.current += ((raised ? RAISE : 0) - lift.current) * k;
+    // Converge twice as quickly while keeping the return split's existing timing.
+    const move = solo ? Math.min(1, k * 2) : k;
     DANCERS.forEach((d, i) => {
       const spot = spots.current[i];
       if (!spot) return;
       const target = solo ? 0 : d.x;
-      spot.position.x += (target - spot.position.x) * k;
+      spot.position.x += (target - spot.position.x) * move;
       if (Math.abs(target - spot.position.x) < SPOT_EPSILON) spot.position.x = target;
       // Hide purple near the end of convergence, then reveal it immediately to split out.
       spot.visible = !solo || i === 0 || Math.abs(spot.position.x) > Math.abs(d.x) * (1 - SOLO_HIDE_PROGRESS);
