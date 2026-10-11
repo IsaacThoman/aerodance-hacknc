@@ -4,6 +4,7 @@ import { Keypair } from "@solana/web3.js";
 import { getProfile, notifyChange, pool } from "./db.ts";
 import { Retry, enqueue, handle } from "./jobs.ts";
 import { mintTrophy } from "./nft.ts";
+import { prepareTrophyArt } from "./trophyArt.ts";
 import { notify, walletOf } from "./players.ts";
 import { buildMemo, explorerAddress, explorerTx, memoStatus, sendMemo, type SignedMemo } from "./solana.ts";
 
@@ -118,6 +119,7 @@ async function tryTrophy(battleId: string): Promise<boolean> {
   await pool.query("UPDATE battles SET trophy_attempts = trophy_attempts + 1 WHERE id = $1", [battleId]);
   let asset: string;
   try {
+    if (!(await prepareTrophyArt(battleId))) return true;
     ({ asset } = await mintTrophy(
       new Uint8Array(b.trophy_asset_secret!),
       b.trophy_owner!,
@@ -144,6 +146,11 @@ async function tryTrophy(battleId: string): Promise<boolean> {
 
 handle("trophy", async ({ battleId }: { battleId: string }) => {
   if (!(await tryTrophy(battleId))) throw new Retry("trophy still pending", TROPHY_RETRY_MS);
+});
+
+// Existing NFTs keep their on-chain metadata URI; filling their art switches it to the PNG.
+handle("trophy_art", async ({ battleId }: { battleId: string }) => {
+  await prepareTrophyArt(battleId);
 });
 
 // First try at the receipt, then the results text (with the link if it landed in time).

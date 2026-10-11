@@ -116,7 +116,7 @@ const BackdropShader = {
  *   focus: distance from the camera to keep sharp; aperture: blur per unit away from it;
  *   maxblur: the most blur, as a fraction of the frame
  */
-export function TrophyPipeline({ width, height, aspect, focus, aperture = 0.0009, maxblur = 0.011 }) {
+export function TrophyPipeline({ width, height, aspect, focus, drawFrame, aperture = 0.0009, maxblur = 0.011 }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -146,6 +146,8 @@ export function TrophyPipeline({ width, height, aspect, focus, aperture = 0.0009
 
   useFrame((state, delta) => {
     tickBeat(Math.min(delta, 0.1));
+    // Simulate the whole stage at the usual timestep; only rasterize frames being captured.
+    if (drawFrame && !drawFrame.current) return;
     const { composer, render, bokeh, mask, bloom, grade } = fx;
     render.scene = bokeh.scene = mask.scene = state.scene;
     render.camera = bokeh.camera = mask.camera = state.camera;

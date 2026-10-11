@@ -37,6 +37,7 @@ The treasury pays for new-player funding (0.05 SOL each) and for the on-chain re
 | `PROJECT_ID`, `PROJECT_SECRET` | | Photon dashboard → project settings. Unset = bot off. |
 | `PHOTON_TOKEN` | | Dashboard token so the phone view can add numbers to Photon's allowlist (see below) |
 | `PUBLIC_URL` | `http://localhost:3000` | The app's public address. Trophy NFTs point their metadata at `${PUBLIC_URL}/nft/<battleId>.json`. |
+| `TROPHY_RENDERER_URL` | `http://renderer:4001` | Internal 3D trophy rendering service. In local development use `http://localhost:4001`; Compose sets this automatically. |
 | `AGENT_PORT` | `4000` | Internal HTTP port |
 
 Player wallets (devnet keys) and phone numbers live in the database. Don't point a preview at the production database.
@@ -78,7 +79,7 @@ When the app settles a battle it queues a `battle_finished` job:
    Seated players are labelled with their devnet wallet address. Empty seats are labelled `p1`, `p2`, …. Names and phones never go on-chain.
 2. Every dancer with a linked phone gets a text with the result, their score, crowd hype and the Explorer link.
 
-3. The winner gets a trophy NFT ([Metaplex Core](https://developers.metaplex.com/core)) minted by the treasury into their devnet wallet, and a text when it lands. Ties and unclaimed seats get no trophy. The asset key is generated once and kept until the mint lands, so a retry finds the existing asset instead of minting a second one. The app serves the metadata at `/nft/<battleId>.json` and the trophy's one-of-a-kind art at `/nft/<battleId>.svg` (`server/trophyArt.js`).
+3. The winner gets a trophy NFT ([Metaplex Core](https://developers.metaplex.com/core)) minted by the treasury into their devnet wallet, and a text when it lands. Ties and unclaimed seats get no trophy. Before minting, the agent asks the internal renderer for the battle's 3D trophy and stores the PNG in the database; a render failure retries without minting. The asset key is generated once and kept until the mint lands, so a retry finds the existing asset instead of minting a second one and reuses its saved artwork. The app serves the metadata at `/nft/<battleId>.json` and the art at `/nft/<battleId>.png`. See [Trophy renders](../temp/trophy-renders/README.md) for the rendering pipeline and existing NFT backfill.
 
 If Solana is slow or down, players still get their result right away, with a note that the receipt is pending. A `receipt` job retries every 30 s and texts the link once it lands; a `trophy` job does the same for the NFT. Wallets that missed their starting SOL (say, while the treasury was empty) are retried every minute. Retries resend the same signed transaction until its blockhash expires, so a battle never gets two memos.
 

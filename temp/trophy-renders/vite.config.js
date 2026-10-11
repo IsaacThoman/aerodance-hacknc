@@ -4,8 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   root: fileURLToPath(new URL('./client', import.meta.url)),
-  // The dance capture the Dancer figurine holds its pose from (like temp/thumbnails).
-  publicDir: fileURLToPath(new URL('../frutiger-character/client/public', import.meta.url)),
+  publicDir: false,
   plugins: [react()],
   resolve: {
     dedupe: ['react', 'react-dom', 'three', '@react-three/fiber'],

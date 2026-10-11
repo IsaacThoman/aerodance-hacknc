@@ -106,6 +106,7 @@ Compose runs three services: `app` (Express, Socket.IO, the client), `db` (Times
 - **The app owns battle state.** `server/battles.js` handles seats, spectators, results and settlement; `server/profiles.js` handles profiles and stats. Each battle has a Socket.IO room, so displays and phones get every change pushed.
 - **The agent holds every Solana key.** The app hands it work through the `jobs` table (wallet funding, phone linking, receipts, result texts) and calls its internal API for things that need an answer right away (hype transfers, balances). It reports back with `NOTIFY changes`. See the [agent README](agent/README.md).
 - A battle settles when every seat has reported a score, or 90 s after the first report. The highest score wins and an equal top score is a tie. The agent then writes a memo receipt on-chain, texts linked players and mints the winner a trophy NFT (metadata at `/nft/<id>.json`).
+- Trophy minting waits for its 3D PNG to be rendered by the internal `renderer` service and saved in the database. Existing trophies get their art backfilled without reminting. See [Trophy renders](temp/trophy-renders/README.md).
 - The app's internal API listens on port `3001` for the bot (create battles, profiles by phone). Only the Compose network reaches it; the domain routes to `3000`.
 
 To make a devnet treasury for funding wallets and signing receipts, run `npm run treasury` in `agent/` and put the printed `SOLANA_TREASURY_SECRET` in `.env`.

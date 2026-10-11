@@ -46,6 +46,11 @@ async function claim(limit: number): Promise<Job[]> {
 
 async function run(job: Job): Promise<void> {
   const handler = handlers.get(job.kind);
+  // Software 3D rendering can outlast the lease. Keep active work from being claimed twice.
+  const heartbeat = setInterval(() => {
+    void pool.query("UPDATE jobs SET run_after = now() + $2::interval WHERE id = $1 AND done_at IS NULL", [job.id, LEASE])
+      .catch((err) => log(`lease renewal for #${job.id} failed:`, err.message));
+  }, 30_000);
   try {
     if (!handler) throw new Error(`no handler for ${job.kind}`);
     await handler(job.payload, job);
@@ -62,6 +67,8 @@ async function run(job: Job): Promise<void> {
         WHERE id = $1`,
       [job.id, message, giveUp, delayMs],
     );
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 

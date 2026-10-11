@@ -10,6 +10,11 @@ import { drawHud } from './hud.js';
 import { TrophyPipeline } from './pipeline.jsx';
 import { BATTLES, BUFFER, DATE, FRAMING } from './shots.js';
 import Trophy from './Trophy.jsx';
+import motionUrl from '../../../../packages/character/assets/dance.json?url';
+import '@fontsource/inter/200.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
 
 /*
  * Renders one trophy NFT in-engine: the battle's stage (its real 3D scene, lights and
@@ -97,6 +102,7 @@ function TrophyShot({ battle, traits, motion }) {
   // Keep the trophy in focus: the distance from the camera to what it looks at.
   const focus = Math.hypot(...framing.camera.map((v, i) => v - framing.target[i]));
   const ready = useRef({ stage: false, trophy: false });
+  const drawFrame = useRef(true);
   const onStage = useCallback(() => { ready.current.stage = true; }, []);
   const onTrophy = useCallback(() => { ready.current.trophy = true; }, []);
 
@@ -122,15 +128,20 @@ function TrophyShot({ battle, traits, motion }) {
         const info = ctx.getExtension('WEBGL_debug_renderer_info');
         return info ? ctx.getParameter(info.UNMASKED_RENDERER_WEBGL) : ctx.getParameter(ctx.RENDERER);
       })(),
-      async render() {
+      async render({ drawIntermediateFrames = true } = {}) {
         await until(() => ready.current.stage && ready.current.trophy, 'the stage and trophy');
         const faces = await Promise.all(['800', '700', '600', '200'].map((wt) => document.fonts.load(`${wt} 64px Inter`, 'aerodance')));
         const fontWarning = faces.some((f) => !f.length) ? 'Inter did not load; the 2D layer fell back to another font' : null;
         await nextTask();
         const frames = Math.max(1, Math.round(framing.time / STEP));
-        for (let i = 1; i <= frames; i++) {
-          advance(i * STEP);
-          if (i % 20 === 0) await nextTask();
+        try {
+          for (let i = 1; i <= frames; i++) {
+            drawFrame.current = drawIntermediateFrames || i >= frames - 1;
+            advance(i * STEP);
+            if (i % 20 === 0) await nextTask();
+          }
+        } finally {
+          drawFrame.current = true;
         }
         const plain = gl.domElement.toDataURL('image/png');
         const layer = hudLayer(drawHud(battle, traits));
@@ -145,7 +156,7 @@ function TrophyShot({ battle, traits, motion }) {
 
   return (
     <>
-      <TrophyPipeline width={BUFFER.width} height={BUFFER.height} aspect={BUFFER.aspect} focus={focus} />
+      <TrophyPipeline width={BUFFER.width} height={BUFFER.height} aspect={BUFFER.aspect} focus={focus} drawFrame={drawFrame} />
       <ShotCamera position={at(framing.camera)} target={at(framing.target)} fov={framing.fov} />
       <Suspense fallback={null}>
         <Stage motion={motion} playback={playback} />
@@ -161,7 +172,7 @@ export default function App() {
   const traits = useMemo(() => trophyTraits(battle), [battle]);
   const [motion, setMotion] = useState(null);
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}motion/dance.json`)
+    fetch(motionUrl)
       .then((r) => r.json())
       .then((data) => setMotion(validateMotion(data)));
   }, []);

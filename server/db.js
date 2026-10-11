@@ -131,6 +131,19 @@ const schema = `
   );
   CREATE INDEX IF NOT EXISTS jobs_due ON jobs (run_after) WHERE done_at IS NULL;
 
+  -- Persist finished 3D trophy renders with the database, across rebuilds and deployments.
+  CREATE TABLE IF NOT EXISTS trophy_art (
+    battle_id TEXT PRIMARY KEY REFERENCES battles (id) ON DELETE CASCADE,
+    png BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  -- Backfill old trophies without reminting. Pending trophies render as part of their mint job.
+  INSERT INTO jobs (kind, payload)
+    SELECT 'trophy_art', jsonb_build_object('battleId', b.id) FROM battles b
+     WHERE b.trophy_status = 'minted'
+       AND NOT EXISTS (SELECT 1 FROM trophy_art WHERE battle_id = b.id)
+       AND NOT EXISTS (SELECT 1 FROM jobs WHERE kind = 'trophy_art' AND payload->>'battleId' = b.id AND done_at IS NULL);
+
   -- Inbound iMessage ids the bot already handled, so a redelivery gets no second reply.
   CREATE TABLE IF NOT EXISTS imessage_seen (
     id TEXT        PRIMARY KEY,

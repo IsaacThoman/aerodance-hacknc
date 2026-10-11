@@ -27,6 +27,8 @@ jobs:
       - run: npm run studio:test
       - run: npm run build
       - run: npm run studio:build
+      - run: npm ci --prefix agent
+      - run: npm run typecheck --prefix agent
 
   browser:
     # The canvas UI flow in Chromium; the Dockerfile's ui-test stage brings Playwright.
@@ -35,3 +37,10 @@ jobs:
       - uses: actions/checkout@v5
       - run: docker build --target ui-test -t aerodance-ui-browser-test .
       - run: docker run --rm aerodance-ui-browser-test
+
+  trophy-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build --target trophy-renderer -t aerodance-trophy-renderer-test .
+      - run: docker run --rm --init --shm-size=1g aerodance-trophy-renderer-test node services/trophy-renderer/smoke.mjs

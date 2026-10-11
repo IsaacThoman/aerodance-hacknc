@@ -37,7 +37,7 @@ node temp/trophy-renders/scripts/render.mjs --only 3wegvq,tadr5e
 node temp/trophy-renders/scripts/render.mjs --spec battles.json --out /tmp/trophies   # any battles
 ```
 
-A spec is a list of `{ id, score, pops, sync, flair }`; the id seeds the traits exactly as the server does. It needs Google Chrome or Microsoft Edge (`CHROME_PATH` picks another) with GPU WebGL, and network access for the Inter font. There's nothing extra to install: the script drives the browser over the DevTools protocol with Node's own WebSocket. Each trophy takes 15–60 s on integrated graphics.
+A spec is a list of `{ id, score, pops, sync, flair, created_at? }`; the id seeds the traits exactly as the server does. It needs Google Chrome or Microsoft Edge (`CHROME_PATH` picks another) with GPU WebGL. The Inter font and dance capture are bundled locally. The script drives the browser over the DevTools protocol with Node's own WebSocket. Each trophy takes 15–60 s on integrated graphics.
 
 To look at one live, start the capture page (`npx vite --config temp/trophy-renders/vite.config.js`, port 5180) and open `?battle=<id>` or `?spec=<JSON>`; `window.__trophy.render()` steps the stage and draws the frame.
 
@@ -50,4 +50,12 @@ To look at one live, start the capture page (`npx vite --config temp/trophy-rend
 - `client/src/shots.js`: the sample battles and each stage's framing.
 - `client/src/sha256.js`: `node:crypto`'s sha256 in plain JS, so `server/trophyArt.js` runs in the browser (aliased in `vite.config.js`).
 
-These are offline renders: the live NFT still points at the server's SVG (`/nft/<battleId>.svg`), since the server doesn't run the 3D engine.
+## Production minting
+
+The internal `renderer` Compose service builds this capture page and renders it in Chromium using software WebGL, so the server doesn't need a GPU. It accepts the winning battle's id, date and scores from the agent, one render at a time; busy or failed requests retry through the existing jobs queue. It simulates warm-up at the usual timestep and only draws the last two frames. Fonts, choreography and the character model are local build assets.
+
+Before minting, the agent saves the 1080×1080 PNG in `trophy_art` in the app's database. Mint retries reuse the saved art. The app serves it at `/nft/<battleId>.png`, and the NFT JSON advertises `image/png`. The worker renews its job lease while rendering. Rendering has a five-minute deadline, and failures leave minting pending.
+
+On app startup, already minted trophies without PNGs get `trophy_art` backfill jobs. Their existing metadata URI switches from SVG to PNG when the render is saved; no new on-chain asset is created. Until then, their SVG remains available. Wallets may need to refresh cached metadata.
+
+For local development, run `npm run trophies:build` followed by `node services/trophy-renderer/index.js` (install Playwright's matching Chromium, or set `CHROME_PATH`), and point the agent's `TROPHY_RENDERER_URL` at `http://localhost:4001`. Compose configures this automatically. The renderer has no public domain; `INTERNAL_SECRET` authenticates its API.

@@ -5,7 +5,8 @@ import { enqueueJob, pool, tx } from './db.js';
 import { AgentError, agentCall } from './agent.js';
 import { changes } from './events.js';
 import { HttpError, explorerAddress, explorerTx, getProfile, shortId } from './profiles.js';
-import { trophySvg, trophyTraits } from './trophyArt.js';
+import { trophySvg } from './trophyArt.js';
+import { formatTrophyMetadata } from './trophyMetadata.js';
 
 export const MAX_SEATS = 8;
 export const HYPE_SOL = 0.005;
@@ -110,6 +111,7 @@ export async function publicBattle(id) {
 async function trophyBattle(id) {
   const { rows: [b] } = await pool.query(
     `SELECT b.id, b.created_at, b.winner_seat, s.score, s.pops, s.sync, s.flair,
+            EXISTS (SELECT 1 FROM trophy_art WHERE battle_id = b.id) AS art_ready,
             (SELECT count(*)::int FROM battle_seats WHERE battle_id = b.id) AS dancers,
             (SELECT count(*)::int FROM hype WHERE battle_id = b.id AND seat = b.winner_seat) AS hype
        FROM battles b JOIN battle_seats s ON s.battle_id = b.id AND s.seat = b.winner_seat
@@ -125,34 +127,15 @@ export async function trophyImage(id) {
   return b && trophySvg(b);
 }
 
+export async function trophyPng(id) {
+  const { rows: [art] } = await pool.query('SELECT png FROM trophy_art WHERE battle_id = $1', [id]);
+  return art?.png;
+}
+
 export async function trophyMetadata(id, baseUrl) {
   const b = await trophyBattle(id);
   if (!b) return undefined;
-  const t = trophyTraits(b);
-  const image = `${baseUrl}/nft/${b.id}.svg`;
-  return {
-    name: `aerodance trophy #${b.id}`,
-    symbol: 'AERO',
-    description: `Won dance battle ${b.id} on aerodance 🫧 Frutiger Aero dance battles, scored live.`,
-    image,
-    external_url: baseUrl,
-    attributes: [
-      { trait_type: 'stage', value: t.stage.name },
-      { trait_type: 'glass', value: t.glass },
-      { trait_type: 'finish', value: t.finish },
-      { trait_type: 'cup', value: t.cup },
-      { trait_type: 'aura', value: t.aura ? 'Golden' : 'None' },
-      { trait_type: 'battle', value: b.id },
-      { trait_type: 'dancers', value: b.dancers },
-      { trait_type: 'score', value: b.score ?? 0 },
-      { trait_type: 'pops', value: b.pops ?? 0 },
-      { trait_type: 'sync', value: b.sync ?? 0 },
-      { trait_type: 'flair', value: b.flair ?? 0 },
-      { trait_type: 'hype', value: b.hype },
-      { trait_type: 'date', value: b.created_at.toISOString().slice(0, 10) },
-    ],
-    properties: { category: 'image', files: [{ uri: image, type: 'image/svg+xml' }] },
-  };
+  return formatTrophyMetadata(b, baseUrl);
 }
 
 // Highest score wins; a shared top score is a tie. Idempotent: only an open battle settles.

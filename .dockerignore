@@ -2,11 +2,11 @@ node_modules
 dist
 .git
 .env
+**/.env
 **/node_modules
 **/dist
 **/.venv
 **/.cache
 **/__pycache__
 **/tracking-output
-agent
 studio-data

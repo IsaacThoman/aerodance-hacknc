@@ -32,7 +32,9 @@ services:
   # Solana devnet + iMessage worker. Internal only: no domain, no published port.
   # The app reaches it at agent:4000; it reaches the app's internal API at app:3001.
   agent:
-    build: ./agent
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
     expose:
       - "4000"
     environment:
@@ -41,6 +43,7 @@ services:
       INTERNAL_SECRET: ${INTERNAL_SECRET:-}
       # Trophy NFT metadata URIs point here (the app serves /nft/<id>.json)
       PUBLIC_URL: ${PUBLIC_URL:-}
+      TROPHY_RENDERER_URL: http://renderer:4001
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.devnet.solana.com}
       SOLANA_TREASURY_SECRET: ${SOLANA_TREASURY_SECRET:-}
       # Leave these unset (e.g. in PR previews) and the bot stays off; texts are only logged.
@@ -50,8 +53,29 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      renderer:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+    restart: unless-stopped
+
+  # Internal only. Chromium renders the game's existing 3D trophy scene on CPU-only servers.
+  renderer:
+    build:
+      context: .
+      target: trophy-renderer
+    expose:
+      - "4001"
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-}
+    init: true
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD", "node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:4001/health'); process.exit(r.ok ? 0 : 1)"]
       interval: 10s
       timeout: 5s
       start_period: 60s

@@ -8,6 +8,21 @@ RUN npm run build
 FROM build AS test
 RUN npm test
 
+FROM build AS trophy-build
+RUN npm run trophies:build
+
+FROM mcr.microsoft.com/playwright:v1.58.2-noble AS trophy-renderer
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY services/trophy-renderer ./services/trophy-renderer
+COPY packages/trophy-art ./packages/trophy-art
+COPY --from=trophy-build /app/dist/trophies ./dist/trophies
+EXPOSE 4001
+USER pwuser
+CMD ["node", "services/trophy-renderer/index.js"]
+
 FROM mcr.microsoft.com/playwright:v1.58.2-noble AS ui-test
 WORKDIR /app
 COPY --from=build /app ./

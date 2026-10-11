@@ -5,7 +5,7 @@ import path from 'node:path';
 import express from 'express';
 import { Server } from 'socket.io';
 import { listen, migrate, pool, recordSpin, spinHistory, spinsSince } from './db.js';
-import { publicBattle, startSweeper, stickerMetadata, trophyImage, trophyMetadata } from './battles.js';
+import { publicBattle, startSweeper, stickerMetadata, trophyImage, trophyMetadata, trophyPng } from './battles.js';
 import { changes } from './events.js';
 import { profileByDevice } from './profiles.js';
 import { attachRemote } from './remote.js';
@@ -60,7 +60,12 @@ app.get('/nft/:id.svg', async (req, res) => {
 app.get('/nft/:id.json', async (req, res) => {
   const meta = await trophyMetadata(req.params.id, requestBaseUrl(req));
   if (!meta) return res.status(404).json({ error: 'no trophy for that battle' });
-  res.json(meta);
+  res.set('Cache-Control', 'no-cache').json(meta);
+});
+app.get('/nft/:id.png', async (req, res) => {
+  const png = await trophyPng(req.params.id);
+  if (!png) return res.status(404).json({ error: 'trophy render not ready' });
+  res.type('image/png').set('Cache-Control', 'public, max-age=31536000, immutable').send(png);
 });
 
 // In production Express serves the Vite build; in dev Vite serves the client.
