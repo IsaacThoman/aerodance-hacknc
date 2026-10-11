@@ -1,0 +1,21 @@
+{
+  "schema": "aerodance.checksums",
+  "schemaVersion": 1,
+  "files": [
+    {
+      "path": "song.json",
+      "bytes": 988,
+      "sha256": "8c39e23adcf0c52a96e86e7318ba0bd2105422726190c8b3fc52bfe9f56c0b58"
+    },
+    {
+      "path": "choreography.json",
+      "bytes": 24771998,
+      "sha256": "8fcda1d0c1b2827e533480181af2e18b800c4d67beef417b2543a06ee6c3e87f"
+    },
+    {
+      "path": "audio.mp3",
+      "bytes": 1296019,
+      "sha256": "6de7d102478c98b53caf04bdacc7112dfe70d37cf4c102b953e345f94f4caac3"
+    }
+  ]
+}

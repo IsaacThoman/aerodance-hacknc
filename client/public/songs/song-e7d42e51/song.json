@@ -1,0 +1,48 @@
+{
+  "schema": "aerodance.song",
+  "schemaVersion": 1,
+  "songId": "song-e7d42e51",
+  "bundleRevision": 14,
+  "title": "Gangnam Style",
+  "artist": "PSY",
+  "songwriters": [],
+  "choreographers": [],
+  "difficulty": "normal",
+  "stage": "club",
+  "tags": [],
+  "bpm": null,
+  "description": "",
+  "rights": {
+    "audio": {
+      "license": "Free",
+      "attribution": ""
+    },
+    "choreography": {
+      "license": "Free",
+      "attribution": ""
+    }
+  },
+  "durationMs": 30000,
+  "playableStartMs": 0,
+  "playableEndMs": 30000,
+  "supportedPlayerCounts": [
+    1,
+    2
+  ],
+  "audio": {
+    "path": "audio.mp3",
+    "mimeType": "audio/mpeg"
+  },
+  "choreography": {
+    "path": "choreography.json",
+    "schemaVersion": 1
+  },
+  "coachMode": "mirror-player",
+  "rigProfile": "frutiger-seven-bone-v1",
+  "createdAt": "2026-10-11T11:43:47.242Z",
+  "publishedAt": "2026-10-11T11:55:34.826Z",
+  "build": {
+    "compilerVersion": "1.2.0",
+    "projectRevision": 14
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schema": "aerodance.song",
+  "schemaVersion": 1,
+  "songId": "song-e7d42e52",
+  "bundleRevision": 32,
+  "title": "Rockefeller Street",
+  "artist": "Nightcore",
+  "songwriters": [],
+  "choreographers": [],
+  "difficulty": "normal",
+  "stage": "openreef",
+  "tags": [],
+  "bpm": null,
+  "description": "",
+  "rights": {
+    "audio": {
+      "license": "Free",
+      "attribution": ""
+    },
+    "choreography": {
+      "license": "Free",
+      "attribution": ""
+    }
+  },
+  "durationMs": 53944,
+  "playableStartMs": 0,
+  "playableEndMs": 53944,
+  "supportedPlayerCounts": [
+    1,
+    2
+  ],
+  "audio": {
+    "path": "audio.mp3",
+    "mimeType": "audio/mpeg"
+  },
+  "choreography": {
+    "path": "choreography.json",
+    "schemaVersion": 1
+  },
+  "coachMode": "mirror-player",
+  "rigProfile": "frutiger-seven-bone-v1",
+  "createdAt": "2026-10-11T11:43:47.242Z",
+  "publishedAt": "2026-10-11T12:12:10.482Z",
+  "build": {
+    "compilerVersion": "1.2.0",
+    "projectRevision": 32
+  }
+}
