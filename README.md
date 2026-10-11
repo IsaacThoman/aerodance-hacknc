@@ -34,6 +34,10 @@ Six temporary in-engine main-menu variations (Aqua Lagoon, Starlight Galaxy, Eco
 
 End-of-song screens on each dance stage (Player 1 wins, Player 2 wins, a tie, or a solo end screen, all with placeholder scores) are served at `/win-screens/` in production and PR previews. Switch stage with 1–6, the result with M, or link directly with a hash such as `/win-screens/#club/p2`. See [its README](temp/win-screens/README.md).
 
+## Thumbnails
+
+27 in-engine 3:2 thumbnails (2160×1440) of the six dance stages, with and without the "aerodance." wordmark, are in `temp/thumbnails/with-logo/` and `temp/thumbnails/no-logo/`. They use the game's own pixel grid, each pixel an exact 4×3 block. See [its README](temp/thumbnails/README.md) to re-render them or add shots.
+
 ## Stack
 
 | Layer    | Tech                                      |
