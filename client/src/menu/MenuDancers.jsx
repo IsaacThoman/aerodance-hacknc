@@ -28,6 +28,7 @@ const PUCK = { r: 3.1, h: 0.26 };
 // Stage placement in front of the fixed camera (looking down -Z), then turned to face it.
 const STAGE = { x: 4.3, y: -2.6, z: -19, tilt: 0.2, turn: -0.22 };
 const FLOCK_SCALE = 4;
+const FLOCK_LOWER_SCALE = 1.495;
 // How far the stage rises when it's raised.
 const RAISE = 1.5;
 const SLIDE = 12;
@@ -93,8 +94,8 @@ function FlockCamera() {
     const drop = top * (1 - 1 / FLOCK_SCALE);
     const upperParts = assembly.children.filter((part) => part !== pole);
     const lowerEnd = Math.min(...upperParts.map((part) => new THREE.Box3().setFromObject(part, true).min.y));
-    // Give the exposed lower shaft 15% more length, raising the hardware with it.
-    const extension = (lowerEnd - drop) * 0.15;
+    // Extend the exposed lower shaft, raising the hardware with it.
+    const extension = (lowerEnd - drop) * (FLOCK_LOWER_SCALE - 1);
     for (const part of upperParts) part.position.y += extension - drop;
     pole.scale.y = (poleHeight - drop + extension) / poleHeight;
     pole.position.y *= pole.scale.y;
