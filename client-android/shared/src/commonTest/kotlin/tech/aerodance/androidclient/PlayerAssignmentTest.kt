@@ -12,35 +12,35 @@ class PlayerAssignmentTest {
 
     @Test fun sidesCenterMissingAndShuffledResults() {
         val left = pose(.2f); val right = pose(.8f)
-        assertEquals(listOf(0, 1), assignPlayers(listOf(right, left), 2).map { it.playerId })
+        assertEquals(listOf(0, 1), assignPlayers(listOf(left, right), 2).map { it.playerId })
         assertEquals(assignPlayers(listOf(left, right), 2), assignPlayers(listOf(right, left), 2))
-        assertEquals(1, assignPlayers(listOf(right), 2).single().playerId)
-        assertEquals(0, assignPlayers(listOf(left), 2).single().playerId)
-        assertEquals(1, assignPlayers(listOf(pose(.5f)), 2).single().playerId)
+        assertEquals(0, assignPlayers(listOf(right), 2).single().playerId)
+        assertEquals(1, assignPlayers(listOf(left), 2).single().playerId)
+        assertEquals(0, assignPlayers(listOf(pose(.5f)), 2).single().playerId)
         assertEquals(emptyList(), assignPlayers(emptyList(), 2))
     }
 
     @Test fun confidenceFallbackAndArmsAcrossCenter() {
-        assertEquals(0, assignPlayers(listOf(hips(pose(.2f), null)), 2).single().playerId)
-        assertEquals(0, assignPlayers(listOf(pose(.2f, .5f)), 2).single().playerId)
+        assertEquals(1, assignPlayers(listOf(hips(pose(.2f), null)), 2).single().playerId)
+        assertEquals(1, assignPlayers(listOf(pose(.2f, .5f)), 2).single().playerId)
         assertTrue(assignPlayers(listOf(pose(.2f, .499f)), 2).isEmpty())
         assertTrue(assignPlayers(listOf(pose(.2f, null)), 2).isEmpty())
         val reaching = pose(.2f).copy(landmarks = pose(.2f).landmarks.mapIndexed { i, p ->
             if (i in 13..22) p.copy(x = .9f) else p
         })
-        assertEquals(0, assignPlayers(listOf(reaching), 2).single().playerId)
+        assertEquals(1, assignPlayers(listOf(reaching), 2).single().playerId)
         val fallback = hips(pose(.8f), .49f)
-        assertEquals(1, assignPlayers(listOf(fallback), 2).single().playerId)
+        assertEquals(0, assignPlayers(listOf(fallback), 2).single().playerId)
     }
 
     @Test fun sameSideChoosesCenterThenConfidenceThenX() {
-        val outer = pose(.05f); val centered = pose(.25f, .6f)
+        val outer = pose(.95f); val centered = pose(.75f, .6f)
         assertEquals(centered, assignPlayers(listOf(outer, centered), 2).single())
-        val weak = pose(.125f, .5f); val strong = pose(.375f, .9f)
+        val weak = pose(.875f, .5f); val strong = pose(.625f, .9f)
         assertEquals(strong, assignPlayers(listOf(weak, strong), 2).single())
-        val tied = pose(.125f, .9f)
-        assertEquals(tied, assignPlayers(listOf(strong, tied), 2).single())
-        assertEquals(listOf(1), assignPlayers(listOf(pose(.8f), pose(.9f)), 2).map { it.playerId })
+        val tied = pose(.875f, .9f)
+        assertEquals(strong, assignPlayers(listOf(tied, strong), 2).single())
+        assertEquals(listOf(0), assignPlayers(listOf(pose(.8f), pose(.9f)), 2).map { it.playerId })
     }
 
     @Test fun singlePlayerAlwaysZeroIncludingNoTorso() {
@@ -62,7 +62,7 @@ class PlayerAssignmentTest {
         assertEquals(2, output.latest!!.playerCount)
         assertEquals(first, output.configure(2, 12))
         assertEquals(2, output.latest!!.seq)
-        assertEquals(1, complete(.8f, 13).poses.single().playerId)
+        assertEquals(0, complete(.8f, 13).poses.single().playerId)
         val back = output.configure(1, 14)
         assertEquals(4, back.effectiveFromSeq)
         assertTrue(output.latest!!.poses.isEmpty())

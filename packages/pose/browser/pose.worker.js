@@ -1,11 +1,14 @@
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 let landmarker;
 let sessionId;
+let runningMode = 'VIDEO';
 self.onmessage = async ({ data }) => {
   try {
     if (data.type === 'initialize') {
       sessionId = data.sessionId;
-      if (!await FilesetResolver.isSimdSupported()) throw Error('Webcam tracking requires a browser with WebAssembly SIMD support. Update your browser or use Android.');
+      runningMode = data.runningMode || 'VIDEO';
+      if (!['IMAGE', 'VIDEO'].includes(runningMode)) throw Error('Invalid pose running mode');
+      if (!await FilesetResolver.isSimdSupported()) throw Error('Pose tracking requires a browser with WebAssembly SIMD support. Update your browser or use Android.');
       const files = await FilesetResolver.forVisionTasks(data.wasmUrl, true);
       const response = await fetch(data.modelUrl);
       if (!response.ok) throw Error(`Model download failed (HTTP ${response.status})`);
@@ -25,7 +28,7 @@ self.onmessage = async ({ data }) => {
       }
       const create = delegate => PoseLandmarker.createFromOptions(files, {
         baseOptions: { modelAssetBuffer: new Uint8Array(buffer), delegate },
-        canvas: new OffscreenCanvas(1, 1), runningMode: 'VIDEO', numPoses: data.playerCount,
+        canvas: new OffscreenCanvas(1, 1), runningMode, numPoses: data.playerCount,
         minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
         outputSegmentationMasks: false,
       });
@@ -38,7 +41,7 @@ self.onmessage = async ({ data }) => {
     } else if (data.type === 'frame') {
       try {
         const start = performance.now();
-        const result = landmarker.detectForVideo(data.bitmap, data.timestampMs);
+        const result = runningMode === 'IMAGE' ? landmarker.detect(data.bitmap) : landmarker.detectForVideo(data.bitmap, data.timestampMs);
         self.postMessage({ type: 'result', sessionId, seq: data.seq, landmarks: result.landmarks,
           inferenceMs: performance.now() - start });
       } finally { data.bitmap.close(); }

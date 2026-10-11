@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { GameSession } from '../src/game/GameSession.js';
-import { parseRecording } from '../src/pose/ReplayPoseSource.js';
+import { parseRecording, standingPose } from '../src/pose/ReplayPoseSource.js';
 import { PoseSourceController } from '../src/pose/PoseSourceController.js';
 import { sampleSong } from '../../packages/pose/song.js';
 import { test } from 'node:test';
@@ -13,15 +13,15 @@ const points = x => Array.from({ length: 33 }, () => ({ x, y: 0.5, z: 0, visibil
 test('two-player slots require consecutive evidence and clear immediately on ambiguity', () => {
   const slots = new PlayerSlotMapper();
   assert.deepEqual(slots.map([points(0.25)], 2), []);
-  assert.deepEqual(slots.map([points(0.25)], 2).map(p => p.playerId), [0]);
+  assert.deepEqual(slots.map([points(0.25)], 2).map(p => p.playerId), [1]);
   assert.deepEqual(slots.map([points(0.25), points(0.3)], 2), []);
   assert.deepEqual(slots.map([points(0.25)], 2), []);
   assert.deepEqual(slots.map([points(0.75)], 2), []);
-  assert.deepEqual(slots.map([points(0.75)], 2).map(p => p.playerId), [1]);
+  assert.deepEqual(slots.map([points(0.75)], 2).map(p => p.playerId), [0]);
 });
 test('webcam slots use camera regions, preserve missing dancers and reject ambiguity', () => {
-  assert.deepEqual(assignPlayerSlots([points(0.75), points(0.25)], 2).map(p => [p.playerId, p.landmarks[0].x]), [[0, 0.25], [1, 0.75]]);
-  assert.deepEqual(assignPlayerSlots([points(0.75)], 2).map(p => p.playerId), [1]);
+  assert.deepEqual(assignPlayerSlots([points(0.75), points(0.25)], 2).map(p => [p.playerId, p.landmarks[0].x]), [[0, 0.75], [1, 0.25]]);
+  assert.deepEqual(assignPlayerSlots([points(0.75)], 2).map(p => p.playerId), [0]);
   assert.deepEqual(assignPlayerSlots([points(0.5)], 2), []);
   assert.deepEqual(assignPlayerSlots([points(0.2), points(0.3)], 2), []);
   assert.deepEqual(assignPlayerSlots([points(0.75)], 1).map(p => p.playerId), [0]);
@@ -45,6 +45,7 @@ function fixture(t) {
     bitmap: async () => ({ close() {} }), assetUrl: () => 'https://test.invalid/pose-assets/' });
   t.after(() => source.disconnect());
   return { source, worker, stream, track, messages,
+    get now() { return time; },
     setTime(value) { time = value; }, get stopped() { return stopped; }, get terminated() { return terminated; },
     async frame(mediaTime, now = mediaTime * 1000) { time = now; callback(now, { mediaTime }); await Promise.resolve(); },
     deliver(data) { worker.onmessage({ data: { sessionId: source.sessionId, ...data } }); } };
@@ -92,21 +93,33 @@ test('webcam capture times drive scored gameplay and recordings through the cont
   const source = new PoseSourceController({ webcam: f.source });
   source.setMode('webcam');
   await source.connect(); f.deliver({ type: 'ready', delegate: 'CPU' });
-  const dir = new URL('../public/songs/song-70c63c8e/', import.meta.url);
+  const dir = new URL('./fixtures/song-70c63c8e/', import.meta.url);
   const bundle = {
     song: JSON.parse(readFileSync(new URL('song.json', dir))),
     choreography: JSON.parse(readFileSync(new URL('choreography.json', dir))),
   };
-  const player = { state: 'paused', play() { this.state = 'playing'; },
-    songTimeAt: perf => perf - 1000, dispose() {} };
+  let songStart;
+  const player = { state: 'paused', play() { this.state = 'playing'; songStart = f.now; },
+    songTimeAt: perf => perf - songStart + bundle.song.playableStartMs, dispose() {} };
   const session = new GameSession({ bundle, playerCount: 1, source,
-    createPlayer: async () => player, now: () => 0, record: true, autoStart: false });
+    createPlayer: async () => player, now: () => f.now, record: true, autoStart: false });
   t.after(() => session.dispose());
-  await session.load(); session.start();
+  await session.load();
+  assert.equal(session.phase, 'calibrating');
   let seq = 0;
+  for (let ms = 0; ms <= 2500; ms += 100) {
+    await f.frame(ms / 1000, ms);
+    f.setTime(ms + 100);
+    f.deliver({ type: 'result', seq: ++seq, landmarks: [standingPose(0.5)], inferenceMs: 100 });
+  }
+  assert.equal(session.phase, 'ready');
+  assert.equal(session.recording, null, 'calibration poses are excluded from song recordings');
+  session.start();
+  const calibrationFrames = seq;
   for (let ms = bundle.song.playableStartMs; ms < bundle.song.playableEndMs; ms += 100) {
-    await f.frame((ms + 1000) / 1000, ms + 1000);
-    f.setTime(ms + 1300);
+    const capture = songStart + ms - bundle.song.playableStartMs;
+    await f.frame(capture / 1000, capture);
+    f.setTime(capture + 300);
     f.deliver({ type: 'result', seq: ++seq,
       landmarks: sampleSong(bundle, ms, 1).poses.map(p => p.landmarks), inferenceMs: 300 });
   }
@@ -115,7 +128,7 @@ test('webcam capture times drive scored gameplay and recordings through the cont
   assert.doesNotThrow(() => source.disconnect(), 'camera shutdown reaches game and recorder safely');
   const { entries } = parseRecording(session.recording.stop());
   session.recording = null;
-  assert.equal(entries.length, seq);
+  assert.equal(entries.length, seq - calibrationFrames);
   assert.equal(entries[0].songTimeMs, bundle.song.playableStartMs, 'recorded at capture, not arrival');
   assert.equal(entries[0].timing, 'browser-frame-observation');
 });

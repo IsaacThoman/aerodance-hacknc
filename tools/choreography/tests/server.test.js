@@ -17,7 +17,7 @@ import { poseModel, MEDIAPIPE_VERSION } from '../../../packages/pose/browser/mod
 const pose = (id) => ({
   playerId: id,
   landmarks: Array.from({ length: 33 }, (_, i) => ({
-    x: id === 0 ? 0.25 : 0.75,
+    x: id === 0 ? 0.75 : 0.25,
     y: i < 23 ? 0.4 : 0.8,
     z: 0,
     visibility: 1,

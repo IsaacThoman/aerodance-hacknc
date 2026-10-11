@@ -69,6 +69,27 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    the same distance compensation for playback; existing Android bundles retain
    their original calibration mode. This handles body size in the image, rather
    than correcting optical lens distortion.
+   For a prerecorded video, choose **Import video**, select **Lite / Full / Heavy**,
+   and scrub or play the source until you find an upright stance with shoulders,
+   hips, and feet clearly visible. Choose **Use current frame for calibration**,
+   then **Process video**. The selected frame calibrates every captured dancer;
+   detected dancers remain visible in the calibration overlay even when their
+   body confidence is too low. Each label explains whether that dancer is ready
+   or needs a clearer frame; processing requires every shown dancer to be ready.
+   if another dancer appears later, choose a frame containing both and **Save take**
+   without processing the poses again. Detection uses the webcam's two left/right
+   regions. The importer creates a new library take; use its menu to assign tracks.
+   Inference runs locally and waits for each sampled frame, up to 30 samples/second.
+   When whole-frame inference misses a dancer, the importer searches that side
+   more closely, including the body area in portrait footage. Recovered poses
+   retain the original video coordinates and the selected model.
+   Slow models take longer rather than losing samples. Progress and **Cancel import**
+   are available. MP4, WebM, MOV, and other formats work when the browser supports
+   their codecs; videos must be no longer than one hour. Song audio stays unchanged,
+   and video timestamps start at song time zero; adjust alignment with track offsets.
+   Source footage is available only while the import panel is open. Saved projects
+   and backups retain poses, model provenance, and the selected calibration, including
+   after track edits or deleting the library take.
 3. Scrub the waveform, step samples, or play at 0.25/0.5/1 speed. Switch between
    Skeleton, Frutiger, and Both. The two preview characters have independent rigs.
    Choose **Live view** to preview Android or webcam poses without recording or importing
@@ -183,6 +204,8 @@ npm run studio:test
 npm --prefix temp/frutiger-character test
 npm run studio:build
 npm run build
+node tools/choreography/tests/video-import.browser.mjs
+node tools/choreography/tests/video-duet.browser.mjs
 docker build -f tools/choreography/Dockerfile --target test -t studio-test .
 docker build -f tools/choreography/Dockerfile --target ui-test -t studio-browser-test .
 docker run --rm studio-browser-test
@@ -210,9 +233,9 @@ batches, backup restore, deterministic bundle checksums, and unsafe archives.
   in the saved records. Raw Android NDJSON without an audio anchor starts at zero.
   Android's planned clock exchange is unavailable; network transit, sensor-to-callback
   delay, and audio output latency remain uncalibrated. Manually review alignment.
-- The editor imports JSON/NDJSON and its own project backups. Uploading video and
-  running the optional Python tracker inside the website are future work. The
-  existing offline tracker can produce a take for import.
+- The editor imports JSON/NDJSON, its own project backups, and browser-decodable
+  videos. Video import runs the same local models as the webcam; the optional
+  Python tracker remains an offline tool.
 - Automatic normalization of different camera placements, articulated IK, and
   curve/clip transition controls are future work; review poses after overwriting
   a track. Each independent player track retains its own inference dimensions.

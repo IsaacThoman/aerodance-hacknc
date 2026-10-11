@@ -36,8 +36,8 @@ fun assignPlayers(detections: List<Pose>, playerCount: Int): List<Pose> {
     }
     val candidates = detections.mapNotNull { pose -> pose.torso()?.let { pose to it } }
     return (0..1).mapNotNull { id ->
-        candidates.filter { (_, torso) -> (if (torso.x < .5) 0 else 1) == id }
-            .minWithOrNull(compareBy<Pair<Pose, Torso>> { abs(it.second.x - if (id == 0) .25 else .75) }
+        candidates.filter { (_, torso) -> (if (torso.x < .5) 1 else 0) == id }
+            .minWithOrNull(compareBy<Pair<Pose, Torso>> { abs(it.second.x - if (id == 0) .75 else .25) }
                 .thenByDescending { it.second.confidence }.thenBy { it.second.x }
                 .thenComparator { a, b -> geometryOrder.compare(a.first, b.first) })?.first?.copy(playerId = id)
     }

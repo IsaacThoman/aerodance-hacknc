@@ -6,7 +6,7 @@ import { COUNTDOWN_MS, GameSession, LATE_ALLOWANCE_MS, READY_HOLD_MS } from '../
 import { ReplayPoseSource, createPoseRecorder, parseRecording, standingPose } from '../src/pose/ReplayPoseSource.js';
 import { bestScore, recordResults } from '../src/game/bestScores.js';
 
-const dir = new URL('../public/songs/song-70c63c8e/', import.meta.url);
+const dir = new URL('./fixtures/song-70c63c8e/', import.meta.url);
 const bundle = {
   song: JSON.parse(readFileSync(new URL('song.json', dir))),
   choreography: JSON.parse(readFileSync(new URL('choreography.json', dir))),
@@ -36,14 +36,16 @@ function fakePlayer(clock) {
 }
 
 /** A pose source the test drives by hand. */
-function fakeSource() {
+function fakeSource(sourceKind = 'android') {
   const listeners = new Set();
+  let seq = 0;
   return {
+    view: { sourceKind, status: 'connected' },
     attached: null,
     subscribeRecords(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     attachSong(clock) { this.attached = clock; },
     send(poses, captureBrowserTimeMs, playerCount = 1) {
-      const record = { protocolVersion: 2, type: 'pose', sessionId: 's', seq: 1, playerCount, frameReceivedTimeMs: 0, resultTimeMs: 0, input: { width: 640, height: 480, mirrored: false }, poses };
+      const record = { protocolVersion: 2, type: 'pose', sessionId: 's', seq: ++seq, playerCount, frameReceivedTimeMs: 0, resultTimeMs: 0, input: { width: 640, height: 480, mirrored: false }, poses };
       for (const fn of listeners) fn({ record, captureBrowserTimeMs });
     },
   };
@@ -52,7 +54,7 @@ function fakeSource() {
 async function setup(playerCount = 1, options = {}) {
   const clock = { now: 1000 };
   let player;
-  const source = fakeSource();
+  const source = fakeSource(options.sourceKind);
   const session = new GameSession({
     bundle, playerCount, source, now: () => clock.now, createPlayer: async () => (player = fakePlayer(clock)), ...options,
   });
@@ -89,6 +91,88 @@ test('the ready check waits for every player, then counts down into the song', a
   assert.ok(session.countdownMs() > 0);
   step(600);
   assert.equal(session.phase, 'playing');
+});
+
+test('webcam sessions require a shared still hold and start countdown immediately after calibration', async () => {
+  const { session, source, step, player } = await setup(2, { sourceKind: 'webcam' });
+  assert.equal(session.phase, 'calibrating');
+  session.start();
+  assert.equal(player().state, 'paused', 'manual start cannot bypass webcam calibration');
+  step(3000, now => source.send([standing(2)[0]], now, 2));
+  assert.equal(session.phase, 'calibrating');
+  assert.ok(session.live.every(p => p.calibration === null));
+  step(2500, now => source.send(standing(2), now, 2));
+  assert.equal(session.phase, 'calibrating', 'the first frame starts the 2.5-second window');
+  assert.equal(source.attached, null);
+  assert.equal(session.scorer.result(0).score, 0);
+  step(50, now => source.send(standing(2), now, 2));
+  assert.equal(session.phase, 'countdown');
+  assert.equal(session.countdownMs(), COUNTDOWN_MS, 'no additional one-second readiness wait');
+  for (const [id, live] of session.live.entries()) {
+    assert.equal(live.calibration.cameraScaleMode, 'body-relative');
+    assert.ok(Math.abs(live.calibration.baseHip.x - (0.3 + id * 0.4)) < 1e-6);
+  }
+  step(COUNTDOWN_MS);
+  assert.equal(session.phase, 'playing');
+});
+
+test('webcam calibration survives lost tracking and pause/resume but a new game calibrates afresh', async () => {
+  const { session, source, step, clock } = await setup(1, { sourceKind: 'webcam' });
+  step(2600, now => source.send(standing(1), now));
+  const profile = session.live[0].calibration;
+  step(COUNTDOWN_MS + 3500);
+  assert.equal(session.livePose(0), null);
+  const moved = standing(1); moved[0].landmarks.forEach(j => { j.x += 0.1; });
+  source.send(moved, clock.now);
+  assert.equal(session.live[0].calibration, profile);
+  assert.ok(session.livePose(0));
+  session.pause(); session.resume();
+  assert.equal(session.phase, 'countdown');
+  assert.equal(session.live[0].calibration, profile);
+  session.dispose();
+  const next = new GameSession({ bundle, playerCount: 1, source, now: () => clock.now, createPlayer: async () => fakePlayer(clock) });
+  await next.load();
+  assert.equal(next.phase, 'calibrating');
+  assert.equal(next.live[0].calibration, null);
+  next.dispose();
+});
+
+test('poses gathered while webcam song audio loads do not count toward calibration', async () => {
+  const clock = { now: 0 }, source = fakeSource('webcam');
+  let resolvePlayer;
+  const session = new GameSession({ bundle, playerCount: 1, source, now: () => clock.now,
+    createPlayer: () => new Promise(resolve => { resolvePlayer = resolve; }) });
+  const loading = session.load();
+  for (clock.now = 0; clock.now < 3000; clock.now += 100) source.send(standing(1), clock.now);
+  assert.equal(session.live[0].calibration, null);
+  resolvePlayer(fakePlayer(clock)); await loading;
+  assert.equal(session.phase, 'calibrating');
+  assert.equal(session.calibrationStatus().progress, 0);
+  session.dispose();
+});
+
+test('a webcam boundary before countdown discards a completed calibration', async () => {
+  const { session, source, step, clock } = await setup(1, { sourceKind: 'webcam', autoStart: false });
+  step(2600, now => source.send(standing(1), now));
+  assert.equal(session.phase, 'ready');
+  const previous = session.live[0].calibration;
+  for (let seq = 1; seq <= 26; seq++) {
+    clock.now += 100;
+    const poses = standing(1); poses[0].landmarks.forEach(j => { j.x += 0.1; });
+    session.onRecord({ record: { type: 'pose', playerCount: 1, sessionId: 'new-camera', seq,
+      input: { width: 1280, height: 720 }, poses }, captureBrowserTimeMs: clock.now });
+    if (seq === 1) {
+      assert.equal(session.phase, 'calibrating');
+      assert.equal(session.live[0].calibration, null);
+      session.start();
+      assert.equal(session.phase, 'calibrating');
+    }
+  }
+  assert.equal(session.phase, 'ready');
+  assert.notEqual(session.live[0].calibration, previous);
+  assert.equal(session.live[0].calibration.inputWidth, 1280);
+  assert.ok(Math.abs(session.live[0].calibration.baseHip.x - 0.6) < 1e-6);
+  session.dispose();
 });
 
 test('a player who copies the routine scores high, judged at capture time despite late arrival', async () => {
@@ -178,7 +262,7 @@ test('the ghost replay dances the routine and stands in its halves without a son
   await ghost.setPlayerCount(2);
   ghost.tick();
   assert.deepEqual(records[0].record.poses.map((p) => p.playerId), [0, 1]);
-  assert.ok(records[0].record.poses[0].landmarks[23].x < 0.5 && records[0].record.poses[1].landmarks[23].x > 0.5);
+  assert.ok(records[0].record.poses[0].landmarks[23].x > 0.5 && records[0].record.poses[1].landmarks[23].x < 0.5);
   ghost.attachSong({ bundle, songTimeAt: (perf) => perf, perfAtSong: (ms) => ms, playing: () => true });
   now = 5000;
   ghost.tick();

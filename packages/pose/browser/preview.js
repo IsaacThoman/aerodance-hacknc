@@ -22,7 +22,7 @@ export function drawWebcamPreview(g, video, snapshot, rect, playerCount = 2) {
   g.font = 'bold 16px sans-serif'; g.fillStyle = '#fff'; g.textAlign = 'center';
   if (playerCount === 2) {
     g.strokeStyle = '#fff8'; g.lineWidth = 1; g.beginPath(); g.moveTo(x + w / 2, y); g.lineTo(x + w / 2, y + h); g.stroke();
-    g.fillText('P2', x + w / 4, y + 22); g.fillText('P1', x + w * 3 / 4, y + 22);
+    g.fillText('P1', x + w / 4, y + 22); g.fillText('P2', x + w * 3 / 4, y + 22);
   } else g.fillText('P1', x + w / 2, y + 22);
   if (!video) g.fillText('Start camera to preview', x + w / 2, y + h / 2);
   g.restore();

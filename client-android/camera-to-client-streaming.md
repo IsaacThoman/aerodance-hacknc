@@ -205,7 +205,8 @@ before the boundary even after the HTTP control reply. Use sequence and record
 snapshots can skip the empty boundary record; every later record is still a
 complete new-mode snapshot and clears any omitted player.
 
-For a right-only result, `playerCount` is `2` and the sole pose has `playerId: 1`.
+ID 0 is the right half of the unmirrored image and ID 1 the left half. For a
+left-only result, `playerCount` is `2` and the sole pose has `playerId: 1`.
 Look up players by ID, never array index. IDs must be unique, valid for the selected
 count and serialized in ascending order. Every record replaces all current player
 state: `[0,1]`, `[0]`, `[1]` or `[]`. Omission clears immediately; stale timeout

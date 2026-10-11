@@ -10,7 +10,7 @@ export function assignPlayerSlots(detections, playerCount, deadBand = 0.025) {
     if (torso.some(p => p.visibility === null || p.presence === null || Math.min(p.visibility, p.presence) < 0.5)) continue;
     const x = (landmarks[23].x + landmarks[24].x) / 2;
     if (playerCount === 2 && Math.abs(x - 0.5) <= deadBand) continue;
-    candidates[playerCount === 1 ? 0 : x < 0.5 ? 0 : 1].push(landmarks);
+    candidates[playerCount === 1 ? 0 : x < 0.5 ? 1 : 0].push(landmarks);
   }
   return candidates.flatMap((poses, playerId) => poses.length === 1 ? [{ playerId, landmarks: poses[0] }] : []);
 }

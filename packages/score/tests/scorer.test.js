@@ -5,8 +5,8 @@ import { mirrorPose } from '../../pose/choreography.js';
 import { sampleSong } from '../../pose/song.js';
 import { MAX_SCORE, SCORER_VERSION, createScorer, gradeFor, judge } from '../scorer.js';
 
-// The shipped routine is the fixture: both tracks, real tracking noise and real gaps.
-const dir = new URL('../../../client/public/songs/song-70c63c8e/', import.meta.url);
+// A real recorded routine is the fixture: both tracks, real tracking noise and real gaps.
+const dir = new URL('../../../client/tests/fixtures/song-70c63c8e/', import.meta.url);
 const bundle = {
   song: JSON.parse(readFileSync(new URL('song.json', dir))),
   choreography: JSON.parse(readFileSync(new URL('choreography.json', dir))),

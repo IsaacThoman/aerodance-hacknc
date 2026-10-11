@@ -1338,4 +1338,15 @@ small {
 }
 .webcam-controls canvas { display: block; width: 100%; max-width: 320px; height: auto; border-radius: 12px; margin: 8px 0; }
 .webcam-controls small { display: block; }
+.video-import { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 40px); overflow-y: auto; color: #e2f0ed; background: #142c33; border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+.video-import::backdrop { background: #061417cc; }
+.video-import-heading, .video-import-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.video-import-heading p { overflow-wrap: anywhere; }
+.video-import > p, .video-import label { margin: 16px 0; }
+.video-import video { display: block; width: 100%; max-height: 360px; background: #000; border-radius: 8px; margin: 12px 0; }
+.video-calibration canvas { display: block; width: min(100%, 320px); height: auto; max-height: 280px; object-fit: contain; margin-top: 14px; border-radius: 8px; }
+.video-calibration p, .video-progress p { margin: 8px 0; }
+.video-progress { margin: 16px 0; }
+.video-progress progress { width: 100%; accent-color: var(--cyan); }
+.video-import-error { color: #ffb6af; }
 .body-calibration small { display: block; margin: 5px 0 8px; color: var(--muted); }

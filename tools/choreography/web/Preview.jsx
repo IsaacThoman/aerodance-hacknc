@@ -39,7 +39,7 @@ function Actor({ pose, calibration, id, mirrored, live }) {
   );
   return (
     <group
-      position={[(id === 0 ? -1.8 : 1.8) * (mirrored ? -1 : 1), 0, 0]}
+      position={[(id === 0 ? 1.8 : -1.8) * (mirrored ? -1 : 1), 0, 0]}
       scale={[mirrored ? -1 : 1, 1, 1]}
     >
       <Character
@@ -261,7 +261,7 @@ export default function Preview({
       )}
       <div
         className="stage-label"
-        style={{ flexDirection: mirrored ? "row-reverse" : "row" }}
+        style={{ flexDirection: mirrored ? "row" : "row-reverse" }}
       >
         <span>
           <i className="dot cyan" />

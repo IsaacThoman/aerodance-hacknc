@@ -5,11 +5,13 @@ and extends the [game integration plan](android-game-integration-plan.md).
 
 The local editor and Docker image are now implemented; see
 [Dance Studio's run guide](../tools/choreography/README.md). It supports project
-persistence, audio/waveform playback, Android recording and JSON/NDJSON import,
+persistence, audio/waveform playback, Android/webcam recording, JSON/NDJSON import,
+local video pose inference with Lite/Full/Heavy and a selected calibration frame,
 Frutiger/skeleton previews, coordinate edits and undo/redo, track swaps, mirroring,
 smoothing, bounded gap repair, phrase replacement, review, backups, and runtime
-bundle export. The sections below remain the broader design reference. Website
-video import, calibrated Android clock mapping, mixed-camera normalization,
+bundle export. Video imports create library takes without assigning tracks or
+replacing song audio; the source footage is session-only. The sections below
+remain the broader design reference. Calibrated Android clock mapping, mixed-camera normalization,
 transition controls, and final scoring policy remain follow-up work. See the
 run guide's current limits before treating every proposed field/API as implemented.
 
@@ -79,7 +81,8 @@ Record heartbeats and empty pose records as well as detected people.
    boundary and running pipeline, and show both players' tracking. Release any
    game/test-page connection first: Android permits only one stream consumer.
 3. **Check capture.** Keep a fixed camera and full bodies visible. In two-player
-   capture, ID 0 means the unmirrored camera's left half and ID 1 the right half;
+   capture, ID 0 means the unmirrored camera's right half and ID 1 the left half
+   (so player 1 is on the left in mirrored views);
    these are region slots, not persistent person identities. Keep dancers in their
    halves, and capture a short stable calibration stance. Show confidence and gaps.
 4. **Record take.** Begin saving before a three-second lead-in. Schedule music and

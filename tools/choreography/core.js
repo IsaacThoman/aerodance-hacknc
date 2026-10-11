@@ -9,11 +9,12 @@ import {
   PAIRS,
   validateChoreography,
 } from "../../packages/pose/choreography.js";
-import { calibratePoses } from "../../packages/character/calibration.js";
+import { calibratePoses, reliableBodyPose } from "../../packages/character/calibration.js";
 import { DEFAULT_STAGE, STAGE_LIST } from "../../packages/stages/catalog.js";
 import { validateWebcamRecord } from '../../packages/pose/webcamRecord.js';
+import { validateVideoRecord } from '../../packages/pose/videoRecord.js';
 import { poseModel, MEDIAPIPE_VERSION } from '../../packages/pose/browser/models.js';
-export const COMPILER_VERSION='1.1.0';
+export const COMPILER_VERSION='1.2.0';
 
 export function newProject(id = crypto.randomUUID(), schemaVersion = 2) {
   const now = new Date().toISOString();
@@ -287,7 +288,24 @@ export function validateTake(take) {
     finite(take.offsetMs) && finite(take.timeScale) && take.timeScale > 0,
     "Invalid take alignment",
   );
+  if (take.calibrationFrame !== undefined) {
+    const frame = take.calibrationFrame;
+    assert(frame && finite(frame.mediaTimeMs) && frame.mediaTimeMs >= 0 &&
+      frame.mediaTimeMs <= (take.provenance?.durationMs ?? take.samples.at(-1).takeTimeMs), 'Invalid calibration frame time');
+    validatePoses(frame.poses);
+    assert(frame.poses.length && frame.poses.every(reliableBodyPose), 'Choose a calibration frame with shoulders, hips and feet clearly visible');
+    const players = new Set(take.samples.flatMap(s => s.poses.map(p => p.playerId)));
+    assert([...players].every(id => frame.poses.some(p => p.playerId === id)), 'Choose a calibration frame with every captured dancer clearly visible');
+  }
+  assert(take.source !== 'video' || take.calibrationFrame, 'Video takes require a calibration frame');
   return take;
+}
+
+export function takeCalibration(take, playerId) {
+  return calibratePoses(take.calibrationFrame
+    ? take.calibrationFrame.poses.filter(p => p.playerId === playerId)
+    : take.samples.flatMap(s => s.poses.filter(p => p.playerId === playerId)), take.input,
+  { adaptiveDistance: ['webcam', 'video'].includes(take.source) });
 }
 export function importMotion(
   data,
@@ -374,6 +392,7 @@ export function importMotion(
   });
 }
 export function takeFromRecords(records, metadata) {
+  if (metadata.sourceKind === 'video') return videoTakeFromRecords(records, metadata);
   if (metadata.sourceKind === 'webcam') return webcamTakeFromRecords(records, metadata);
   const poses = records.filter((e) => e.record?.type === "pose");
   assert(poses.length >= 2, "Take needs at least two pose records");
@@ -505,6 +524,35 @@ export function webcamTakeFromRecords(records, metadata) {
       alignmentMethod: 'browser-frame-audio-anchor', frameTimingMethod: 'browser-frame-observation',
       audioAnchor: config.audioAnchor, timingUncertaintyMs: null } });
 }
+export function videoTakeFromRecords(records, metadata) {
+  assert(records.length >= 2 && records.length <= 150000, 'Take needs between 2 and 150000 video frames');
+  const first = validateVideoRecord(records[0].record), config = metadata.status;
+  const model = poseModel(first.modelId), input = first.input;
+  assert(config?.modelId === model.id && config.modelHash === model.sha256 &&
+    config.packageVersion === MEDIAPIPE_VERSION && ['GPU', 'CPU'].includes(config.delegate), 'Invalid video model configuration');
+  assert(finite(config.durationMs) && config.durationMs > 0 && config.durationMs <= 3600000, 'Invalid video duration');
+  let lastTime = -Infinity, lastSeq = 0;
+  const samples = records.map(e => {
+    const r = validateVideoRecord(e.record);
+    assert(r.sessionId === first.sessionId && r.modelId === first.modelId &&
+      r.input.width === input.width && r.input.height === input.height, 'Video source/session/model/geometry changed');
+    assert(r.seq === lastSeq + 1 && r.mediaTimeMs > lastTime && r.mediaTimeMs <= config.durationMs, 'Invalid video frame sequence or timing');
+    lastTime = r.mediaTimeMs; lastSeq = r.seq;
+    return { takeTimeMs: r.mediaTimeMs, poses: copy(r.poses), quality: qualityFor(r.poses), sourceSeq: r.seq };
+  });
+  assert(samples.some(s => s.poses.length), 'No dancers detected in this video');
+  return validateTake({ schema: 'aerodance.take', schemaVersion: 1, takeId: metadata.takeId,
+    name: metadata.name || 'Video take', source: 'video', input, samples, offsetMs: 0, timeScale: 1,
+    createdAt: metadata.createdAt, calibrationFrame: copy(metadata.calibrationFrame), status: config,
+    provenance: { sessionId: first.sessionId, modelId: model.id, modelHash: model.sha256,
+      packageVersion: config.packageVersion, delegate: config.delegate, thresholds: config.thresholds,
+      filename: config.filename, durationMs: config.durationMs, targetRateHz: config.targetRateHz ?? 30,
+      inferenceMethod: config.inferenceMethod || 'full-frame',
+      calibrationFrameTimeMs: metadata.calibrationFrame?.mediaTimeMs,
+      sourceRateHz: (samples.length - 1) * 1000 / (lastTime - first.mediaTimeMs),
+      alignmentMethod: 'video-time-zero', frameTimingMethod: records.some(e => e.record.timingMethod === 'seek-time') ? 'seek-time' : 'decoded-frame' } });
+}
+
 export function addTake(project, take) {
   const p = copy(project);
   p.takes.push({
@@ -512,7 +560,7 @@ export function addTake(project, take) {
     name: take.name,
     source: take.source,
     input: take.input,
-    ...(take.source === 'webcam' ? { modelId: take.provenance?.modelId, sourceRateHz: take.provenance?.sourceRateHz } : {}),
+    ...(['webcam', 'video'].includes(take.source) ? { modelId: take.provenance?.modelId, sourceRateHz: take.provenance?.sourceRateHz } : {}),
   });
   const first = take.samples[0].takeTimeMs,
     last = take.samples.at(-1).takeTimeMs;
@@ -809,7 +857,8 @@ export function compileProject(
     return {
       playerId: t.playerId,
       label: t.label,
-      calibration: calibratePoses(
+      calibration: p.schemaVersion === 2 && t.dataId && takes.get(t.dataId).calibration
+        ? copy(takes.get(t.dataId).calibration) : calibratePoses(
         samples.flatMap((s) =>
           s.poses.filter((v) => v.playerId === t.playerId),
         ),
@@ -1098,6 +1147,13 @@ export function validateTrackData(data) {
     offsetMs: 0,
     timeScale: 1,
   });
+  if (data.calibration !== undefined) {
+    const c = data.calibration;
+    assert(c && c.profileVersion === 2 && c.cameraScaleMode === 'body-relative' &&
+      c.inputWidth === data.input.width && c.inputHeight === data.input.height &&
+      finite(c.torsoLength) && c.torsoLength > 0 && finite(c.bodyTorsoLength) && c.bodyTorsoLength > 0 &&
+      finite(c.floorY) && ['x', 'y', 'z'].every(k => finite(c.baseHip?.[k])), 'Invalid track calibration');
+  }
   for (const sample of data.samples) {
     assert(
       sample.poses.every((p) => p.playerId === data.playerId),
@@ -1145,7 +1201,7 @@ export function validateTrackData(data) {
   );
   return data;
 }
-function trackSnapshot(playerId, input, samples, sources, exclusions = []) {
+function trackSnapshot(playerId, input, samples, sources, exclusions = [], calibration) {
   return validateTrackData({
     schema: "aerodance.track",
     schemaVersion: 1,
@@ -1155,6 +1211,7 @@ function trackSnapshot(playerId, input, samples, sources, exclusions = []) {
     samples,
     sources: copy(sources),
     exclusions: copy(exclusions),
+    ...(calibration ? { calibration: copy(calibration) } : {}),
   });
 }
 function recordTrackChange(project, tracks, operation) {
@@ -1213,7 +1270,7 @@ export function overwriteTracks(project, take, playerIds, assets) {
         sha256: take.sha256 || null,
         provenance: take.provenance || null,
       },
-    ]);
+    ], [], take.calibrationFrame ? takeCalibration(take, id) : undefined);
     assets.set(data.dataId, data);
     tracks[id] = {
       ...tracks[id],
@@ -1303,6 +1360,7 @@ function storeEditedTracks(project, assets, data, playerIds, operation) {
         startMs: o.startMs - track.offsetMs,
         endMs: o.endMs - track.offsetMs,
       })),
+      previous?.calibration,
     );
     assets.set(snapshot.dataId, snapshot);
     track.dataId = snapshot.dataId;

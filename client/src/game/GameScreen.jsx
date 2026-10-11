@@ -6,9 +6,11 @@ import {
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { playUISound } from '../audio/uiSounds.js';
 import { COUNTDOWN_MS, READY_HOLD_MS } from './GameSession.js';
+import { WEBCAM_STILL_MS } from './webcamCalibration.js';
+import { drawWebcamPreview } from '../../../packages/pose/browser/preview.js';
 import { PLAYERS, REVEAL, backOut, clamp01, timeline } from './results.js';
 import {
-  GAME_PAUSE, GAME_PAUSE_PANEL, GAME_PROGRESS, GAME_QUIT, GAME_READY_BACK, GAME_READY_START, GAME_RESTART, GAME_RESUME,
+  GAME_CALIBRATION_PREVIEW, GAME_CALIBRATION_PROGRESS, GAME_PAUSE, GAME_PAUSE_PANEL, GAME_PROGRESS, GAME_QUIT, GAME_READY_BACK, GAME_READY_START, GAME_RESTART, GAME_RESUME,
   LIVE_PANEL, RESULTS_CONTINUE, RESULTS_RETRY, RESULTS_SONGS, livePanelCenterX,
 } from './layout.js';
 
@@ -16,6 +18,7 @@ import {
  * The gameplay overlay, drawn in-engine over the song's stage (StageView draws the dancers
  * and the players' live characters):
  *
+ *   calibrating webcam preview: every player holds still together for 2.5 seconds
  *   ready      the countdown starts once everyone has been tracked for a second
  *              (or Start now)
  *   countdown  3, 2, 1 from the song's scheduled start
@@ -39,6 +42,13 @@ const JUDGEMENT_LOOK = {
 };
 const POPUP_S = 0.9;
 const GOLD = ['#fff6cc', '#ffd34d', '#f0a500'];
+const CALIBRATION_STATUS = {
+  missing: ['Step into view', '#ffffff'],
+  body: ['Keep shoulders, hips and feet in view', '#ffe27a'],
+  moving: ['Movement detected — hold still', '#ffe27a'],
+  holding: ['Hold still…', '#bff4ff'],
+  ready: ['Calibrated!', '#9effdf'],
+};
 
 const fmt = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -171,12 +181,12 @@ export default function GameScreen({ visible = false, blocked = false, session, 
   const ui = useCanvasUI({
     priority: 2,
     active: live,
-    keyNav: () => ['ready', 'paused', 'results'].includes(phase()),
+    keyNav: () => ['loading', 'calibrating', 'ready', 'error', 'paused', 'results'].includes(phase()),
     widgets: () => {
       const ph = phase();
-      if (ph === 'ready' || ph === 'loading' || ph === 'error') {
+      if (['ready', 'calibrating', 'loading', 'error'].includes(ph)) {
         const list = [{ id: 'quit', circle: GAME_READY_BACK, sound: 'back' }];
-        if (ph === 'ready') list.push({ id: 'start', rect: GAME_READY_START });
+        if (ph === 'ready' && !props.current.session.webcamCalibration) list.push({ id: 'start', rect: GAME_READY_START });
         return list;
       }
       if (ph === 'countdown' || ph === 'playing') return [{ id: 'pause', circle: GAME_PAUSE, nav: false }];
@@ -204,7 +214,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       if (e.key === 'Escape') {
         if (ph === 'countdown' || ph === 'playing') { playUISound('back'); session.pause(); }
         else if (ph === 'paused') { playUISound('select'); session.resume(); }
-        else if (ph === 'ready' || ph === 'error') { playUISound('back'); props.current.onQuit?.(); }
+        else if (['loading', 'calibrating', 'ready', 'error'].includes(ph)) { playUISound('back'); props.current.onQuit?.(); }
         else return;
       } else return;
       e.preventDefault();
@@ -215,7 +225,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       const ph = phase();
       if (ph === 'countdown' || ph === 'playing') session.pause();
       else if (ph === 'paused') session.resume();
-      else if (ph === 'ready' || ph === 'error') props.current.onQuit?.();
+      else if (['loading', 'calibrating', 'ready', 'error'].includes(ph)) props.current.onQuit?.();
       else return false;
       s.invalidate();
       return true;
@@ -231,11 +241,15 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       const now = s.time;
       st.popups = st.popups.filter((j) => now - j.at < POPUP_S);
       const scores = session.scorer.results().map((r) => r.score);
+      const calibration = ['calibrating', 'ready'].includes(session.phase) ? session.calibrationStatus() : null;
       const report = {
         gamePhase: session.phase,
         gameCountdown: session.phase === 'countdown' ? String(Math.ceil(session.countdownMs() / 1000)) : '',
         gameTimeMs: session.player ? String(Math.round(session.player.timeMs())) : '',
         gameScores: scores.join('|'),
+        gameCalibrationProgress: calibration ? calibration.progress.toFixed(3) : '',
+        gameCalibrationPlayers: calibration?.players.join('|') ?? '',
+        gameCalibrationPreview: calibration ? String(!!session.source?.video) : '',
       };
       const json = JSON.stringify(report);
       if (json !== st.reported) { st.reported = json; Object.assign(gl.domElement.dataset, report); }
@@ -256,6 +270,33 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       const { song } = session.bundle;
       const ph = session.phase;
       const now = s.time;
+
+      if (ph === 'calibrating' || ph === 'ready' && session.webcamCalibration) {
+        const calibration = session.calibrationStatus();
+        const source = session.source;
+        drawHeader(g, GAME_READY_BACK, 'CALIBRATION', h.quit ?? 0);
+        drawShadowText(g, 'Stand still for 2.5 seconds', 800, 232, { size: 42, weight: 800, align: 'center' });
+        drawShadowText(g, session.playerCount === 2 ? 'Both players: stand upright with your feet visible.' : 'Stand upright with your feet visible.', 800, 270, { size: 24, align: 'center', color: '#e6f8ff' });
+        drawGlassPanel(g, { x: 348, y: 278, w: 904, h: 444 }, 24);
+        drawWebcamPreview(g, source?.video, source?.view?.snapshot, GAME_CALIBRATION_PREVIEW, session.playerCount);
+        // The setup preview is mirrored: player 1 is on its left-hand side.
+        const xs = session.playerCount === 2 ? [580, 1020] : [800];
+        calibration.players.forEach((status, id) => {
+          const [label, color] = CALIBRATION_STATUS[status];
+          drawPlayerLeds(g, xs[id] - 85, 748, { player: id + 1, glow: ['holding', 'ready'].includes(status) ? 1 : 0.35, scale: 0.36 });
+          drawCaps(g, `PLAYER ${id + 1}`, xs[id] - 40, 750, { size: 18 });
+          drawShadowText(g, label, xs[id], 784, { size: 22, weight: 700, align: 'center', color });
+        });
+        drawProgress(g, GAME_CALIBRATION_PROGRESS, calibration.progress);
+        const remaining = ((1 - calibration.progress) * WEBCAM_STILL_MS / 1000).toFixed(1);
+        const message = source?.view?.status === 'error' ? source.view.message
+          : source?.view?.status === 'disconnected' ? 'Camera disconnected. Go back to connect your webcam.'
+          : calibration.complete ? 'Calibrated! Starting…'
+          : calibration.progress > 0 ? `Keep still · ${remaining} seconds to go`
+          : 'The countdown starts automatically once everyone is calibrated.';
+        drawShadowText(g, message, 800, 862, { size: 22, align: 'center', color: '#e6f8ff' });
+        return;
+      }
 
       if (ph === 'loading' || ph === 'error' || ph === 'ready') {
         drawHeader(g, GAME_READY_BACK, 'GET READY', h.quit ?? 0);
@@ -357,7 +398,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
 
   useEffect(() => {
     if (!visible) {
-      for (const key of ['gamePhase', 'gameCountdown', 'gameTimeMs', 'gameScores']) delete gl.domElement.dataset[key];
+      for (const key of ['gamePhase', 'gameCountdown', 'gameTimeMs', 'gameScores', 'gameCalibrationProgress', 'gameCalibrationPlayers', 'gameCalibrationPreview']) delete gl.domElement.dataset[key];
       st.reported = '';
     }
     ui.invalidate();
