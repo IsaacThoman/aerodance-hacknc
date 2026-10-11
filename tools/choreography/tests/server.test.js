@@ -59,6 +59,7 @@ test("project revisions, persisted audio, bundle integrity and backup restore su
   );
   p = addTake(p, uploaded);
   p.metadata.artist = "Artist";
+  p.metadata.stage = "club";
   p.metadata.rights.audio.license = "CC0";
   p.metadata.rights.choreography.license = "CC0";
   p = await (await api(`/api/projects/${p.projectId}`, p, "PUT")).json();
@@ -87,6 +88,8 @@ test("project revisions, persisted audio, bundle integrity and backup restore su
   assert.equal(exported.status, 200, await exported.clone().text());
   const files = readZip(Buffer.from(await exported.arrayBuffer()));
   const checks = JSON.parse(files.get(`${p.songId}/checksums.json`));
+  // The song carries its stage, so the game opens it on Club Aquarium.
+  assert.equal(JSON.parse(files.get(`${p.songId}/song.json`)).stage, "club");
   for (const file of checks.files) {
     const bytes = files.get(`${p.songId}/${file.path}`);
     assert.equal(bytes.length, file.bytes);

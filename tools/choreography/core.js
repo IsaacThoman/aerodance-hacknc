@@ -10,6 +10,7 @@ import {
   validateChoreography,
 } from "../../packages/pose/choreography.js";
 import { calibratePoses } from "../../packages/character/calibration.js";
+import { DEFAULT_STAGE, STAGE_LIST } from "../../packages/stages/catalog.js";
 
 export function newProject(id = crypto.randomUUID()) {
   const now = new Date().toISOString();
@@ -27,6 +28,8 @@ export function newProject(id = crypto.randomUUID()) {
       songwriters: [],
       choreographers: [],
       difficulty: "normal",
+      // The dance stage the game shows this song on.
+      stage: DEFAULT_STAGE,
       tags: [],
       bpm: null,
       description: "",
@@ -76,6 +79,12 @@ export function validateProject(p) {
   assert(
     ["normal", "easy", "hard"].includes(p.metadata.difficulty),
     "Invalid difficulty",
+  );
+  // Projects saved before songs had stages dance on the default one.
+  p.metadata.stage ??= DEFAULT_STAGE;
+  assert(
+    STAGE_LIST.some((stage) => stage.id === p.metadata.stage),
+    "Choose one of the dance stages",
   );
   assert(
     ["songwriters", "choreographers", "tags"].every(

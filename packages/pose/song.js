@@ -3,6 +3,8 @@ const require = (condition, message) => { if (!condition) throw Error(message); 
 const text = v => typeof v === 'string' && v.trim().length > 0;
 const strings = v => Array.isArray(v) && v.every(text);
 const counts = v => Array.isArray(v) && v.length === 2 && v[0] === 1 && v[1] === 2;
+// A dance stage id (packages/stages). Players get Open Reef for a missing or unknown one.
+const stageId = v => v === undefined || (typeof v === 'string' && /^[a-z0-9-]{1,40}$/.test(v));
 export function validateBundlePath(path) {
   require(typeof path === 'string' && /^[a-zA-Z0-9_./-]+$/.test(path) &&
     path.split('/').every(part => part && part !== '.' && part !== '..'), 'Invalid bundle asset path');
@@ -19,6 +21,7 @@ export function validateCatalog(data) {
     validateBundlePath(song.bundle);
     if (song.cover !== undefined) validateBundlePath(song.cover);
     if (song.sha256 !== undefined) require(/^[a-f0-9]{64}$/.test(song.sha256), 'Invalid catalog song hash');
+    require(stageId(song.stage), 'Invalid catalog song stage');
   }
   return data;
 }
@@ -29,6 +32,7 @@ export function validateSong(song) {
   require(finite(song.durationMs) && song.durationMs > 0 && finite(song.playableStartMs) && finite(song.playableEndMs) &&
     0 <= song.playableStartMs && song.playableStartMs < song.playableEndMs && song.playableEndMs <= song.durationMs, 'Invalid playable interval');
   require(counts(song.supportedPlayerCounts), 'Song must support both player modes');
+  require(stageId(song.stage), 'Invalid song stage');
   require(song.coachMode === 'mirror-player' && song.rigProfile === 'frutiger-seven-bone-v1', 'Unsupported coach or rig profile');
   require(text(song.audio?.mimeType) && song.choreography?.schemaVersion === 1, 'Invalid media references');
   validateBundlePath(song.audio.path); validateBundlePath(song.choreography.path);

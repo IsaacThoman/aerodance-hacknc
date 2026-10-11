@@ -385,6 +385,7 @@ Example `song.json` (illustrative metadata, not a playable committed song):
   "playableEndMs": 183420,
   "bpm": 120,
   "difficulty": "normal",
+  "stage": "openreef",
   "tags": ["aero", "duet"],
   "supportedPlayerCounts": [1, 2],
   "audio": { "path": "audio.mp3", "mimeType": "audio/mpeg" },
@@ -405,7 +406,7 @@ Example `song.json` (illustrative metadata, not a playable committed song):
 Required: schema/version, ID/revision, title, artist, songwriter/choreographer lists
 (possibly empty), measured duration, playable bounds, supported player counts,
 audio/choreography references, coach/rig profiles, rights metadata, timestamps,
-and build identity. Optional: description, cover, BPM, tags, difficulty. Use null
+and build identity. Optional: description, cover, BPM, tags, difficulty, stage. Use null
 for unknown BPM and an explicit `unknown` rights license when unresolved; never
 infer permission from a file upload. Publication requires an author to resolve
 distribution rights. Musical authorship is distinct from performing artist and
@@ -415,7 +416,14 @@ a licensing model.
 `durationMs` is decoded final audio duration rounded to the nearest millisecond.
 Playable bounds satisfy `0 <= start < end <= durationMs`. All intervals below are
 half-open `[startMs,endMs)`. BPM is a descriptive hint; optional beat/phrase markers
-carry actual song times and support variable tempo. BPM never sets the pose clock.
+carry actual song times and support variable tempo. BPM never sets the pose clock
+(the game's stage lights pulse to it while the song plays).
+
+`stage` is the id of the dance stage the game shows the song on, one of
+`sanctuary`, `reef`, `openreef`, `falls`, `club` or `beach` (see
+`packages/stages/catalog.js`). Dance Studio sets it by name and defaults to Open
+Reef. A missing or unknown stage plays on Open Reef; players can try other
+stages from the preview.
 
 ### Choreography structure
 

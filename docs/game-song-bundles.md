@@ -23,7 +23,8 @@ Builds generate the same catalog in `dist/songs/manifest.json` for static hostin
 Rebuild/redeploy after changing the source songs directory. On a running Express
 server, installing complete folders directly in `dist/songs/` requires no restart.
 Exported metadata supplies title, artist, duration, player counts, revision,
-difficulty, optional cover, and a SHA-256 pin for `song.json`. Re-exported songs
+difficulty, stage, optional cover, and a SHA-256 pin for `song.json`. The preview
+opens on the song's stage, or Open Reef when it has none. Re-exported songs
 are discovered with their updated revision. Install the complete directory before
 opening Song Select. The game does not extract ZIP files or publish editor
 projects. The local songs directory includes the exported “Rockefeller Street Bad

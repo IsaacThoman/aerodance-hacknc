@@ -10,6 +10,7 @@ import {
   reviewReport,
   takeFromRecords,
   replaceRange,
+  validateProject,
 } from "../core.js";
 import {
   sampleSnapshot,
@@ -292,4 +293,17 @@ test("grouped keyframes translate points together, preserve confidence and undo 
   assert.deepEqual(frame.poses[0].landmarks[15], original.poses[0].landmarks[15]);
   assert.deepEqual(frame.poses[1], original.poses[1]);
   assert.deepEqual(compileProject({ ...edited, operationCursor: 0 }, takes).samples, compileProject(p, takes).samples);
+});
+
+test("songs dance on Open Reef unless the project picks another stage", () => {
+  const p = newProject("stage-test");
+  assert.equal(p.metadata.stage, "openreef");
+  p.metadata.stage = "club";
+  validateProject(p);
+  p.metadata.stage = "moon";
+  assert.throws(() => validateProject(p), /dance stages/);
+  // Projects saved before songs had stages pick up the default.
+  delete p.metadata.stage;
+  validateProject(p);
+  assert.equal(p.metadata.stage, "openreef");
 });

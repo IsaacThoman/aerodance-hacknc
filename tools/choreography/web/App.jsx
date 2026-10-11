@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AndroidPoseSource } from "../../../client/src/pose/AndroidPoseSource.js";
+import { DEFAULT_STAGE, STAGE_LIST } from "../../../packages/stages/catalog.js";
 import { NdjsonDecoder } from "../../../client/src/pose/protocol.js";
 import {
   JOINT_NAMES,
@@ -1542,6 +1543,25 @@ export default function App() {
                   </select>
                 </label>
               </div>
+              <label>
+                Stage
+                <select
+                  disabled={recording}
+                  value={project.metadata.stage ?? DEFAULT_STAGE}
+                  onChange={(e) =>
+                    edit((p) => {
+                      p.metadata.stage = e.target.value;
+                      return p;
+                    })
+                  }
+                >
+                  {STAGE_LIST.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.name} — {stage.subtitle}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="section-heading">DISTRIBUTION RIGHTS</div>
               {["audio", "choreography"].map((k) => (
                 <label key={k}>

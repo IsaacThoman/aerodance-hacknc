@@ -48,6 +48,7 @@ export async function discoverSongs(directory, { warn = console.warn } = {}) {
         durationMs: song.durationMs, supportedPlayerCounts: song.supportedPlayerCounts,
         bundleRevision: song.bundleRevision, bundle: `${song.songId}/song.json`, sha256: hash,
         ...(song.difficulty ? { difficulty: song.difficulty } : {}),
+        ...(song.stage ? { stage: song.stage } : {}),
         ...(song.cover ? { cover: `${song.songId}/${song.cover.path}` } : {}),
       });
     } catch (error) { warn(`Skipping song ${folder.name}: ${error.message}`); }

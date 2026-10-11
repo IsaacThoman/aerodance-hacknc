@@ -41,7 +41,8 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
 ## Create a routine
 
 1. Create a project, import music, and enter **Song details**. Duration is measured
-   by the browser audio decoder. Set the real artist, authors/choreographers, and
+   by the browser audio decoder. Set the real artist, authors/choreographers, the
+   **Stage** the game shows the routine on (Open Reef by default), and
    distribution licenses or permissions.
 2. Import a pose JSON/Android NDJSON, or connect Android and **Record new take**.
    For Android set Allowed Origin to the exact origin printed in the capture panel.

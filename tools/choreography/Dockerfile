@@ -24,6 +24,7 @@ COPY tools/choreography/server ./tools/choreography/server
 COPY tools/choreography/core.js ./tools/choreography/core.js
 COPY packages/pose ./packages/pose
 COPY packages/character/calibration.js ./packages/character/calibration.js
+COPY packages/stages ./packages/stages
 COPY client/src/pose/protocol.js ./client/src/pose/protocol.js
 EXPOSE 3000
 USER node
