@@ -114,12 +114,15 @@ export async function trophyMetadata(id, baseUrl) {
     [id],
   );
   if (!b) return undefined;
+  // The 3D aero character (Metaplex "vr": wallets that render 3D spin the GLB, others show the PNG).
   const image = `${baseUrl}/trophy.png`;
+  const model = `${baseUrl}/models/trophy.glb`;
   return {
     name: `aerodance trophy #${b.id}`,
     symbol: 'AERO',
     description: `Won dance battle ${b.id} on aerodance 🫧 Frutiger Aero dance battles, scored live.`,
     image,
+    animation_url: model,
     external_url: baseUrl,
     attributes: [
       { trait_type: 'battle', value: b.id },
@@ -131,7 +134,10 @@ export async function trophyMetadata(id, baseUrl) {
       { trait_type: 'hype', value: b.hype },
       { trait_type: 'date', value: b.created_at.toISOString().slice(0, 10) },
     ],
-    properties: { category: 'image', files: [{ uri: image, type: 'image/png' }] },
+    properties: {
+      category: 'vr',
+      files: [{ uri: image, type: 'image/png' }, { uri: model, type: 'model/gltf-binary' }],
+    },
   };
 }
 

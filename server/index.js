@@ -41,6 +41,11 @@ app.get('/api/spins/history', async (_req, res, next) => {
 app.use('/api', publicRoutes());
 
 // NFT metadata (the assets' on-chain uris point here): hype stickers and battle trophies.
+// Wallets and marketplaces fetch these (and the trophy's 3D model) from their own origins.
+app.use(['/nft', '/models', '/stickers', '/trophy.png'], (_req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  next();
+});
 app.get('/nft/hype/:id/:stickerId.json', async (req, res) => {
   const meta = await stickerMetadata(req.params.id, req.params.stickerId, requestBaseUrl(req));
   if (!meta) return res.status(404).json({ error: 'no such sticker' });
