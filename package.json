@@ -6,7 +6,7 @@
     "dev": "concurrently -n server,client -c blue,magenta \"node --watch server/index.js\" \"vite\"",
     "test": "node --test client/tests/*.test.js",
     "bench:performance": "node scripts/performance-audit.mjs",
-    "build": "vite build && vite build --config temp/frutiger-character/vite.config.js --base=/dance/ --outDir=../../../dist/dance && vite build --config temp/menu-mocks/vite.config.js --base=/menu-mocks/ --outDir=../../../dist/menu-mocks",
+    "build": "vite build && vite build --config temp/frutiger-character/vite.config.js --base=/dance/ --outDir=../../../dist/dance && vite build --config temp/menu-mocks/vite.config.js --base=/menu-mocks/ --outDir=../../../dist/menu-mocks && vite build --config temp/win-screens/vite.config.js --base=/win-screens/ --outDir=../../../dist/win-screens",
     "start": "NODE_ENV=production node server/index.js"
   },
   "type": "module",
