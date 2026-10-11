@@ -36,7 +36,7 @@ It needs Google Chrome (driven headless by `playwright-core`, with GPU WebGL) an
 
 ## Code
 
-- `client/src/shots.js`: the shot list. Each shot has a stage, how long the stage plays before the capture (`time`), the dance-capture moment the dancers hold (`pose`), a camera, optional dancer placement, and the wordmark's position and size. Add or tweak a shot here and re-render it with `--only`.
+- `client/src/shots.js`: the shot list. Each shot has a stage, how long the stage plays before the capture (`time`), the dance-capture moment the dancers hold (`pose`), a camera, optional dancer placement and gel opacity (`reef-inside` uses 0.92 instead of 0.85 so the dancers read against the bright water), and the wordmark's position and size. Add or tweak a shot here and re-render it with `--only`.
 - `client/src/App.jsx`: the capture page. It mounts one stage with the dancers, swaps in the shot's 3:2 camera for the stage's orbiting 16:9 one, steps the clock by hand at 60 fps to the shot's time (`frameloop="never"`), and reads back the frame with and without the wordmark. `?shot=<id>` opens a shot in the browser (`npx vite --config temp/thumbnails/vite.config.js`, port 5179).
 - `scripts/render.mjs`: builds the page, drives Chrome, upscales each frame into exact 4×3 blocks and writes the PNGs with its own encoder.
 

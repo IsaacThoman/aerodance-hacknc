@@ -11,7 +11,8 @@ export const DESIGN = { width: 1350, height: 900 };
  *   time: seconds the stage plays before the capture (lights, water, creatures, beat)
  *   pose: seconds into the dance capture the dancers hold (0-14)
  *   camera: { position, target, fov, near?, far? }
- *   dancers: overrides for the stage's dancer placement ({ position, rotationY, spacing })
+ *   dancers: overrides for the stage's dancer placement ({ position, rotationY, spacing }),
+ *     and their gel opacity (default 0.85)
  *   logo: { y: baseline, size, x?: 'left' | 'right' | number (default centered) } in DESIGN units
  */
 export const SHOTS = [
@@ -81,7 +82,7 @@ export const SHOTS = [
     time: 16,
     pose: 9,
     camera: { position: [-3.6, 0.9, 4.4], target: [0.3, 2.5, -0.4], fov: 60 },
-    dancers: { rotationY: -0.45 },
+    dancers: { rotationY: -0.45, opacity: 0.92 },
     logo: { y: 215, size: 160, x: 'left' },
   },
   {

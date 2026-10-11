@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { PCFShadowMap } from 'three';
 import { validateMotion } from '../../../frutiger-character/client/src/motion.js';
 import { STAGES } from '../../../frutiger-character/client/src/stages/index.js';
-import Dancers from '../../../frutiger-character/client/src/stages/shared/Dancers.jsx';
+import Dancers, { DANCER_LOOKS } from '../../../frutiger-character/client/src/stages/shared/Dancers.jsx';
 import { RenderPipeline, resetPost } from '../../../frutiger-character/client/src/stages/shared/post.jsx';
 import { drawTitle, titleWidth } from '../../../../client/src/ui/draw.js';
 import { BUFFER, DESIGN, SHOTS } from './shots.js';
@@ -116,6 +116,8 @@ function Thumbnail({ shot, motion }) {
   const size = useThree((s) => s.size);
   const { meta, Component: Stage } = STAGES.find((s) => s.meta.id === shot.stage);
   const playback = useRef(shot.pose);
+  const { opacity, ...placement } = shot.dancers ?? {};
+  const looks = useMemo(() => (opacity === undefined ? DANCER_LOOKS : DANCER_LOOKS.map((look) => ({ ...look, opacity }))), [opacity]);
   const hud = useMemo(() => ({ scene: new THREE.Scene(), camera: new THREE.OrthographicCamera() }), []);
   const stageReady = useRef(false);
   const onReady = useCallback(() => { stageReady.current = true; }, []);
@@ -172,7 +174,7 @@ function Thumbnail({ shot, motion }) {
         <Stage motion={motion} playback={playback} />
         <Ready onReady={onReady} />
       </Suspense>
-      <Dancers motion={motion} playback={playback} {...meta.dancers} {...shot.dancers} />
+      <Dancers motion={motion} playback={playback} {...meta.dancers} {...placement} looks={looks} />
     </>
   );
 }
