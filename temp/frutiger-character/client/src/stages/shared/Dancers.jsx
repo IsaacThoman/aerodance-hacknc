@@ -1,9 +1,11 @@
 import { Suspense } from 'react';
 import Character from '../../Character.jsx';
 
+// A little more solid than the menu's dancers (default gel opacity 0.72) so they
+// hold up against busy stage backgrounds.
 export const DANCER_LOOKS = [
-  { color: '#078fff', gloss: 85, accessory: 'None' },
-  { color: '#b86bff', gloss: 85, accessory: 'None' },
+  { color: '#078fff', gloss: 85, accessory: 'None', opacity: 0.85 },
+  { color: '#b86bff', gloss: 85, accessory: 'None', opacity: 0.85 },
 ];
 
 // The rig's feet rest about this far above the group origin's floor.

@@ -102,6 +102,7 @@ export default function Character({
     gel.color = new Color(appearance.color);
     gel.roughness = 0.36 - appearance.gloss * 0.0029;
     gel.clearcoat = 0.4 + appearance.gloss * 0.006;
+    gel.opacity = appearance.opacity ?? 0.72;
     model.traverse((obj) => {
       if (obj.name.startsWith("acc_"))
         obj.visible = obj.name.startsWith(
