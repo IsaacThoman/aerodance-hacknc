@@ -21,6 +21,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Water } from 'three/addons/objects/Water.js';
+import { createMountainGeometry } from './mountainGeometry.js';
 
 const TAU = Math.PI * 2;
 
@@ -219,10 +220,8 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     const sm = new THREE.MeshLambertMaterial({ color: col('#ffffff'), flatShading: true });
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * TAU + R(-0.1, 0.1), r = R(3500, 3950), h = R(380, 720), rad = R(380, 620);
-      const c = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 7), mm);
+      const c = new THREE.Mesh(createMountainGeometry(rad, h), [mm, sm]);
       c.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r); c.rotation.y = R(0, TAU); root.add(c);
-      const s = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.3, h * 0.3, 7), sm);
-      s.position.set(c.position.x, h - h * 0.15 + 0.5, c.position.z); s.rotation.y = c.rotation.y; root.add(s);
     }
   }
   function roadCanvas() {
