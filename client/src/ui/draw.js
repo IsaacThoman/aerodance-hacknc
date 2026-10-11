@@ -838,8 +838,10 @@ export function drawMedal(g, x, y, r) {
   g.restore();
 }
 
-// The four player LEDs off a Wii remote: `player` (1-4) lit and glowing, `glow` 0..1 pulses it.
+// The four player LEDs off a Wii remote: `player` (1-4, or a list of them) lit and glowing,
+// `glow` 0..1 pulses it.
 export function drawPlayerLeds(g, cx, cy, { player, glow = 1, scale = 1 } = {}) {
+  const players = [player].flat();
   const gap = 46 * scale;
   const size = 22 * scale;
   const bar = { x: cx - gap * 2 - 4 * scale, y: cy - 30 * scale, w: gap * 4 + 8 * scale, h: 60 * scale };
@@ -856,7 +858,7 @@ export function drawPlayerLeds(g, cx, cy, { player, glow = 1, scale = 1 } = {}) 
   g.restore();
   for (let i = 0; i < 4; i++) {
     const x = cx + (i - 1.5) * gap;
-    const lit = i + 1 === player;
+    const lit = players.includes(i + 1);
     g.save();
     roundRect(g, x - size / 2, cy - size / 2, size, size, 5 * scale);
     if (lit) {

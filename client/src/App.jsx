@@ -11,6 +11,7 @@ import DebugPanel from './battle/DebugPanel.jsx';
 import { FAKE_DANCE_MS, fakeDance } from './battle/fakeDance.js';
 import { api, createBattle, seatTokens, startBattle, useBattle } from './battle/api.js';
 import PhoneApp from './phone/PhoneApp.jsx';
+import { AndroidPoseSource } from './pose/AndroidPoseSource.js';
 import { socket } from './socket.js';
 
 function FixedRenderResolution() {
@@ -49,9 +50,18 @@ export default function App() {
 function DisplayApp() {
   const [connected, setConnected] = useState(socket.connected);
   const [stats, setStats] = useState({ online: 0 });
-  const [menuOpen, setMenuOpen] = useState(true);
-  // { mode: 'random' } or { mode: 'select', song }; the player hooks in here.
-  const [selection, setSelection] = useState(null);
+  // 'menu' (MainMenu, opening on menuScreen) or 'songs' (Song Select).
+  const [screen, setScreen] = useState('menu');
+  const [menuScreen, setMenuScreen] = useState('main');
+  const [playerCount, setPlayerCount] = useState(1);
+  // The pose input: the Android client, or the webcam dummy (menus only, no tracking yet).
+  const [inputMode, setInputMode] = useState('android');
+  const [source] = useState(() => new AndroidPoseSource());
+  const [connection, setConnection] = useState(source.view);
+  const menuOpen = screen === 'menu';
+  const selectedConnection = inputMode === 'webcam'
+    ? { status: 'dummy', snapshot: null, message: 'Webcam dummy selected. Continue through the menus to test the flow.' }
+    : connection;
   const [sound, setSound] = useState(loadSound);
   const [battleId, setBattleId] = useState(battleRoute);
   // Start pressed in the lobby; the dance itself hooks in here and reports with seatTokens.
@@ -97,6 +107,31 @@ function DisplayApp() {
     return () => clearTimeout(t);
   }, [playing, battleId]);
 
+  useEffect(() => {
+    const unsubscribe = source.subscribe(setConnection);
+    // Leaving the page releases the Android camera (it saves the board's battery).
+    const disconnect = () => source.disconnect();
+    window.addEventListener('pagehide', disconnect);
+    return () => {
+      window.removeEventListener('pagehide', disconnect);
+      unsubscribe();
+      source.disconnect();
+    };
+  }, [source]);
+
+  const changeInputMode = useCallback((mode) => {
+    source.disconnect();
+    setInputMode(mode);
+    source.setPlayerCount(playerCount).catch(() => {});
+  }, [source, playerCount]);
+
+  // One or two players picked: Android switches modes at its next stream boundary.
+  const choosePlayers = useCallback((count) => {
+    if (inputMode === 'android' && source.view.configuring) return;
+    setPlayerCount(count);
+    if (inputMode === 'android') source.setPlayerCount(count).catch(() => {});
+  }, [inputMode, source]);
+
   useEffect(() => { saveSound(sound); applySound(sound); }, [sound]);
   // "Pod Lounge" loops under the aero background as the menu music (Settings: Master,
   // Music, Menu music, Mute all).
@@ -125,7 +160,8 @@ function DisplayApp() {
         <MenuDancers visible={menuOpen || !!battleId} />
         <MainMenu
           visible={menuOpen && !battleId}
-          onStart={(mode, song) => { setSelection({ mode, song }); setMenuOpen(false); }}
+          initialScreen={menuScreen}
+          onStart={choosePlayers}
           onBattle={newBattle}
           sound={sound}
           onSoundChange={setSound}
@@ -147,7 +183,7 @@ function DisplayApp() {
       <div className="hud">
         <div>
           <span className={`status ${connected ? 'online' : ''}`} />
-          {connected ? 'connected' : 'disconnected'}
+          {connected ? 'Server online' : 'Server offline'}
         </div>
         <div>online: {stats.online}</div>
       </div>
