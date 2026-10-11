@@ -58,7 +58,9 @@ Transforms use glTF's **Y-up meters**. The helper bakes component transforms int
 
 The World LOD passes Khronos validation with zero errors/warnings. Checks confirm that material merging preserves the exact vertex bounds, 1,000 instance transforms are retained, four material batches are produced, and owned geometry is disposed. A thousand copies contain **991,000 triangles** before visibility/shadow passes. These are geometry and batching checks, not a target-device FPS guarantee.
 
-Blender uses **meters, Z up**, with the pole at the origin and the camera facing negative Y. GLB uses the glTF convention **meters, Y up**. The physical assembly is separate from the studio collection. No app gameplay or menus were changed.
+Blender uses **meters, Z up**, with the pole at the origin and the camera facing negative Y. GLB uses the glTF convention **meters, Y up**. The physical assembly is separate from the studio collection.
+
+The app's aero background (`client/src/aero/aeroBackground.js`) places the World LOD along the city streets with `createFlockInstances`; see the main README.
 
 Presentation PNGs in `assets/renders/` are generated locally and are not tracked. Rebuild the corresponding model to produce them; use `FLOCK_RENDER=0` to regenerate geometry only. Viewer build output, Blender backups, downloaded references, and browser verification screenshots are also excluded from version control.
 
