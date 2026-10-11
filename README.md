@@ -14,6 +14,13 @@ The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, ho
 - `client/src/aero/AeroWorld.jsx` plugs it into the Fiber `<Canvas>` (used by `Scene.jsx`): `<AeroWorld speed={1} quality="auto" />`. It renders the frame itself, so it uses whatever buffer size `FixedRenderResolution` sets.
 - The loop starts low over the meadow facing the skyline (`start` 0.08). Downtown, the east/west districts and the north district across the lake all sit on one 70 m street grid; the lake uses a reflective water surface with boats and quays.
 - `quality="low"` thins out grass, flowers and leaf detail for weaker GPUs; `auto` picks it on touch devices.
+- The display plays "Pod Lounge" (`client/public/music/pod-lounge.mp3`) on a continuous loop under the background. It loops independently of the flight: `client/src/audio/loopingMusic.js` decodes it with Web Audio, trims the silent padding, and starts each play-through as the previous one fades out so the music never drops out. Browsers hold audio until the first click or key press, so it starts then.
+
+### Sound
+
+`client/src/audio/mixer.js` runs all audio through one Web Audio context. Settings → Sound drives it: **Master** (everything), **Music** (all music, menu and in-game), **Effects** (button sounds), **Menu music** (switches off just the menu's background track; in-game songs go straight to the music channel) and **Mute all** (silences everything). Settings are saved per browser (`menu/soundSettings.js`).
+
+Every in-game button (menus, battle screens, the phone view, the debug strip) makes Wii-menu-style sounds through `useCanvasUI`: a soft tick when the mouse or remote cursor reaches a button, a bubbly pop on press, a falling pop for back, chimes for switches, and ticks as a slider moves. They're synthesised in `client/src/audio/uiSounds.js` rather than recorded, and a widget can override its press sound with `sound`.
 
 ## Captured dance demo
 

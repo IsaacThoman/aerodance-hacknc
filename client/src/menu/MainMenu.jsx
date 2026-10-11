@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawTitle, pill } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
+import { playUISound } from '../audio/uiSounds.js';
 import RemoteDock from '../remote/RemoteDock.jsx';
 
 /**
@@ -8,7 +9,8 @@ import RemoteDock from '../remote/RemoteDock.jsx';
  * drawn after the world (useFrame priority 2).
  *
  * Screens: main (Start, Battle, Settings), start (random / select song), songs (song list),
- * settings (sound). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
+ * settings (sound: Master / Music / Effects volume, Menu music and Mute all; audio/mixer.js
+ * applies them). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
  * The main screen also shows the remote and fullscreen bubbles in the corner.
  *
  * Input comes from the mouse/touch on the canvas or from a paired phone remote
@@ -35,13 +37,19 @@ const SONGS = [
   { id: 'song-2', title: 'Song Title Two', artist: 'Artist Name' },
 ];
 const SONG_RECTS = SONGS.map((_, i) => ({ x: 128, y: 550 + i * 116, w: 520, h: 96 }));
-const PANEL = { x: 128, y: 548, w: 600, h: 284 };
+const PANEL = { x: 128, y: 548, w: 600, h: 324 };
 const SLIDERS = [
   { key: 'master', label: 'Master' },
   { key: 'music', label: 'Music' },
   { key: 'sfx', label: 'Effects' },
 ];
-const ROW_Y = (i) => PANEL.y + 54 + i * 60;
+// Switches below the sliders: on() reads whether each one is on.
+const TOGGLES = [
+  { key: 'menuMusic', label: 'Menu music', on: (snd) => snd.menuMusic !== false },
+  { key: 'muted', label: 'Mute all', on: (snd) => !!snd.muted },
+];
+const ROW_Y = (i) => PANEL.y + 50 + i * 56;
+const SWITCH = { w: 84, h: 42, x: PANEL.x + PANEL.w - 40 - 84 };
 const TRACK = { x0: PANEL.x + 190, x1: PANEL.x + PANEL.w - 110 };
 
 const WIDGETS = {
@@ -62,7 +70,7 @@ const WIDGETS = {
   settings: [
     { id: 'back', circle: BACK },
     ...SLIDERS.map((sl, i) => ({ id: sl.key, drag: true, rect: { x: TRACK.x0 - 24, y: ROW_Y(i) - 28, w: TRACK.x1 - TRACK.x0 + 48, h: 56 } })),
-    { id: 'muted', rect: { x: PANEL.x + 16, y: ROW_Y(3) - 28, w: PANEL.w - 32, h: 56 } },
+    ...TOGGLES.map((tg, i) => ({ id: tg.key, toggle: tg, sound: false, rect: { x: PANEL.x + 16, y: ROW_Y(SLIDERS.length + i) - 26, w: PANEL.w - 32, h: 52 } })),
   ],
 };
 // Where back / Escape leads from each submenu.
@@ -86,6 +94,7 @@ function drawSoundPanel(g, sound, hover) {
     const cy = ROW_Y(i);
     const v = sound[sl.key];
     const kx = TRACK.x0 + v * (TRACK.x1 - TRACK.x0);
+    // Only Mute all greys the sliders out; Menu music switches off just the menu track.
     const dim = base * (sound.muted ? 0.45 : 1);
     label(sl.label, cy);
 
@@ -122,22 +131,26 @@ function drawSoundPanel(g, sound, hover) {
     g.globalAlpha = base;
   });
 
-  // Mute toggle.
-  const cy = ROW_Y(3);
-  label('Mute', cy);
-  const tw = 84;
-  const th = 42;
-  pill(g, TRACK.x0, cy - th / 2, tw, th);
-  g.fillStyle = sound.muted ? '#4fd8e8' : 'rgba(0, 30, 70, 0.45)';
-  g.fill();
-  g.lineWidth = 3;
-  g.strokeStyle = `rgba(255,255,255,${0.5 + (hover.muted ?? 0) * 0.4})`;
-  g.stroke();
-  const kx = TRACK.x0 + (sound.muted ? tw - th / 2 : th / 2);
-  g.beginPath();
-  g.arc(kx, cy, th / 2 - 5, 0, TAU);
-  g.fillStyle = '#ffffff';
-  g.fill();
+  // Switches, right-aligned under the slider values.
+  TOGGLES.forEach((tg, i) => {
+    const cy = ROW_Y(SLIDERS.length + i);
+    const on = tg.on(sound);
+    const { w: tw, h: th, x: tx } = SWITCH;
+    g.globalAlpha = base * (tg.key !== 'muted' && sound.muted ? 0.45 : 1);
+    label(tg.label, cy);
+    pill(g, tx, cy - th / 2, tw, th);
+    g.fillStyle = on ? '#4fd8e8' : 'rgba(0, 30, 70, 0.45)';
+    g.fill();
+    g.lineWidth = 3;
+    g.strokeStyle = `rgba(255,255,255,${0.5 + (hover[tg.key] ?? 0) * 0.4})`;
+    g.stroke();
+    const kx = tx + (on ? tw - th / 2 : th / 2);
+    g.beginPath();
+    g.arc(kx, cy, th / 2 - 5, 0, TAU);
+    g.fillStyle = '#ffffff';
+    g.fill();
+    g.globalAlpha = base;
+  });
 }
 
 export default function MainMenu({ visible = true, onStart, onBattle, onSettingsOpen, sound, onSoundChange }) {
@@ -157,8 +170,20 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
     // Input goes to the visible screen as soon as it is fading in (never mid swap-out).
     active: () => props.current.visible && m.alpha > 0.3 && m.screen === m.next,
     widgets: () => WIDGETS[m.screen],
-    onDrag: (wdg, p) => setSound({ [wdg.id]: sliderValue(p.x) }),
+    onDrag: (wdg, p) => {
+      const v = sliderValue(p.x);
+      // A soft tick every 10%, like a notched dial.
+      if (Math.round(v * 10) !== Math.round((props.current.sound?.[wdg.id] ?? 0) * 10)) playUISound('tick');
+      setSound({ [wdg.id]: v });
+    },
     onActivate: (wdg, s) => {
+      if (wdg.toggle) {
+        const on = !wdg.toggle.on(props.current.sound);
+        playUISound(on ? 'toggleOn' : 'toggleOff');
+        setSound({ [wdg.id]: on });
+        s.invalidate();
+        return;
+      }
       if (wdg.song) { props.current.onStart?.('select', wdg.song); return; }
       switch (wdg.id) {
         case 'start': go('start'); break;
@@ -167,14 +192,13 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
         case 'back': go(PARENT[m.screen]); break;
         case 'random': props.current.onStart?.('random'); break;
         case 'select': go('songs'); break;
-        case 'muted': setSound({ muted: !props.current.sound?.muted }); break;
         default:
       }
       s.invalidate();
     },
     onKey: (e, s) => {
       const active = props.current.visible && m.alpha > 0.3 && m.screen === m.next;
-      if (e.key === 'Escape' && active && PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); }
+      if (e.key === 'Escape' && active && PARENT[m.screen]) { playUISound('back'); go(PARENT[m.screen]); s.invalidate(); }
     },
     onBack: (s) => { if (PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); } },
     update: (dt, s) => {
