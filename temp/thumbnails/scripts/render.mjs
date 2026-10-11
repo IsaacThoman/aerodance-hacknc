@@ -198,7 +198,8 @@ async function renderClip(page, clip) {
   const [width, height] = clip.buffer ?? [BUFFER.width, BUFFER.height];
   const [sx, sy] = clip.buffer ? [1, 1] : UPSCALE;
   const size = clip.buffer ? `&buffer=${width}x${height}` : '';
-  await page.goto(`${base}?shot=${encodeURIComponent(shot.id)}&loop=${clip.from},${clip.to}${size}`);
+  const steady = clip.beat === false ? '&beat=0' : '';
+  await page.goto(`${base}?shot=${encodeURIComponent(shot.id)}&loop=${clip.from},${clip.to}${size}${steady}`);
   await page.waitForFunction(() => window.__thumb, null, { timeout: 60000 });
   // 60 fps frame indices on the clip's frame grid, which includes the still's frame.
   const shotFrame = await page.evaluate(() => window.__thumb.shotFrame);

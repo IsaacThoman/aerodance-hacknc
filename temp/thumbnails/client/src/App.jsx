@@ -6,6 +6,7 @@ import { samplePose, validateMotion } from '../../../frutiger-character/client/s
 import { STAGES } from '../../../frutiger-character/client/src/stages/index.js';
 import Dancers, { DANCER_LOOKS } from '../../../frutiger-character/client/src/stages/shared/Dancers.jsx';
 import { RenderPipeline, resetPost } from '../../../frutiger-character/client/src/stages/shared/post.jsx';
+import { beat } from '../../../frutiger-character/client/src/stages/shared/hooks.js';
 import { drawTitle, titleWidth } from '../../../../client/src/ui/draw.js';
 import { BUFFER as THUMBNAIL_BUFFER, DESIGN, SHOTS } from './shots.js';
 
@@ -24,9 +25,9 @@ import { BUFFER as THUMBNAIL_BUFFER, DESIGN, SHOTS } from './shots.js';
  * in step with the stage, reaching the shot's pose at the shot's time. scripts/render.mjs
  * drives it and writes the PNGs and GIFs.
  *
- * URL: ?shot=<id> (shots.js), or ?spec=<JSON> for a one-off shot. &loop=<from>,<to> makes
- * that stretch of the dance loop seamlessly, and &buffer=<w>x<h> renders at another 3:2 size
- * (both for GIFs).
+ * URL: ?shot=<id> (shots.js), or ?spec=<JSON> for a one-off shot. For GIFs: &loop=<from>,<to>
+ * makes that stretch of the dance loop seamlessly, &buffer=<w>x<h> renders at another 3:2
+ * size, and &beat=0 keeps the lights steady instead of pulsing on the beat.
  */
 
 const STEP = 1 / 60;
@@ -80,6 +81,16 @@ function ShotCamera({ position, target, fov = 40, near, far }) {
     camera.far = far ?? state.camera.far;
     camera.updateProjectionMatrix();
     state.set({ camera });
+  }, -1);
+  return null;
+}
+
+// Holds the stage's beat clock between beats (no pulse, no rolling wave) before the stage
+// reads it each frame, so beat-synced lights and bloom stay steady.
+function SteadyBeat() {
+  useFrame(() => {
+    beat.pulse = 0;
+    beat.phase = 1;
   }, -1);
   return null;
 }
@@ -246,6 +257,7 @@ function Thumbnail({ shot, motion }) {
     <>
       <RenderPipeline hudScene={hud.scene} hudCamera={hud.camera} width={BUFFER.width} height={BUFFER.height} aspect={BUFFER.aspect} />
       <ShotCamera {...shot.camera} />
+      {new URLSearchParams(window.location.search).get('beat') === '0' && <SteadyBeat />}
       <Suspense fallback={null}>
         <Stage motion={motion} playback={playback} />
         <Ready onReady={onReady} />
