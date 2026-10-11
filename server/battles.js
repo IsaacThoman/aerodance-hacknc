@@ -5,6 +5,7 @@ import { enqueueJob, pool, tx } from './db.js';
 import { AgentError, agentCall } from './agent.js';
 import { changes } from './events.js';
 import { HttpError, explorerAddress, explorerTx, getProfile, shortId } from './profiles.js';
+import { trophySvg, trophyTraits } from './trophyArt.js';
 
 export const MAX_SEATS = 8;
 export const HYPE_SOL = 0.005;
@@ -105,7 +106,8 @@ export async function publicBattle(id) {
 }
 
 // Off-chain metadata the trophy NFT's uri points to (Metaplex JSON standard).
-export async function trophyMetadata(id, baseUrl) {
+// The winning seat behind a trophy, for its metadata and its art.
+async function trophyBattle(id) {
   const { rows: [b] } = await pool.query(
     `SELECT b.id, b.created_at, b.winner_seat, s.score, s.pops, s.sync, s.flair,
             (SELECT count(*)::int FROM battle_seats WHERE battle_id = b.id) AS dancers,
@@ -114,8 +116,20 @@ export async function trophyMetadata(id, baseUrl) {
       WHERE b.id = $1 AND b.trophy_status IS NOT NULL`,
     [id],
   );
+  return b;
+}
+
+// The trophy's one-of-a-kind SVG (see trophyArt.js).
+export async function trophyImage(id) {
+  const b = await trophyBattle(id);
+  return b && trophySvg(b);
+}
+
+export async function trophyMetadata(id, baseUrl) {
+  const b = await trophyBattle(id);
   if (!b) return undefined;
-  const image = `${baseUrl}/trophy.png`;
+  const t = trophyTraits(b);
+  const image = `${baseUrl}/nft/${b.id}.svg`;
   return {
     name: `aerodance trophy #${b.id}`,
     symbol: 'AERO',
@@ -123,6 +137,11 @@ export async function trophyMetadata(id, baseUrl) {
     image,
     external_url: baseUrl,
     attributes: [
+      { trait_type: 'stage', value: t.stage.name },
+      { trait_type: 'glass', value: t.glass },
+      { trait_type: 'finish', value: t.finish },
+      { trait_type: 'cup', value: t.cup },
+      { trait_type: 'aura', value: t.aura ? 'Golden' : 'None' },
       { trait_type: 'battle', value: b.id },
       { trait_type: 'dancers', value: b.dancers },
       { trait_type: 'score', value: b.score ?? 0 },
@@ -132,7 +151,7 @@ export async function trophyMetadata(id, baseUrl) {
       { trait_type: 'hype', value: b.hype },
       { trait_type: 'date', value: b.created_at.toISOString().slice(0, 10) },
     ],
-    properties: { category: 'image', files: [{ uri: image, type: 'image/png' }] },
+    properties: { category: 'image', files: [{ uri: image, type: 'image/svg+xml' }] },
   };
 }
 
@@ -260,6 +279,25 @@ export async function claimSeat(id, seat, profileId) {
   );
   if (!rowCount) throw new HttpError(409, 'seat not available');
   changes.emit('battle', id);
+}
+
+// The bot's "hype <name>": the seat that player holds in their newest live battle.
+// Exact name first (case-insensitive), then a name starting with what was typed.
+const LIVE_WINDOW = '2 hours';
+
+export async function liveSeatByName(name, exceptProfileId) {
+  const { rows: [hit] } = await pool.query(
+    `SELECT s.battle_id AS "battleId", s.seat, p.name
+       FROM battle_seats s
+       JOIN profiles p ON p.id = s.profile_id
+       JOIN battles b ON b.id = s.battle_id
+      WHERE b.status = 'open' AND b.created_at > now() - $3::interval
+        AND p.id <> $2 AND starts_with(lower(p.name), lower($1))
+      ORDER BY lower(p.name) = lower($1) DESC, b.created_at DESC
+      LIMIT 1`,
+    [name, exceptProfileId, LIVE_WINDOW],
+  );
+  return hit;
 }
 
 // A spectator tips a dancer real devnet SOL from their own wallet, or sends a sticker NFT

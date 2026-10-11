@@ -5,7 +5,7 @@ import path from 'node:path';
 import express from 'express';
 import { Server } from 'socket.io';
 import { listen, migrate, pool, recordSpin, spinHistory, spinsSince } from './db.js';
-import { publicBattle, startSweeper, stickerMetadata, trophyMetadata } from './battles.js';
+import { publicBattle, startSweeper, stickerMetadata, trophyImage, trophyMetadata } from './battles.js';
 import { changes } from './events.js';
 import { profileByDevice } from './profiles.js';
 import { attachRemote } from './remote.js';
@@ -42,10 +42,20 @@ app.get('/api/spins/history', async (_req, res, next) => {
 app.use('/api', publicRoutes());
 
 // NFT metadata (the assets' on-chain uris point here): hype stickers and battle trophies.
+// Wallets and marketplaces fetch these from their own origins.
+app.use(['/nft', '/stickers'], (_req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  next();
+});
 app.get('/nft/hype/:id/:stickerId.json', async (req, res) => {
   const meta = await stickerMetadata(req.params.id, req.params.stickerId, requestBaseUrl(req));
   if (!meta) return res.status(404).json({ error: 'no such sticker' });
   res.json(meta);
+});
+app.get('/nft/:id.svg', async (req, res) => {
+  const svg = await trophyImage(req.params.id);
+  if (!svg) return res.status(404).json({ error: 'no trophy for that battle' });
+  res.type('image/svg+xml').set('Cache-Control', 'public, max-age=86400').send(svg);
 });
 app.get('/nft/:id.json', async (req, res) => {
   const meta = await trophyMetadata(req.params.id, requestBaseUrl(req));

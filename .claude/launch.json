@@ -12,6 +12,12 @@
       "runtimeExecutable": "C:/Users/Sara/AppData/Roaming/JetBrains/WebStorm2026.2/node/versions/24.21.0/node.exe",
       "runtimeArgs": ["node_modules/vite/bin/vite.js", "--config", "temp/win-screens/vite.config.js"],
       "port": 5178
+    },
+    {
+      "name": "trophy-renders",
+      "runtimeExecutable": "C:/Users/Sara/AppData/Roaming/JetBrains/WebStorm2026.2/node/versions/24.21.0/node.exe",
+      "runtimeArgs": ["node_modules/vite/bin/vite.js", "--config", "temp/trophy-renders/vite.config.js"],
+      "port": 5180
     }
   ]
 }
