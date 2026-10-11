@@ -15,6 +15,7 @@ import {
 } from "../core.js";
 import { validate as validateWire } from "../../../client/src/pose/protocol.js";
 import { validateWebcamRecord } from '../../../packages/pose/webcamRecord.js';
+import { validateVideoRecord } from '../../../packages/pose/videoRecord.js';
 
 export function createStudio({
   dataDir = process.env.STUDIO_DATA_DIR || path.resolve("studio-data"),
@@ -164,7 +165,7 @@ export function createStudio({
       );
   });
   app.post("/api/projects/:projectId/takes", body, async (req, res) => {
-    if (!['android', 'webcam'].includes(req.body.sourceKind || 'android')) throw Error('Invalid capture source');
+    if (!['android', 'webcam', 'video'].includes(req.body.sourceKind || 'android')) throw Error('Invalid capture source');
     const projectId = id(req.params.projectId);
     const metadata = await store.locked(projectId, async () => {
       validateProject(await store.read(projectId, "project.json"));
@@ -201,6 +202,12 @@ export function createStudio({
         throw Error("Invalid record batch");
       const metadata = JSON.parse(await fs.readFile(path.join(folder, 'capture.json'), 'utf8'));
       for (const e of records) {
+        if (metadata.sourceKind === 'video') {
+          if (!Number.isSafeInteger(e.ordinal) || e.ordinal < 0 || !e.record ||
+            Buffer.byteLength(JSON.stringify(e.record)) > 16384) throw Error('Invalid video record envelope');
+          validateVideoRecord(e.record);
+          continue;
+        }
         if (
           !Number.isSafeInteger(e.ordinal) ||
           e.ordinal < 0 ||
@@ -285,6 +292,7 @@ export function createStudio({
         if (records.length !== req.body.recordCount)
           throw Error("Incomplete take");
         metadata.interruptionReason = req.body.interruptionReason || null;
+        if (metadata.sourceKind === 'video') metadata.calibrationFrame = req.body.calibrationFrame;
         const result = takeFromRecords(records, metadata);
         result.provenance.rawSha256 = sha(
           Buffer.from(records.map((e) => JSON.stringify(e) + "\n").join("")),

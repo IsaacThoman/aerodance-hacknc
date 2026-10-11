@@ -38,7 +38,7 @@ export function calibrateLive(frames, input) {
  * One player's live character input. push() every pose (or null when the player isn't in
  * the record); each frame, frame(now) gives the smoothed pose to draw (null hides it).
  */
-export function createLivePlayer() {
+export function createLivePlayer({ autoCalibrate = true } = {}) {
   let window = [];
   let calibration = null;
   let input = null;
@@ -50,13 +50,14 @@ export function createLivePlayer() {
 
   return {
     get calibration() { return calibration; },
+    setCalibration(profile) { calibration = profile; window = []; shown = null; },
     push(landmarks, recordInput, now) {
       if (!landmarks) return;
       if (input && (recordInput.width !== input.width || recordInput.height !== input.height)) { calibration = null; window = []; }
-      if (now - lastSeen > RESET_AFTER_MS) { calibration = null; window = []; shown = null; held.length = 0; }
+      if (now - lastSeen > RESET_AFTER_MS) { if (autoCalibrate) calibration = null; window = []; shown = null; held.length = 0; }
       input = recordInput;
       lastSeen = now;
-      if (!calibration && CORE.every((i) => confident(landmarks[i]))) {
+      if (autoCalibrate && !calibration && CORE.every((i) => confident(landmarks[i]))) {
         window.push({ at: now, landmarks });
         window = window.filter((f) => now - f.at <= CALIBRATION_MS * 2);
         if (window.length >= MIN_SAMPLES && now - window[0].at >= CALIBRATION_MS) {

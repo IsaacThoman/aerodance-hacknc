@@ -25,6 +25,8 @@ export const livePanelCenterX = (id) => (id === 0 ? LIVE_PANEL.inset : 1 - LIVE_
 export const GAME_PAUSE = { x: 800, y: 66, r: 30 };
 export const GAME_READY_START = { x: 610, y: 690, w: 380, h: 96 };
 export const GAME_READY_BACK = { x: 166, y: 150, r: 30 };
+export const GAME_CALIBRATION_PREVIEW = { x: 360, y: 290, w: 880, h: 420 };
+export const GAME_CALIBRATION_PROGRESS = { x: 360, y: 810, w: 880, h: 14 };
 export const GAME_PAUSE_PANEL = { x: 560, y: 250, w: 480, h: 420 };
 export const GAME_RESUME = { x: 610, y: 340, w: 380, h: 84 };
 export const GAME_RESTART = { x: 610, y: 444, w: 380, h: 84 };

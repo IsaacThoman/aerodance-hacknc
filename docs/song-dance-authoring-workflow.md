@@ -5,11 +5,13 @@ and extends the [game integration plan](android-game-integration-plan.md).
 
 The local editor and Docker image are now implemented; see
 [Dance Studio's run guide](../tools/choreography/README.md). It supports project
-persistence, audio/waveform playback, Android recording and JSON/NDJSON import,
+persistence, audio/waveform playback, Android/webcam recording, JSON/NDJSON import,
+local video pose inference with Lite/Full/Heavy and a selected calibration frame,
 Frutiger/skeleton previews, coordinate edits and undo/redo, track swaps, mirroring,
 smoothing, bounded gap repair, phrase replacement, review, backups, and runtime
-bundle export. The sections below remain the broader design reference. Website
-video import, calibrated Android clock mapping, mixed-camera normalization,
+bundle export. Video imports create library takes without assigning tracks or
+replacing song audio; the source footage is session-only. The sections below
+remain the broader design reference. Calibrated Android clock mapping, mixed-camera normalization,
 transition controls, and final scoring policy remain follow-up work. See the
 run guide's current limits before treating every proposed field/API as implemented.
 

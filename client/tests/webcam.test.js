@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { GameSession } from '../src/game/GameSession.js';
-import { parseRecording } from '../src/pose/ReplayPoseSource.js';
+import { parseRecording, standingPose } from '../src/pose/ReplayPoseSource.js';
 import { PoseSourceController } from '../src/pose/PoseSourceController.js';
 import { sampleSong } from '../../packages/pose/song.js';
 import { test } from 'node:test';
@@ -45,6 +45,7 @@ function fixture(t) {
     bitmap: async () => ({ close() {} }), assetUrl: () => 'https://test.invalid/pose-assets/' });
   t.after(() => source.disconnect());
   return { source, worker, stream, track, messages,
+    get now() { return time; },
     setTime(value) { time = value; }, get stopped() { return stopped; }, get terminated() { return terminated; },
     async frame(mediaTime, now = mediaTime * 1000) { time = now; callback(now, { mediaTime }); await Promise.resolve(); },
     deliver(data) { worker.onmessage({ data: { sessionId: source.sessionId, ...data } }); } };
@@ -97,16 +98,28 @@ test('webcam capture times drive scored gameplay and recordings through the cont
     song: JSON.parse(readFileSync(new URL('song.json', dir))),
     choreography: JSON.parse(readFileSync(new URL('choreography.json', dir))),
   };
-  const player = { state: 'paused', play() { this.state = 'playing'; },
-    songTimeAt: perf => perf - 1000, dispose() {} };
+  let songStart;
+  const player = { state: 'paused', play() { this.state = 'playing'; songStart = f.now; },
+    songTimeAt: perf => perf - songStart + bundle.song.playableStartMs, dispose() {} };
   const session = new GameSession({ bundle, playerCount: 1, source,
-    createPlayer: async () => player, now: () => 0, record: true, autoStart: false });
+    createPlayer: async () => player, now: () => f.now, record: true, autoStart: false });
   t.after(() => session.dispose());
-  await session.load(); session.start();
+  await session.load();
+  assert.equal(session.phase, 'calibrating');
   let seq = 0;
+  for (let ms = 0; ms <= 2500; ms += 100) {
+    await f.frame(ms / 1000, ms);
+    f.setTime(ms + 100);
+    f.deliver({ type: 'result', seq: ++seq, landmarks: [standingPose(0.5)], inferenceMs: 100 });
+  }
+  assert.equal(session.phase, 'ready');
+  assert.equal(session.recording, null, 'calibration poses are excluded from song recordings');
+  session.start();
+  const calibrationFrames = seq;
   for (let ms = bundle.song.playableStartMs; ms < bundle.song.playableEndMs; ms += 100) {
-    await f.frame((ms + 1000) / 1000, ms + 1000);
-    f.setTime(ms + 1300);
+    const capture = songStart + ms - bundle.song.playableStartMs;
+    await f.frame(capture / 1000, capture);
+    f.setTime(capture + 300);
     f.deliver({ type: 'result', seq: ++seq,
       landmarks: sampleSong(bundle, ms, 1).poses.map(p => p.landmarks), inferenceMs: 300 });
   }
@@ -115,7 +128,7 @@ test('webcam capture times drive scored gameplay and recordings through the cont
   assert.doesNotThrow(() => source.disconnect(), 'camera shutdown reaches game and recorder safely');
   const { entries } = parseRecording(session.recording.stop());
   session.recording = null;
-  assert.equal(entries.length, seq);
+  assert.equal(entries.length, seq - calibrationFrames);
   assert.equal(entries[0].songTimeMs, bundle.song.playableStartMs, 'recorded at capture, not arrival');
   assert.equal(entries[0].timing, 'browser-frame-observation');
 });

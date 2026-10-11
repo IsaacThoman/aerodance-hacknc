@@ -2,12 +2,13 @@ import { createScorer } from '../../../packages/score/scorer.js';
 import { createSongPlayer } from '../audio/songPlayer.js';
 import { createPoseRecorder } from '../pose/ReplayPoseSource.js';
 import { createLivePlayer } from './livePose.js';
+import { WebcamCalibration } from './webcamCalibration.js';
 
 /*
  * One play of one song: loading, the ready check, the countdown, the dance, pausing and
  * the results, independent of React and drawing (GameScreen draws it).
  *
- *   loading → ready → countdown → playing ⇄ paused (→ countdown on resume) → finishing → results
+ *   loading → calibrating (webcam) → ready → countdown → playing ⇄ paused → finishing → results
  *
  * Everything runs on the song's audible clock (audio/songPlayer.js): the countdown is the
  * scheduled start, the reference dancers sample it, and every live pose is placed at the
@@ -35,7 +36,8 @@ export class GameSession {
     this.error = '';
     this.player = null;
     this.scorer = createScorer(bundle, playerCount);
-    this.live = Array.from({ length: playerCount }, () => createLivePlayer());
+    this.webcamCalibration = source?.view?.sourceKind === 'webcam' ? new WebcamCalibration(playerCount) : null;
+    this.live = Array.from({ length: playerCount }, () => createLivePlayer({ autoCalibrate: !this.webcamCalibration }));
     this.present = Array(playerCount).fill(-Infinity);
     this.readySince = null;
     this.acceptFromMs = bundle.song.playableStartMs - LEAD_MS;
@@ -67,7 +69,7 @@ export class GameSession {
       const player = await this.createPlayer(this.bundle.audio, { startMs: song.playableStartMs, endMs: song.playableEndMs });
       if (this.phase === 'disposed') { player.dispose(); return; }
       this.player = player;
-      this.set('ready');
+      this.set(this.webcamCalibration ? 'calibrating' : 'ready');
     } catch {
       if (this.phase !== 'disposed') this.set('error', { error: 'This browser could not decode the song audio.' });
     }
@@ -78,6 +80,8 @@ export class GameSession {
     return this.live.map((p, id) => (now - this.present[id] > PRESENT_MS ? 'missing' : p.calibration ? 'ready' : 'calibrating'));
   }
 
+  calibrationStatus(now = this.now()) { return this.webcamCalibration?.status(now) ?? null; }
+
   onRecord({ record, captureBrowserTimeMs }) {
     if (record?.type !== 'pose' || record.playerCount !== this.playerCount) return;
     const now = this.now();
@@ -86,6 +90,17 @@ export class GameSession {
       if (!pose) continue;
       this.present[id] = now;
       this.live[id].push(pose.landmarks, record.input, now);
+    }
+    if (this.webcamCalibration && ['calibrating', 'ready'].includes(this.phase)) {
+      if (this.webcamCalibration.accept(record, captureBrowserTimeMs, now)) {
+        this.webcamCalibration.tracks.forEach((profile, id) => {
+          if (this.live[id].calibration !== profile) this.live[id].setCalibration(profile);
+        });
+        if (this.phase !== 'ready') this.set('ready');
+      } else if (this.phase === 'ready' && !this.calibrationStatus(now).complete) {
+        this.live.forEach(p => p.setCalibration(null));
+        this.set('calibrating');
+      }
     }
     if (!['countdown', 'playing', 'finishing'].includes(this.phase) || !Number.isFinite(captureBrowserTimeMs)) return;
     if (this.player.state !== 'playing') return;
@@ -105,6 +120,7 @@ export class GameSession {
   /** Starts the countdown; the song and the dancers begin together when it reaches zero. */
   start() {
     if (this.phase !== 'ready') return;
+    if (this.webcamCalibration && !this.calibrationStatus().complete) return;
     this.source?.attachSong?.(this.clock);
     if (this.recordPoses && this.source) {
       this.recording = createPoseRecorder(this.source, { songId: this.bundle.song.songId, songTimeAt: (perf) => this.player.songTimeAt(perf), playerCount: this.playerCount });
@@ -139,7 +155,13 @@ export class GameSession {
 
   update(now = this.now()) {
     const { phase, player } = this;
-    if (phase === 'ready') {
+    if (this.webcamCalibration && ['calibrating', 'ready'].includes(phase)) {
+      const { complete } = this.calibrationStatus(now);
+      if (phase === 'ready' && !complete) {
+        this.live.forEach(p => p.setCalibration(null));
+        this.set('calibrating');
+      } else if (phase === 'ready' && this.autoStart) this.start();
+    } else if (phase === 'ready') {
       const ready = this.readiness(now).every((r) => r === 'ready');
       this.readySince = ready ? this.readySince ?? now : null;
       if (this.autoStart && ready && now - this.readySince >= READY_HOLD_MS) this.start();

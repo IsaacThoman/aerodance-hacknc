@@ -12,7 +12,7 @@ FROM mcr.microsoft.com/playwright:v1.58.2-noble AS ui-test
 WORKDIR /app
 COPY --from=build /app ./
 RUN npm install --no-save --package-lock=false playwright@1.58.2
-CMD ["node", "tools/choreography/tests/browser.mjs"]
+CMD ["sh", "-c", "node tools/choreography/tests/browser.mjs && node tools/choreography/tests/video-import.browser.mjs && node tools/choreography/tests/video-duet.browser.mjs"]
 
 FROM node:24-alpine AS runtime
 WORKDIR /app

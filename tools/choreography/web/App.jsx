@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PoseSourceController } from "../../../client/src/pose/PoseSourceController.js";
 import WebcamControls from './WebcamControls.jsx';
+import VideoImportPanel from './VideoImportPanel.jsx';
 import { DEFAULT_STAGE, STAGE_LIST } from "../../../packages/stages/catalog.js";
 import { NdjsonDecoder } from "../../../client/src/pose/protocol.js";
 import {
@@ -22,13 +23,13 @@ import {
   offsetTrack,
   historyStep,
   trackDataIds,
+  takeCalibration,
   missingIntervals,
   interpolateTrack,
 } from "../core.js";
 import { AudioTransport } from "./audio.js";
 import { Recorder } from "./recorder.js";
 import Preview from "./Preview.jsx";
-import { calibratePoses } from "../../../packages/character/calibration.js";
 import { LiveCalibration } from '../../../packages/character/liveCalibration.js';
 
 async function request(url, { body, ...options } = {}) {
@@ -134,6 +135,7 @@ export default function App() {
   assetsRef.current = takes;
   takeRef.current = takes.get(activeTake) || null;
   const [inputMode, setInputMode] = useState('android');
+  const [videoFile, setVideoFile] = useState(null);
   const liveHistory = useRef(new LiveCalibration());
   const [calibrationCounts, setCalibrationCounts] = useState([0, 0]);
   const source = useMemo(() => new PoseSourceController(), []),
@@ -448,13 +450,7 @@ export default function App() {
       selectedTake
         ? [0, 1].map((playerId) => ({
             playerId,
-            calibration: calibratePoses(
-              selectedTake.samples.flatMap((s) =>
-                s.poses.filter((p) => p.playerId === playerId),
-              ),
-              selectedTake.input,
-              { adaptiveDistance: selectedTake.source === "webcam" },
-            ),
+            calibration: takeCalibration(selectedTake, playerId),
           }))
         : null,
     [selectedTake],
@@ -916,6 +912,8 @@ export default function App() {
     rangeValid = selection[1] > selection[0];
   return (
     <div className="studio">
+      {videoFile && <VideoImportPanel key={`${videoFile.name}-${videoFile.lastModified}-${videoFile.size}`} file={videoFile} projectId={project.projectId} request={request}
+        onBusy={setBusy} onImported={attachTake} onClose={() => setVideoFile(null)} />}
       <header className="topbar">
         <a className="brand" href="/" aria-label="Dance Studio">
           <span className="brand-orb" />
@@ -1053,6 +1051,19 @@ export default function App() {
                 e.target.value = "";
               }}
             />
+          </label>
+          <label className={`upload-button ${recording ? "disabled" : ""}`}>
+            <span>▷</span>
+            <div>Import video<small>Video → pose take · choose a calibration frame</small></div>
+            <input type="file" accept="video/*,.mp4,.webm,.mov,.m4v" aria-label="Import video"
+              disabled={recording || busy} onChange={e => {
+                const file = e.target.files[0]; e.target.value = '';
+                if (file) {
+                  transport.pause(); takeClock.current = null; setPlaying(false);
+                  source.disconnect();
+                  setVideoFile(file);
+                }
+              }} />
           </label>
           <div className="section-heading">
             TAKES <span>{project.takes.length}</span>
