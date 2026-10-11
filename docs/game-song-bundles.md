@@ -10,15 +10,23 @@ silent demo's loop or seam blend.
 
 ## Install an exported bundle
 
-Unpack `<songId>/` into `client/public/songs/`, retaining `song.json`,
-`choreography.json`, audio, optional cover, and `checksums.json`. Add the catalog
-entry to `client/public/songs/manifest.json`, keeping its outer `version: 1`.
-Entry fields are `id`, `title`, `artist`, `durationMs`, `supportedPlayerCounts:
-[1,2]`, `bundleRevision`, and `bundle: "<songId>/song.json"`; difficulty and cover
-are optional. Optional `sha256` pins the exact bytes of `song.json`.
-Install the complete directory before updating the catalog. The game does not
-extract ZIP files or publish editor projects. The public catalog remains empty
-until an authored song is ready.
+Unpack the runtime ZIP into `client/public/songs/`, retaining its `<songId>/`
+folder with `song.json`, `choreography.json`, audio, optional cover, and
+`checksums.json`. The folder name must match `songId`. No manual catalog update
+is needed: Vite development and the production Express server generate
+`songs/manifest.json` from exported folders on each catalog request. Reopen Song
+Select to see changes. Invalid metadata, missing files, mismatched file sizes,
+and invalid metadata checksums cause a folder to be skipped with a warning.
+The loader still performs full runtime integrity/schema checks when selected.
+
+Builds generate the same catalog in `dist/songs/manifest.json` for static hosting.
+Rebuild/redeploy after changing the source songs directory. On a running Express
+server, installing complete folders directly in `dist/songs/` requires no restart.
+Exported metadata supplies title, artist, duration, player counts, revision,
+difficulty, optional cover, and a SHA-256 pin for `song.json`. Re-exported songs
+are discovered with their updated revision. Install the complete directory before
+opening Song Select. The game does not extract ZIP files or publish editor
+projects. The public catalog remains empty until an authored song is ready.
 
 Catalog paths resolve relative to the catalog; media paths resolve relative to
 `song.json`. Only safe relative file paths are accepted. The loader checks

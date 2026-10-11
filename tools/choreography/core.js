@@ -180,6 +180,14 @@ export function validateProject(p) {
           op.timeMs <= op.endMs,
         "Invalid joint keyframe",
       );
+    if (op.type === "joint" && op.targets !== undefined)
+      assert(
+        Array.isArray(op.targets) && op.targets.length > 0 && op.targets.length <= 33 &&
+        new Set(op.targets.map((t) => t.joint)).size === op.targets.length &&
+        op.targets.every((t) => Number.isInteger(t.joint) && t.joint >= 0 && t.joint < 33 &&
+          ["x", "y", "z"].every((k) => finite(t.value?.[k]))),
+        "Invalid grouped joint keyframe",
+      );
     if (op.type === "smooth")
       assert(
         finite(op.windowMs) && op.windowMs > 0 && op.windowMs <= 1000,
@@ -609,11 +617,13 @@ export function compileProject(project, takes) {
               : time < op.timeMs
                 ? (time - op.startMs) / (op.timeMs - op.startMs)
                 : (op.endMs - time) / (op.endMs - op.timeMs);
-          for (const k of ["x", "y", "z"])
-            pose.landmarks[op.joint][k] +=
-              (op.value[k] - pose.landmarks[op.joint][k]) * clamp(weight, 0, 1);
-          q.landmarkOrigins[op.joint] = "edited";
-          q.scoreEligible[op.joint] = false;
+          for (const target of op.targets || [{ joint: op.joint, value: op.value }]) {
+            for (const k of ["x", "y", "z"])
+              pose.landmarks[target.joint][k] +=
+                (target.value[k] - pose.landmarks[target.joint][k]) * clamp(weight, 0, 1);
+            q.landmarkOrigins[target.joint] = "edited";
+            q.scoreEligible[target.joint] = false;
+          }
           q.reviewed = false;
         }
         if (op.type === "mirror") {

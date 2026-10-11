@@ -270,3 +270,26 @@ test("gap repair requires bounded endpoints and never invents measured confidenc
   });
   assert.throws(() => compileProject(unbounded, takes), /at most one second/);
 });
+
+test("grouped keyframes translate points together, preserve confidence and undo as one edit", () => {
+  const { p, takes } = fixture();
+  const original = compileProject(p, takes).samples.find((s) => s.songTimeMs === 500);
+  const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const targets = indices.map((joint) => ({ joint, value: {
+    x: original.poses[0].landmarks[joint].x + 0.1,
+    y: original.poses[0].landmarks[joint].y + 0.05,
+    z: original.poses[0].landmarks[joint].z,
+  } }));
+  const edited = appendOperation(p, { type: "joint", playerId: 0, joint: 0,
+    value: targets[0].value, targets, timeMs: 500, startMs: 350, endMs: 650 });
+  const compiled = compileProject(edited, takes);
+  const frame = compiled.samples.find((s) => s.songTimeMs === 500);
+  for (const i of indices) {
+    assert.ok(Math.abs(frame.poses[0].landmarks[i].x - original.poses[0].landmarks[i].x - 0.1) < 1e-6);
+    assert.equal(frame.poses[0].landmarks[i].visibility, original.poses[0].landmarks[i].visibility);
+    assert.equal(frame.quality[0].scoreEligible[i], false);
+  }
+  assert.deepEqual(frame.poses[0].landmarks[15], original.poses[0].landmarks[15]);
+  assert.deepEqual(frame.poses[1], original.poses[1]);
+  assert.deepEqual(compileProject({ ...edited, operationCursor: 0 }, takes).samples, compileProject(p, takes).samples);
+});

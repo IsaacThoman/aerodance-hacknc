@@ -26,6 +26,40 @@ The app streams live camera poses over LAN HTTP on port **1337**, using MediaPip
 
 The wrapper requests JDK 21; configure the Android SDK locally. Native loading, capture, and performance must be checked on the board.
 
+## Set up, build, and deploy in one command
+
+From the repository root:
+
+```bash
+./client-android/scripts/deploy.sh              # preview; no changes
+./client-android/scripts/deploy.sh --apply      # build and deploy this checkout
+./client-android/scripts/deploy.sh --apply --origin https://game.example.com
+```
+
+Install Java (JDK 21 recommended) and Android SDK command-line tools once. The
+script uses `--sdk PATH`, `ANDROID_HOME`/`ANDROID_SDK_ROOT`, `local.properties`,
+or `~/Android/Sdk`, in that order. It installs missing platform-tools, the
+compile SDK, NDK, and CMake versions from the Gradle version catalog using
+`sdkmanager`, prompting for SDK licenses when needed. Gradle provisions its
+pinned JDK and resolves build tools and dependencies. Package downloads need
+network access; the SDK must be writable. The selected SDK is saved in the
+ignored `local.properties` without removing other settings.
+
+The script runs host tests and builds the debug APK before changing the board.
+It reconnects ADB through the board's enable API if needed, stops the previous
+Aerodance activity, releases camera owners with the existing root helper,
+configures continuous capture and the 30 ms indoor exposure ceiling, installs
+the APK while preserving app data, grants CAMERA, and checks activity launch.
+Use `--outdoor` to preserve the existing exposure ceiling. `--serial DEVICE`
+selects a different ADB device; `--board-host HOST` selects its reconnect API.
+See `--help` for all options.
+
+“Latest” means the current checkout, including uncommitted changes. The script
+does not fetch Git changes. `--origin` sets and saves the exact website origin
+through the debug app's existing launch extra. Otherwise the saved origin is
+used; on first use enter it in the app and press **Start**. Launch success does
+not verify pose inference: camera/GPU work starts when a stream client connects.
+
 ## Release a competing camera app
 
 If the board is disconnected, enable ADB before reconnecting:

@@ -42,8 +42,11 @@ The game shows **Camera starting…** until the first pose result, allowing up t
 battery, so reconnecting includes initialization again. The authoring tool uses
 the same startup state and keeps recording disabled while it waits.
 
-The public song catalog is `client/public/songs/manifest.json`. It remains empty until
-an authored song is ready. Song Select now loads validated song bundles and offers
+Extract Studio song ZIPs into `client/public/songs/`; Song Select discovers the
+exported folders automatically, with no manual manifest edits. Builds generate
+the catalog for static hosting. Rebuild/redeploy to publish source folder changes.
+The catalog remains empty until an authored song is ready. Song Select now loads
+validated song bundles and offers
 a finite music/reference-character preview in either player mode. Countdown, live
 characters, calibrated timing, scoring, and results remain future integration work.
 See [game song bundles and pose migration](docs/game-song-bundles.md) for installation,
@@ -79,6 +82,18 @@ Six temporary in-engine main-menu variations (Aqua Lagoon, Starlight Galaxy, Eco
 | Runtime  | Docker Compose                            |
 
 ## Run locally with Docker Compose
+
+To rebuild and deploy the main app locally in the background:
+
+```sh
+./deploy.sh
+```
+
+The script runs from any working directory, uses Podman when available (otherwise
+Docker), and checks app/database health after startup. Create `.env` from
+`.env.example` before the first run. Set `CONTAINER_ENGINE=docker` or
+`CONTAINER_ENGINE=podman` to choose the runtime explicitly. Existing database
+data is retained. This script deploys locally; public hosting uses Coolify below.
 
 ```sh
 cp .env.example .env

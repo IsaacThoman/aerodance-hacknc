@@ -679,10 +679,8 @@ small {
 .selected-range {
   position: absolute;
   top: 0;
-  bottom: 0;
-  background: #d1e4b812;
-  border-left: 1px solid #c8d8a977;
-  border-right: 1px solid #c8d8a977;
+  bottom: 24px;
+  background: #d1e4b826;
   pointer-events: none;
   z-index: 3;
 }
@@ -1148,4 +1146,45 @@ small {
   .coordinates input {
     font-size: 12px;
   }
+}
+
+.range-handle {
+  position: absolute;
+  top: 0;
+  bottom: 24px;
+  width: 6px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 2px;
+  background: #d2e9b9;
+  z-index: 6;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.range-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 -6px;
+}
+.range-handle:hover { background: #f1ffdd; }
+.range-handle-0 { transform: none; }
+.range-handle-1 { transform: translateX(-100%); }
+.range-handle:active { transform: translateX(-100%); }
+.range-handle-0:active { transform: none; }
+
+@media (min-width: 921px) {
+  .studio { height: 100dvh; min-height: 0; overflow: hidden; }
+  .topbar, .statusbar, .message { flex-shrink: 0; }
+  .workspace { min-height: 0; grid-template-rows: minmax(0, 1fr); padding: 12px; }
+  .library, .inspector { min-height: 0; max-height: none; overflow-y: auto; }
+  .library > * { flex-shrink: 0; }
+  .editor { min-height: 0; overflow-y: auto; }
+  .preview-bar { margin-bottom: 8px; }
+  .preview-source { margin-bottom: 8px; }
+  .preview { flex: 1 0 140px; height: auto; min-height: 140px; max-height: none; }
+  .preview-footer { padding: 8px 12px; }
+  .timeline { flex-shrink: 0; margin-top: 10px; padding: 10px 12px; }
+  .transport { margin-bottom: 8px; }
+  .range-controls { margin-top: 8px; }
 }

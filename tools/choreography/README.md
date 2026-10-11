@@ -48,7 +48,8 @@ Open http://localhost:5175. The API listens on 8082 and writes ignored
    Close other stream viewers and keep Android active. Connecting starts the
    camera and pose tracker; the panel shows initialization for up to 90 seconds
    (the board can take about 35 seconds). Recording stays disabled until the first
-   pose arrives; wait for both players to be detected before recording. Cancel
+   pose record arrives, even if neither player is detected. You can start the
+   countdown and then step into position. Cancel
    connection stops the wait. Disconnect saves battery, so reconnect initializes
    again. Set **Recording delay (seconds)** from 0 to 60 (default 3). A visible
    countdown gives you time to get into position before music and movement
@@ -60,9 +61,12 @@ Open http://localhost:5175. The API listens on 8082 and writes ignored
    poses are read-only in all three display modes; music can play for rehearsal.
    Choose **Playback** to return to the timeline and edit the routine. Recording
    automatically uses the live preview.
-4. Select a player/joint and drag it in Skeleton/Both, or type XYZ. Confidence is
+4. Select a player/joint and drag it in Skeleton/Both, or type XYZ. Choose a
+   **Point group** to move the head, either hand, both hands, either foot, both feet, or the whole skeleton
+   together by dragging any highlighted point. Each group move is one undo step. Confidence is
    read-only. A joint keyframe blends over 150 ms on either side. Undo/redo preserves
-   the source take. Select a timeline range to swap tracks, mirror, smooth, repair
+   the source take. Drag the selection start/end handles on the waveform to select a timeline
+   range (arrow keys adjust a focused handle) to swap tracks, mirror, smooth, repair
    a short gap, approve references, or exclude reference scoring.
 5. Adjust take offset in seconds for audio alignment. Selecting a take does not
    automatically overwrite current clips. **Replace selected phrase** uses the
@@ -94,23 +98,26 @@ skeleton even though the character has no articulated elbow/knee bones.
 
 ## Install a song in the game
 
-Extract the song ZIP to `client/public/songs/<songId>/`, verify its checksums, then
-add an entry to `client/public/songs/manifest.json`:
+Extract the song ZIP **into** `client/public/songs/`. The archive already contains
+`<songId>/`, so the result should be `client/public/songs/<songId>/song.json`, with
+choreography, audio, and checksums beside it. The folder name must match the
+exported `songId`. No manual manifest entry is needed.
 
-```json
-{
-  "id": "your-song-id",
-  "title": "Your song",
-  "artist": "Your artist",
-  "durationMs": 14000,
-  "difficulty": "normal",
-  "supportedPlayerCounts": [1, 2],
-  "bundleRevision": 12,
-  "bundle": "your-song-id/song.json"
-}
-```
+The game discovers exported folders automatically. In development and the
+production Express server, the catalog is scanned whenever Song Select opens.
+Reopen Song Select after installing or replacing a song. Incomplete or invalid
+bundles are skipped with a server/build warning; the game still verifies all
+runtime file checksums when loading a selected song.
 
-Use actual values from exported song.json; keep the catalog's outer `version: 1`.
+`npm run build` generates `dist/songs/manifest.json` for static hosting and copies
+the song folders. Rebuild/redeploy after changing `client/public/songs/` for a
+deployed game. On a running Express deployment, complete folders added directly
+to `dist/songs/` are detected without a rebuild or server restart. Container
+installations need those files inside the container, through a rebuilt image or
+a mounted songs directory.
+
+Re-exporting a song preserves its song ID and updates its bundle revision.
+Replace its complete folder; discovery reads the new revision from `song.json`.
 The runtime bundle contains both tracks; one-player mode selects track 0. Editor
 export does not deploy or publish automatically. The game owns character assets.
 

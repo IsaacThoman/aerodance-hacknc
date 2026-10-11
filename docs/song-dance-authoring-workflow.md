@@ -59,8 +59,8 @@ assets.
   independent skeleton instances, recorded sampling, calibration, and pose mapping.
 - [Existing video tracker](../temp/frutiger-character/scripts/pose/track.py):
   locked offline capture and diagnostic overlays, as an optional import path.
-- [Song catalog](../client/public/songs/manifest.json): currently
-  `{ "version": 1, "songs": [] }`. Extend its entries, retaining the catalog version.
+- Song catalog (`songs/manifest.json`): generated automatically from exported
+  song folders for development, production, and static builds, retaining version 1.
 
 Extract shared protocol/pose/character modules before the editor and game diverge.
 The current adapter exposes latest UI state, including repeated watchdog updates;
@@ -98,8 +98,9 @@ Record heartbeats and empty pose records as well as detected people.
    choreography. Review repaired joints and unscorable spans. Fix publication
    blockers and audition the resulting bundle using the same loader as the game.
 8. **Export and install.** Download the runtime `.aerodance-song.zip` or unpacked
-   directory. Copy its directory into `client/public/songs/<songId>/`, then update
-   the catalog after validation. Export an authoring backup separately if desired.
+   directory. Copy its directory into `client/public/songs/<songId>/`, then reopen
+   Song Select; the catalog is discovered automatically. Export an authoring
+   backup separately if desired.
 
 Android currently streams poses, not camera video or microphone audio. Music
 plays on the authoring computer. Video review requires an independently recorded

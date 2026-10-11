@@ -72,6 +72,7 @@ export default function Preview({
   mode,
   playerId,
   joint,
+  selectedJoints = [joint],
   onSelect,
   onEdit,
   readOnly = false,
@@ -228,9 +229,9 @@ export default function Preview({
                   key={i}
                   cx={viewX(v.x) * 1000}
                   cy={v.y * 750}
-                  r={playerId === p.playerId && joint === i ? 10 : 6}
+                  r={playerId === p.playerId && selectedJoints.includes(i) ? 10 : 6}
                   fill={
-                    playerId === p.playerId && joint === i
+                    playerId === p.playerId && selectedJoints.includes(i)
                       ? "#fff"
                       : "currentColor"
                   }

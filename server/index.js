@@ -5,6 +5,7 @@ import path from 'node:path';
 import express from 'express';
 import { Server } from 'socket.io';
 import { migrate, pool, recordSpin, spinHistory, spinsSince } from './db.js';
+import { songCatalogMiddleware } from './songCatalog.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const distDir = path.resolve(fileURLToPath(import.meta.url), '../../dist');
@@ -31,6 +32,7 @@ app.get('/api/spins/history', async (_req, res, next) => {
 });
 
 // In production Express serves the Vite build; in dev Vite serves the client.
+app.get('/songs/manifest.json', songCatalogMiddleware(path.join(distDir, 'songs')));
 if (existsSync(distDir)) {
   app.use(express.static(distDir));
   app.get('/{*splat}', (_req, res) => res.sendFile(path.join(distDir, 'index.html')));

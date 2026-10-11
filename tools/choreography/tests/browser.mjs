@@ -32,6 +32,7 @@ device.use(express.json());
 let seq = 0;
 let releasePoses;
 let liveX = 0.25;
+let visiblePlayers = [0, 1];
 device.get("/v1/status", (_req, res) =>
   res.json({
     protocolVersion: 2,
@@ -69,7 +70,7 @@ device.get("/v1/stream", (req, res) => {
         resultTimeMs: t + 20,
         playerCount: 2,
         input: { width: 640, height: 480, mirrored: false },
-        poses: [0, 1].map((playerId) => ({
+        poses: visiblePlayers.map((playerId) => ({
           playerId,
           landmarks: Array.from({ length: 33 }, (_, i) => ({
             x: playerId === 0 ? liveX : 0.75,
@@ -133,6 +134,47 @@ try {
     ) < 1e-5,
   );
   await page.getByRole("button", { name: "Redo", exact: false }).click();
+  await page.getByLabel("Selected point group").selectOption("head");
+  const head = page.getByLabel("Editable pose skeleton").locator("circle");
+  const headBefore = await head.evaluateAll((points) => points.slice(0, 12).map((p) => Number(p.getAttribute("cx"))));
+  const headBox = await head.first().boundingBox();
+  await page.mouse.move(headBox.x + headBox.width / 2, headBox.y + headBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(headBox.x + headBox.width / 2 + 20, headBox.y + headBox.height / 2 + 10);
+  await page.mouse.up();
+  const headAfter = await head.evaluateAll((points) => points.slice(0, 12).map((p) => Number(p.getAttribute("cx"))));
+  for (let i = 1; i < 11; i++) assert.ok(Math.abs((headAfter[i] - headBefore[i]) - (headAfter[0] - headBefore[0])) < 0.01);
+  assert.ok(Math.abs(headAfter[0] - headBefore[0]) > 1);
+  assert.equal(headAfter[11], headBefore[11]);
+  await page.getByRole("button", { name: "Undo", exact: false }).click();
+  assert.deepEqual(await head.evaluateAll((points) => points.slice(0, 12).map((p) => Number(p.getAttribute("cx")))), headBefore);
+  await page.getByLabel("Selected point group").selectOption("single");
+  for (const size of [{ width: 1366, height: 768 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(size);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight));
+    assert.ok(await page.evaluate(() => {
+      const timeline = document.querySelector(".timeline").getBoundingClientRect();
+      return timeline.bottom <= innerHeight && timeline.top >= 0;
+    }));
+  }
+  await page.setViewportSize({ width: 1500, height: 1050 });
+  const startHandle = page.getByRole("slider", { name: "Selection start", exact: true });
+  const endHandle = page.getByRole("slider", { name: "Selection end", exact: true });
+  await endHandle.focus();
+  await page.keyboard.press("End");
+  const bounds = await page.locator(".timeline-content").boundingBox();
+  const startBox = await startHandle.boundingBox();
+  await page.mouse.move(startBox.x + startBox.width / 2, startBox.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width * 0.2, startBox.y + 12);
+  await page.mouse.up();
+  assert.ok(Number(await startHandle.getAttribute("aria-valuenow")) > 1000);
+  const endBox = await endHandle.boundingBox();
+  await page.mouse.move(endBox.x + endBox.width / 2, endBox.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width * 0.8, endBox.y + 12);
+  await page.mouse.up();
+  assert.ok(Number(await endHandle.getAttribute("aria-valuenow")) < 13000);
   // A real, browser-decodable 14-second PCM WAV for waveform/playback/export.
   const rate = 8000,
     n = rate * 14,
@@ -230,7 +272,13 @@ try {
   await page.getByRole("button", { name: "Connect Android", exact: true }).click();
   await page.getByText(/Starting camera and pose tracking/).waitFor();
   assert.equal(await page.getByRole("button", { name: "Record new take", exact: false }).isEnabled(), false);
+  visiblePlayers = [];
   releasePoses();
+  await page.getByText("P1 waiting", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Record new take", exact: false }).click();
+  await page.getByRole("button", { name: "Cancel countdown", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Cancel countdown", exact: true }).click();
+  visiblePlayers = [0, 1];
   await page.getByText("P1 detected", { exact: false }).waitFor();
   await page.getByText("P2 detected", { exact: false }).waitFor();
   const savedCursor = await page.getByLabel("Song cursor").inputValue();
@@ -267,10 +315,18 @@ try {
   await page.getByRole("status").filter({ hasText: "Get ready" }).waitFor();
   await page.getByRole("button", { name: "Cancel countdown", exact: true }).click();
   await page.getByText("Recording cancelled before enough movement was captured. No take added.").waitFor();
+  visiblePlayers = [0];
+  await page.getByText("P2 waiting", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Record new take", exact: false }).click();
+  await page.getByRole("button", { name: "Cancel countdown", exact: true }).click();
+  visiblePlayers = [];
+  await page.getByText("P1 waiting", { exact: false }).waitFor();
   await page.getByLabel("Recording delay (seconds)").fill("1");
   await page
     .getByRole("button", { name: "Record new take", exact: false })
     .click();
+  await page.getByRole("button", { name: "Cancel countdown", exact: true }).waitFor();
+  visiblePlayers = [0, 1];
   await page
     .getByRole("button", { name: "Stop recording", exact: false })
     .waitFor();
@@ -319,7 +375,7 @@ try {
     });
   assert.deepEqual(errors, []);
   console.log(
-    "Studio browser flow passed: import, joint edit, undo/redo, WAV playback, metadata, review, save/reopen, ZIP export, live pose updates, read-only preview, Frutiger rendering, timed HTTP pose recording and mobile layout.",
+    "Studio browser flow passed: import, joint/group edits, undo/redo, graphical selection bounds, desktop fit, WAV playback, metadata, review, save/reopen, ZIP export, live pose updates, read-only preview, Frutiger rendering, countdown with zero/one players, timed HTTP pose recording and mobile layout.",
   );
 } catch (error) {
   console.error(error);

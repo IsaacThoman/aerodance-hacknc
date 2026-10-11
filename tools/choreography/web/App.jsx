@@ -59,6 +59,16 @@ const opNames = {
   exclude: "Score exclusion",
   approve: "Reference approval",
 };
+const POINT_GROUPS = {
+  head: { label: "Head", indices: Array.from({ length: 11 }, (_, i) => i) },
+  leftHand: { label: "Left hand", indices: [15, 17, 19, 21] },
+  rightHand: { label: "Right hand", indices: [16, 18, 20, 22] },
+  hands: { label: "Both hands", indices: [15, 16, 17, 18, 19, 20, 21, 22] },
+  leftFoot: { label: "Left foot", indices: [27, 29, 31] },
+  rightFoot: { label: "Right foot", indices: [28, 30, 32] },
+  feet: { label: "Both feet", indices: [27, 28, 29, 30, 31, 32] },
+  body: { label: "Whole skeleton", indices: Array.from({ length: 33 }, (_, i) => i) },
+};
 const EMPTY = { poses: [], quality: [] };
 
 export default function App() {
@@ -80,6 +90,7 @@ export default function App() {
     [tab, setTab] = useState("joint"),
     [playerId, setPlayerId] = useState(0),
     [joint, setJoint] = useState(15),
+    [pointGroup, setPointGroup] = useState("single"),
     [draftJoint, setDraftJoint] = useState(null),
     [peaks, setPeaks] = useState([]),
     [activeTake, setActiveTake] = useState(""),
@@ -347,10 +358,8 @@ export default function App() {
     snapshot = copy(snapshot);
     const p = snapshot.poses.find((p) => p.playerId === draftJoint.playerId);
     if (p)
-      p.landmarks[draftJoint.index] = {
-        ...p.landmarks[draftJoint.index],
-        ...draftJoint.value,
-      };
+      for (const target of draftJoint.targets)
+        Object.assign(p.landmarks[target.joint], target.value);
   }
   const selectedPose = snapshot.poses.find((p) => p.playerId === playerId),
     selectedJoint = selectedPose?.landmarks[joint];
@@ -411,8 +420,18 @@ export default function App() {
     if (showingLive) return;
     setPlayerId(id);
     setJoint(index);
+    const base = compiled.data && sampleSnapshot(compiled.data.samples, cursor)
+      .poses.find((p) => p.playerId === id);
+    if (!base) return;
+    const indices = POINT_GROUPS[pointGroup]?.indices.includes(index)
+      ? POINT_GROUPS[pointGroup].indices : [index];
+    const targets = indices.map((i) => ({
+      joint: i,
+      value: Object.fromEntries(["x", "y", "z"].map((k) =>
+        [k, base.landmarks[i][k] + value[k] - base.landmarks[index][k]])),
+    }));
     if (!commit) {
-      setDraftJoint({ playerId: id, index, value });
+      setDraftJoint({ playerId: id, targets });
       return;
     }
     setDraftJoint(null);
@@ -425,7 +444,8 @@ export default function App() {
         timeMs: time,
         startMs: Math.max(p.playableStartMs, time - 150),
         endMs: Math.min(p.playableEndMs, time + 150),
-        value: { x: value.x, y: value.y, z: value.z },
+        value: targets.find((t) => t.joint === index).value,
+        targets,
       }),
     );
   }
@@ -514,12 +534,8 @@ export default function App() {
   async function startRecording() {
     await execute(async () => {
       if (!transport.buffer) throw Error("Import music before recording");
-      if (
-        connection.status !== "connected" ||
-        connection.snapshot?.playerCount !== 2 ||
-        connection.snapshot.poses.length !== 2
-      )
-        throw Error("Connect Android and wait for both players to be detected");
+      if (connection.status !== "connected")
+        throw Error("Connect Android before recording");
       await saveProject();
       recordEnd.current = project.playableEndMs;
       if (!Number.isFinite(recordDelay) || recordDelay < 0 || recordDelay > 60)
@@ -968,6 +984,7 @@ export default function App() {
             mode={mode}
             playerId={playerId}
             joint={joint}
+            selectedJoints={POINT_GROUPS[pointGroup]?.indices || [joint]}
             readOnly={showingLive}
             mirrored
             emptyMessage={
@@ -987,6 +1004,8 @@ export default function App() {
             onSelect={(id, index) => {
               setPlayerId(id);
               setJoint(index);
+              if (id !== playerId || !POINT_GROUPS[pointGroup]?.indices.includes(index))
+                setPointGroup("single");
               setDraftJoint(null);
               setTab("joint");
             }}
@@ -1123,10 +1142,39 @@ export default function App() {
               <div
                 className="selected-range"
                 style={{
-                  left: `${(selection[0] / duration) * 100}%`,
-                  width: `${((selection[1] - selection[0]) / duration) * 100}%`,
+                  left: `calc(${(selection[0] / duration) * 100}% + 6px)`,
+                  width: `max(0px, calc(${((selection[1] - selection[0]) / duration) * 100}% - 12px))`,
                 }}
               />
+              {[0, 1].map((bound) => (
+                <button key={bound} className={`range-handle range-handle-${bound}`}
+                  role="slider" aria-label={bound === 0 ? "Selection start" : "Selection end"}
+                  aria-valuemin={bound === 0 ? 0 : selection[0]}
+                  aria-valuemax={bound === 0 ? selection[1] : duration}
+                  aria-valuenow={selection[bound]}
+                  aria-valuetext={timeLabel(selection[bound])}
+                  disabled={recording}
+                  style={{ left: `${selection[bound] / duration * 100}%` }}
+                  onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); }}
+                  onPointerMove={(e) => {
+                    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                    const rect = e.currentTarget.parentElement.getBoundingClientRect();
+                    const time = Math.round(clamp((e.clientX - rect.left) / rect.width, 0, 1) * duration);
+                    setSelection((s) => bound === 0 ? [Math.min(time, s[1]), s[1]] : [s[0], Math.max(time, s[0])]);
+                  }}
+                  onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+                  onKeyDown={(e) => {
+                    const delta = { ArrowLeft: -10, ArrowRight: 10, ArrowDown: -10, ArrowUp: 10 }[e.key];
+                    if (delta === undefined && !["Home", "End"].includes(e.key)) return;
+                    e.preventDefault();
+                    setSelection((s) => {
+                      const min = bound === 0 ? 0 : s[0], max = bound === 0 ? s[1] : duration;
+                      const time = e.key === "Home" ? min : e.key === "End" ? max : clamp(s[bound] + delta * (e.shiftKey ? 10 : 1), min, max);
+                      return bound === 0 ? [time, s[1]] : [s[0], time];
+                    });
+                  }} title={bound === 0 ? "Drag selection start" : "Drag selection end"}>
+                </button>
+              ))}
               <svg
                 className="waveform"
                 viewBox="0 0 900 55"
@@ -1193,39 +1241,8 @@ export default function App() {
             </div>
             <div className="range-controls">
               <span>Selection</span>
-              <label>
-                From{" "}
-                <input
-                  aria-label="Selection start"
-                  type="number"
-                  step=".01"
-                  value={selection[0] / 1000}
-                  disabled={recording}
-                  onChange={(e) =>
-                    setSelection([
-                      clamp(Number(e.target.value) * 1000, 0, duration),
-                      selection[1],
-                    ])
-                  }
-                />
-              </label>
-              <label>
-                To{" "}
-                <input
-                  aria-label="Selection end"
-                  type="number"
-                  step=".01"
-                  value={selection[1] / 1000}
-                  disabled={recording}
-                  onChange={(e) =>
-                    setSelection([
-                      selection[0],
-                      clamp(Number(e.target.value) * 1000, 0, duration),
-                    ])
-                  }
-                />
-              </label>
-              <small>seconds</small>
+              <span aria-live="polite">{timeLabel(selection[0])} – {timeLabel(selection[1])}</span>
+              <small>Drag the handles to set the bounds</small>
               <button
                 disabled={recording}
                 onClick={() =>
@@ -1286,12 +1303,28 @@ export default function App() {
                 </select>
               </label>
               <label>
+                Point group
+                <select aria-label="Selected point group" value={pointGroup}
+                  onChange={(e) => {
+                    const group = e.target.value;
+                    setPointGroup(group);
+                    if (POINT_GROUPS[group]) setJoint(POINT_GROUPS[group].indices[0]);
+                    setDraftJoint(null);
+                  }}>
+                  <option value="single">Single joint</option>
+                  {Object.entries(POINT_GROUPS).map(([key, group]) =>
+                    <option key={key} value={key}>{group.label}</option>)}
+                </select>
+              </label>
+              <small>Choose a group, then drag any highlighted point to move it together.</small>
+              <label>
                 Joint
                 <select
                   aria-label="Selected joint"
                   value={joint}
                   onChange={(e) => {
                     setJoint(Number(e.target.value));
+                    setPointGroup("single");
                     setDraftJoint(null);
                   }}
                 >
