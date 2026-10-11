@@ -111,7 +111,7 @@
     background: linear-gradient(90deg, #dfe5ea 0%, #f8fafb 12%, #ffffff 40%, #ffffff 60%, #f6f8fa 88%, #dbe2e8 100%);
     box-shadow: 0 20px 50px rgba(11,61,107,.35), inset 0 2px 0 #fff, inset 0 -4px 10px rgba(11,61,107,.1);
   }
-  .wii button { touch-action: none; font-family: inherit; }
+  .wii button { touch-action: none; font-family: inherit; -webkit-touch-callout: none; }
   .wii-top { display: flex; align-items: center; gap: 14px; width: 100%; }
   .power { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 0; position: relative;
     background: radial-gradient(circle at 40% 30%, #ffffff, #dfe6ec 70%, #c8d3dc); box-shadow: 0 3px 8px rgba(11,61,107,.25); }
@@ -603,9 +603,8 @@
   for (const t of ["pointerup", "pointercancel"]) $("pad").addEventListener(t, () => { padDrag = null; });
 
   // A short click on every remote button: vibrate where supported (Android). Safari has
-  // no vibrate, but toggling a native switch plays the system tick (iOS 18+). iOS only
-  // allows it during a user activation, which for touch is the finger lifting, so the
-  // tick lands on release.
+  // no vibrate, but toggling a native switch plays the system tick (iOS 18+). WebKit
+  // only allows that from inside a click handler, so on iPhone the tick lands on release.
   function haptic() {
     if (navigator.vibrate) return void navigator.vibrate(12);
     try {
@@ -621,7 +620,7 @@
       label.remove();
     } catch {}
   }
-  $("remoteCard").addEventListener(navigator.vibrate ? "pointerdown" : "pointerup", (e) => { if (e.target.closest("button")) haptic(); });
+  $("remoteCard").addEventListener(navigator.vibrate ? "pointerdown" : "click", (e) => { if (e.target.closest("button")) haptic(); });
 
   // Settings sheet, and − / + as quick speed steps.
   $("tuneOpen").onclick = () => show("tuneSheet", true);
@@ -640,7 +639,8 @@
       el.classList.toggle("down", pressed);
       if (holding) rsock.emit("remote:button", { button: name, pressed });
     };
-    el.addEventListener("pointerdown", (e) => { e.preventDefault(); down = true; press(true); });
+    // No preventDefault here: on iOS it would stop the tap's click, and the haptic with it.
+    el.addEventListener("pointerdown", () => { down = true; press(true); });
     for (const t of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(t, () => { if (down) { down = false; press(false); } });
   }
   remoteButton($("remoteA"), "a");
