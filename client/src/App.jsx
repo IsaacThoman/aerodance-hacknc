@@ -295,6 +295,7 @@ function DisplayApp() {
         <Scene paused={stage.showing} />
         <StageView
           active={(songsOpen && !!preview) || screen === 'game'}
+          orbiting={songsOpen && !!preview}
           stageId={stageId}
           routine={game ? gameRoutine : preview}
           live={liveDancers}

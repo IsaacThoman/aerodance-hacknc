@@ -10,10 +10,9 @@ export const PAGE_UP = { x: 730, y: ROWS.y + ROWS.h / 2, r: 28 };
 export const PAGE_DOWN = { x: 730, y: ROWS.y + 3 * (ROWS.h + ROWS.gap) + ROWS.h / 2, r: 28 };
 export const RETRY = { x: 128, y: 340, w: 300, h: 80 };
 
-// Preview phase: title top left, transport along the bottom.
-export const BAR = { x: 128, y: 776, w: 1344, h: 96 };
-export const PLAY = { x: BAR.x + 16, y: BAR.y + 12, w: 220, h: 72 };
-export const SCRUB = { x: BAR.x + 270, y: BAR.y + 36, w: 880, h: 24 };
+// Preview phase: title top left; anything worth saying (a stage or audio that couldn't
+// load) sits bottom left.
+export const PREVIEW_NOTE = { x: 128, y: 830 };
 
 // Gameplay: the live player panels, as fractions of the screen so the 3D characters
 // (stage/LivePanels.jsx) and their 2D labels (GameScreen.jsx) line up. Player 1 top left,
@@ -34,5 +33,5 @@ export const GAME_PROGRESS = { x: 560, y: 852, w: 480, h: 14 };
 export const RESULTS_RETRY = { x: 470, y: 806, w: 320, h: 80 };
 export const RESULTS_SONGS = { x: 810, y: 806, w: 320, h: 80 };
 export const RESULTS_CONTINUE = { x: 640, y: 806, w: 320, h: 80 };
-// Song Select preview: Dance! starts the song for real, above the transport on the right.
-export const DANCE = { x: 1172, y: 646, w: 300, h: 96 };
+// Song Select preview: Dance! starts the song for real, bottom right.
+export const DANCE = { x: 1172, y: 770, w: 300, h: 96 };
