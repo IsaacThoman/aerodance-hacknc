@@ -20,7 +20,7 @@ import { playUISound } from '../audio/uiSounds.js';
  *   onDrag: (wdg, point, ui) => {},       // widgets with drag: true (sliders)
  *   onKey: (event, ui) => {},
  *   keyNav: bool | (ui) => bool,          // arrow keys step through the widgets, Enter/Space presses
- *   onBack: (ui) => {},                   // the phone remote's B button
+ *   onBack: (ui) => {},                   // the phone remote's B button (return false if unhandled)
  *   remote: EventTarget | null,           // phone remote input (default: remote/remoteLink.js):
  *                                         // move / down / up / back / leave, in design units
  *   update: (dt, ui) => {},               // per-frame animation; ui.ease() marks the overlay dirty
@@ -249,8 +249,7 @@ export default function useCanvasUI(options) {
       up: (e) => { releaseAt(fromRemote(e)); s.dirty = true; },
       back: () => {
         if (!active() || !opts.current.onBack) return;
-        playUISound('back');
-        opts.current.onBack(s);
+        if (opts.current.onBack(s) !== false) playUISound('back');
       },
       leave: () => { s.remote = s.pointer = s.drag = s.pressed = null; s.dirty = true; },
     };
