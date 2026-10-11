@@ -8,9 +8,9 @@ import { readFile } from 'node:fs/promises';
 import express from 'express';
 import { chromium } from 'playwright';
 import { bundleFixture } from './fixtures/songBundle.js';
-import { ONE_PLAYER, START, TWO_PLAYERS } from '../src/menu/layout.js';
+import { BACK as MENU_BACK, ONE_PLAYER, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
 import { KEYS, MODES, PILL, PRIMARY } from '../src/connect/layout.js';
-import { BACK, PLAY, STAGE_NEXT, rowRect } from '../src/game/layout.js';
+import { BACK, PLAY, STAGE_NEXT, rowRect, slotRect } from '../src/game/layout.js';
 import { STAGE_LIST, resolveStage } from '../../packages/stages/catalog.js';
 
 const app = express();
@@ -78,7 +78,9 @@ try {
   await page.waitForFunction(() => document.querySelector('canvas')?.style.opacity === '1', null, { timeout: 90000 });
   await menuOn('main');
 
-  // Connect Client: remembered address, keyboard validation, the keypad, Escape.
+  // Connect Client lives on Settings: remembered address, keyboard validation, the keypad, Escape.
+  await click(SETTINGS);
+  await menuOn('settings');
   await click(PILL);
   await until({ connectReady: 'true', connectAddress: '192.168.43.1', connectMessage: 'Ready to connect on port 1337.' });
   await page.keyboard.type('999');
@@ -91,8 +93,8 @@ try {
   await until({ connectAddress: '127.0.0.' });
   await page.keyboard.press('Escape');
   await until({ connectOpen: 'false' });
-  assert.equal((await data()).menuScreen, 'main', 'Escape closes only the card');
-  await shot('main-menu');
+  assert.equal((await data()).menuScreen, 'settings', 'Escape closes only the card');
+  await shot('settings');
 
   // The webcam dummy: no address, closes on Ok, and the arrow keys stay in the card.
   await click(PILL);
@@ -101,10 +103,13 @@ try {
   await until({ connectMode: 'webcam', connectStatus: 'dummy', connectMessage: /Webcam dummy selected/ });
   await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(300);
-  assert.equal((await data()).menuScreen, 'main');
+  assert.equal((await data()).menuScreen, 'settings');
   await page.mouse.move(frame.x + 10, frame.y + 10);
   await click(PRIMARY);
   await until({ connectOpen: 'false' });
+  await click(MENU_BACK);
+  await menuOn('main');
+  await shot('main-menu');
 
   // Start -> One Player -> Song Select (empty catalog) -> Back keeps the player screen.
   await click(START);
@@ -249,7 +254,8 @@ try {
   await until({ songScreen: 'preview', songReady: 'true' });
   await click(BACK);
   await until({ songScreen: 'list', songReady: 'true' });
-  await click(PILL);
+  // A player slot opens the card from Song Select (the pill itself stays on Settings).
+  await click(slotRect(0));
   await until({ connectReady: 'true' });
   await click(MODES[0]);
   await until({ connectMode: 'android', connectStatus: 'disconnected' });
