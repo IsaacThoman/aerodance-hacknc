@@ -47,6 +47,7 @@ const HELP = [
   "🫧 aerodance bot 🐠",
   "• battle: get a dance battle link",
   "• challenge <phone>: battle a friend",
+  "• hype <name>: tip a dancer and watch their battle",
   "• wallet: your Solana devnet wallet",
   "• stats: your dance stats",
   "• name <new name>: change your name",
@@ -131,7 +132,7 @@ export async function startBot() {
 
     const [first = "", ...rest] = text.trim().split(/\s+/);
     const cmd = first.toLowerCase();
-    const known = ["battle", "challenge", "wallet", "stats", "name", "help"].includes(cmd);
+    const known = ["battle", "challenge", "hype", "wallet", "stats", "name", "help"].includes(cmd);
     log(`${mask(sender)} → ${known ? cmd : "(chat)"}`);
 
     if (isNew) {
@@ -154,6 +155,8 @@ export async function startBot() {
         return sendBattle(space, profile);
       case "challenge":
         return challenge(space, profile, rest.join(" "));
+      case "hype":
+        return space.responding(() => hype(space, profile, rest.join(" ")));
       case "wallet":
         return space.responding(() => sendWallet(space, profile));
       case "stats": {
@@ -214,6 +217,38 @@ export async function startBot() {
           : `🐠 I couldn't reach them right now. Send them this link yourself 🫧\n${theirUrl}`,
       );
     }
+  }
+
+  // Tip the named player's live battle, then send the texter there to watch.
+  async function hype(space: Space, me: Profile, name: string) {
+    if (!name.trim()) {
+      await space.send("🐠 Who are we hyping? Try: hype Glassy Orca");
+      return;
+    }
+    let hyped;
+    try {
+      hyped = await game.hype(me.id, name);
+    } catch (err) {
+      const msg = (err as Error).message ?? "";
+      log(`hype from ${mask(me.phone ?? "")} failed:`, msg);
+      if (msg === "no live battle") {
+        await space.send(`🐠 I can't find ${name.trim()} in a live battle right now. Check the name, or try again once they're dancing 🫧`);
+      } else if (msg === "dancers can't hype") {
+        await space.send("🫧 You're dancing in that battle! Hype is for the crowd 🐠");
+      } else if (msg === "out of hype SOL") {
+        await space.send("🐠 Your wallet is out of hype SOL. Text 'wallet' to check your balance 🫧");
+      } else if (msg === "one hype at a time") {
+        await space.send("🫧 Easy there! Your last hype is still landing 🐠");
+      } else if (msg === "battle already finished") {
+        await space.send("🐠 That battle just ended! Too late to hype this time 🫧");
+      } else {
+        await space.send("🐠 Solana is being slow, so that hype didn't land. Try again in a moment 🫧");
+      }
+      return;
+    }
+    await space.send(
+      [`📣 You hyped ${hyped.name} with ${hyped.sol} devnet SOL! 🫧`, `Watch them dance: ${hyped.url}`, hyped.explorer].join("\n"),
+    );
   }
 
   async function sendWallet(space: Space, profile: Profile) {

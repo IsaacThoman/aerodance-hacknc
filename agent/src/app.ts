@@ -5,9 +5,10 @@ if (appUrl.hostname === "app" && process.env.SERVICE_NAME_APP) appUrl.hostname =
 
 export type AppProfile = { id: string; name: string; phone: string | null };
 export type Stats = { battles: number; wins: number; bestScore: number; pops: number; hypeCount: number; hypeSol: number };
+export type Hyped = { battleId: string; name: string; sol: number; url: string; signature: string; explorer: string };
 export type NewBattle = { id: string; players: { seat: number; token: string; url: string }[] };
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function call<T>(method: string, path: string, body?: unknown, timeoutMs = 10_000): Promise<T> {
   const res = await fetch(new URL(path, appUrl), {
     method,
     headers: {
@@ -15,7 +16,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
       ...(process.env.INTERNAL_SECRET ? { "x-internal-secret": process.env.INTERNAL_SECRET } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `app returned ${res.status}`);
@@ -30,4 +31,7 @@ export const app = {
   createBattle: (seats: (string | null)[]) => call<NewBattle>("POST", "/internal/battles", { seats }),
   claimSeat: (battleId: string, seat: number, profileId: string) =>
     call<{ ok: true }>("POST", `/internal/battles/${encodeURIComponent(battleId)}/claim`, { seat, profileId }),
+  // Waits for the SOL transfer to confirm (the app gives Solana 30s).
+  hype: (fromProfileId: string, name: string) =>
+    call<Hyped>("POST", "/internal/hype", { from: fromProfileId, name }, 45_000),
 };

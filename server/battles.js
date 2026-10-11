@@ -260,6 +260,25 @@ export async function claimSeat(id, seat, profileId) {
   changes.emit('battle', id);
 }
 
+// The bot's "hype <name>": the seat that player holds in their newest live battle.
+// Exact name first (case-insensitive), then a name starting with what was typed.
+const LIVE_WINDOW = '2 hours';
+
+export async function liveSeatByName(name, exceptProfileId) {
+  const { rows: [hit] } = await pool.query(
+    `SELECT s.battle_id AS "battleId", s.seat, p.name
+       FROM battle_seats s
+       JOIN profiles p ON p.id = s.profile_id
+       JOIN battles b ON b.id = s.battle_id
+      WHERE b.status = 'open' AND b.created_at > now() - $3::interval
+        AND p.id <> $2 AND starts_with(lower(p.name), lower($1))
+      ORDER BY lower(p.name) = lower($1) DESC, b.created_at DESC
+      LIMIT 1`,
+    [name, exceptProfileId, LIVE_WINDOW],
+  );
+  return hit;
+}
+
 // A spectator tips a dancer real devnet SOL from their own wallet, or sends a sticker NFT
 // minted from (and paid by) that wallet. The display shows the bubble right away ('hype'
 // event); the battle's totals update once it lands. baseUrl is where sticker metadata lives.
