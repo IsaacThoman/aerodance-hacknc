@@ -6,6 +6,12 @@ The server still records `spin` events in the `spins` hypertable, but the curren
 
 See [the Android/game integration plan](docs/android-game-integration-plan.md) for pairing, player selection, live character animation, latency-aware scoring, and choreography recording/editing work.
 
+See [the song and dance authoring workflow](docs/song-dance-authoring-workflow.md) for the proposed Docker-hosted editor, Android-compatible pose format, raw landmark editing, Frutiger playback, and portable song bundle contract.
+
+The editor is implemented as [Dance Studio](tools/choreography/README.md).
+Run `docker compose -f tools/choreography/compose.yaml up --build -d` and open
+http://localhost:8082 to record/import, edit, preview, save, and export song bundles.
+
 ## Aero background
 
 The canvas shows a looping Frutiger Aero drone flight (glass skyline, clouds, hot-air balloons, gulls, flower meadow). The whole app is one letterboxed 16:9 frame rendered at a fixed 640x480 buffer and scaled up with `image-rendering: pixelated`; the HUD sits inside the frame.
@@ -30,9 +36,18 @@ sequence boundary, and clears missing/stale tracking. Set the Android allowed or
 to the exact origin shown in the connection panel. Real-device pairing from deployed
 HTTPS still needs validation.
 
-The public song catalog is `client/public/songs/manifest.json`. It is currently empty:
-the existing silent captured dance is linked as a preview, not a playable song.
-Audio, countdown, live characters, scoring, and results remain future integration work.
+Connecting opens the stream and starts the Android camera and pose tracker.
+The game shows **Camera starting…** until the first pose result, allowing up to
+90 seconds on each connection/reconnect. Disconnect releases capture to save
+battery, so reconnecting includes initialization again. The authoring tool uses
+the same startup state and keeps recording disabled while it waits.
+
+The public song catalog is `client/public/songs/manifest.json`. It remains empty until
+an authored song is ready. Song Select now loads validated song bundles and offers
+a finite music/reference-character preview in either player mode. Countdown, live
+characters, calibrated timing, scoring, and results remain future integration work.
+See [game song bundles and pose migration](docs/game-song-bundles.md) for installation,
+loader behavior, and the migrated Android-shaped silent capture.
 
 Containerized build and protocol/adapter checks (use `podman` in place of `docker`
 when using Podman):

@@ -83,7 +83,27 @@ curl -N http://192.168.43.1:1337/v1/stream
 
 For local rendering, follow [pose-test-site/README.md](pose-test-site/README.md): serve on port 8081, set the Android origin to `http://localhost:8081`, and connect the browser. The debug APK also accepts `--es testOrigin http://localhost:8081` on its MainActivity launch. Normal launches use the saved origin. Allow CAMERA when requested; ADB `pm grant` remains available for unattended tests.
 
-The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. Leaving the activity stops the server; returning starts a new session automatically using the saved origin.
+The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. To save battery, camera capture and pose inference run only while `/v1/stream` has a client. Disconnect detection releases the camera and GPU task; reconnect recreates them automatically, preserving the session and selected player count. Status/config requests leave capture off. While idle, `running` indicates server readiness; opening a live stream changes it to `starting` until the first successful inference. Startup heartbeats keep the stream alive, and config snapshots are withheld until inference is ready. The game, authoring tool and test viewer show camera initialization and allow 90 seconds after opening each stream for its first pose result. Leaving the activity stops the server; returning starts a new session automatically using the saved origin.
+
+With the live app running and no other stream consumer, verify idle shutdown and
+reconnect (including disconnect during GPU initialization):
+
+```bash
+python3 scripts/check-idle-capture.py 192.168.43.1 --origin https://game.example.com
+```
+
+Use the exact origin configured in the app. This checks real camera ownership and
+capture/inference worker release over ADB, fresh poses after reconnect, and
+session/player-count continuity. It leaves the server idle with one player selected.
+
+Board checks on 2026-10-10 confirmed capture stayed off after status/config
+requests, fresh poses resumed across two connect/disconnect cycles, and an early
+disconnect during GPU startup followed by an immediate reconnect recovered with
+the same session, advancing sequences and two-player output. Camera/inference
+workers released in 0.58–0.68 seconds after active streaming disconnected. GPU
+startup took about 35 seconds per ordinary connection; reconnect during startup
+took about 63 seconds while the previous task finished initialization and closed.
+These checks verify resource shutdown; battery life was not measured.
 
 The board-specific font fallback loads the installed `Roboto-Regular.ttf` directly because this firmware references missing system fonts. Other images fall back to the normal font family if that file is unavailable. No firmware files are modified.
 

@@ -11,7 +11,8 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /** Small HTTP/1.1 server: fixed workers, no request queue, one conflated result, one stream. */
-class PoseServer(private val deviceId: String, private val origins: Set<String>, private val synthetic: Boolean = true, initialPlayerCount: Int = 1) : AutoCloseable {
+class PoseServer(private val deviceId: String, private val origins: Set<String>, private val synthetic: Boolean = true,
+    initialPlayerCount: Int = 1, private val onConnectionChanged: () -> Unit = {}) : AutoCloseable {
     val sessionId: String = UUID.randomUUID().toString()
     private val listener = ServerSocket()
     private val running = AtomicBoolean(false)
@@ -34,6 +35,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
             listener.bind(java.net.InetSocketAddress(PORT))
             running.set(true)
             if (synthetic) producer.scheduleAtFixedRate({
+                if (!connected) return@scheduleAtFixedRate
                 val now = SystemClock.elapsedRealtime()
                 synchronized(signal) {
                     val fixture = syntheticPose(sessionId, 1, now, output.playerCount)
@@ -152,13 +154,18 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
             }
             if (!stream.compareAndSet(false, true)) { respond("409 Conflict", "{\"error\":\"A browser is already connected\"}"); return }
             ownsStream = true
+            if (!synthetic) state = PipelineState.starting
             write(socket, deadline, "HTTP/1.1 200 OK\r\n${cors}Content-Type: application/x-ndjson\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".toByteArray())
+            onConnectionChanged()
             var lastSeq = 0L
             var lastWrite = 0L
             while (running.get() && !socket.isClosed) {
                 val now = SystemClock.elapsedRealtime()
+                // Read readiness before the snapshot: publish stores its first real
+                // result before marking inference ready, hiding startup config clears.
+                val pipelineState = state
                 val pose = latest.get()
-                if (pose != null && pose.seq != lastSeq && now - pose.resultTimeMs < 250) {
+                if (pipelineState == PipelineState.running && pose != null && pose.seq != lastSeq && now - pose.resultTimeMs < 250) {
                     write(socket, deadline, pose.json().toByteArray(Charsets.UTF_8))
                     lastSeq = pose.seq
                     lastWrite = now
@@ -174,7 +181,11 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
         } catch (_: Exception) {
             // Disconnect, timeout and shutdown all release the stream slot below.
         } finally {
-            if (ownsStream) stream.set(false)
+            if (ownsStream) {
+                stream.set(false)
+                if (running.get() && state != PipelineState.error) state = PipelineState.running
+                onConnectionChanged()
+            }
             clients.remove(socket)
             runCatching { socket.close() }
         }
@@ -183,6 +194,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
     fun publish(result: InferenceResult) = synchronized(signal) {
         if (!running.get()) return@synchronized
         latest.set(output.publish(result))
+        state = PipelineState.running
         signal.notifyAll()
     }
 

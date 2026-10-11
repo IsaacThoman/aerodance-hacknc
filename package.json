@@ -6,7 +6,11 @@
     "dev": "concurrently -n server,client -c blue,magenta \"node --watch server/index.js\" \"vite\"",
     "build": "vite build && vite build --config temp/frutiger-character/vite.config.js --base=/dance/ --outDir=../../../dist/dance && vite build --config temp/menu-mocks/vite.config.js --base=/menu-mocks/ --outDir=../../../dist/menu-mocks",
     "start": "NODE_ENV=production node server/index.js",
-    "test": "node --test client/tests/*.test.js"
+    "test": "node --test client/tests/*.test.js",
+    "studio:dev": "concurrently -n studio-api,studio-web \"STUDIO_PORT=8082 node --watch tools/choreography/server/index.js\" \"vite --config tools/choreography/vite.config.js\"",
+    "studio:build": "vite build --config tools/choreography/vite.config.js",
+    "studio:start": "node tools/choreography/server/index.js",
+    "studio:test": "node --test tools/choreography/tests/*.test.js"
   },
   "type": "module",
   "dependencies": {

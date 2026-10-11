@@ -11,7 +11,7 @@ $('copy').onclick = async () => {
 };
 try { $('ip').value = localStorage.getItem('pose-board-ip') || '192.168.43.1'; } catch {}
 function status(label, type) { $('connection').textContent = label; $('connection').dataset.state = type; }
-function stop(message = 'Disconnected. The board can continue estimating poses.') {
+function stop(message = 'Disconnected. The board stops capture and pose processing to save battery.') {
   generation++; clearTimeout(retryTimer); retryTimer = null;
   controller?.abort(); controller = null;
   state = new PoseState(); times = []; reconnecting = false; configBusy = false;
@@ -43,7 +43,9 @@ $('players').onchange = async () => {
   configBusy = true; $('players').disabled = true;
   try {
     await configure(controller.signal);
-    if (token === generation) $('message').textContent = 'Mode applied. In two-player mode, occupy separate camera halves.';
+    if (token === generation) $('message').textContent = $('connection').textContent === 'Camera starting…'
+      ? 'Starting camera and pose tracking. This can take up to 90 seconds.'
+      : 'Mode applied. In two-player mode, occupy separate camera halves.';
   } catch (error) {
     if (token === generation) { $('message').textContent = error.message; controller?.abort(); }
   } finally {
@@ -57,7 +59,10 @@ async function connect(token) {
   status(retry ? 'Reconnecting…' : 'Connecting…', 'pending');
   $('message').textContent = 'Checking the board and opening the pose stream…';
   state = new PoseState(); times = [];
-  const timeout = setTimeout(() => attempt.abort(), 90000);
+  let startupTimedOut = false;
+  const startupExpired = () => { startupTimedOut = true; attempt.abort(); };
+  let timeout = setTimeout(startupExpired, 90000);
+  let initializing = true;
   $('players').disabled = true;
   try {
     const response = await fetch(`${base}/v1/status`, {signal, credentials:'omit', cache:'no-store'});
@@ -84,18 +89,25 @@ async function connect(token) {
     if (ready.pipelineState !== 'running') throw Error(`Android pipeline is ${ready.pipelineState}`);
     const stream = await fetch(`${base}/v1/stream`, {signal, credentials:'omit', cache:'no-store'});
     if (!stream.ok || !stream.body) throw Error(`Stream HTTP ${stream.status}`);
-    clearTimeout(timeout); connectedOnce = true; $('players').disabled = false;
-    status('Streaming', 'streaming');
-    $('message').textContent = 'Step back until your body is in view. Two players should occupy separate camera halves.';
+    clearTimeout(timeout); timeout = setTimeout(startupExpired, 90000);
+    connectedOnce = true; $('players').disabled = false;
+    status('Camera starting…', 'pending');
+    $('message').textContent = 'Starting camera and pose tracking. This can take up to 90 seconds.';
     state.lastRecord = performance.now();
     const decoder = new NdjsonDecoder(record => {
       const now = performance.now();
+      if (record.sessionId !== info.sessionId) throw Error('Controller restarted');
       if (state.accept(record, now)) {
+        if (initializing) {
+          initializing = false; clearTimeout(timeout);
+          status('Streaming', 'streaming');
+          $('message').textContent = 'Camera ready. Step back until your body is in view. Two players should occupy separate camera halves.';
+        }
         // Animation frames pause in hidden tabs; prune on receipt as well as draw.
         times = times.filter(t => now-t < 1000).slice(-999);
         times.push(now); retry = 0;
       }
-      if (record.type === 'heartbeat' && record.pipelineState === 'error') throw Error('Android pipeline reported an error');
+      if (record.type === 'heartbeat' && !['starting','running'].includes(record.pipelineState)) throw Error(`Android pipeline is ${record.pipelineState}`);
     });
     const reader = stream.body.getReader();
     try {
@@ -109,7 +121,7 @@ async function connect(token) {
   } catch (error) {
     if (token !== generation) return;
     attempt.abort(); state = new PoseState(); times = [];
-    const explanation = `${error.message}. Check Android Start, the exact allowed origin (${location.origin}), LAN connectivity, and browser network permissions.`;
+    const explanation = `${startupTimedOut ? 'Camera initialization timed out after 90 seconds' : error.message}. Check Android Start, the exact allowed origin (${location.origin}), LAN connectivity, and browser network permissions.`;
     if (!connectedOnce || retry >= 5) { stop(explanation + ' Press Connect to retry.'); return; }
     const delay = Math.min(1000 * 2 ** retry++, 8000);
     reconnecting = true; status('Reconnecting…', 'pending');

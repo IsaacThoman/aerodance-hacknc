@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check protocol v2 control and repeated live switches on one already-started stream."""
+"""Check protocol v2 control and live switches, allowing on-demand GPU startup."""
 import argparse
 import collections
 import concurrent.futures
@@ -64,7 +64,7 @@ with socket.create_connection((args.host, args.port), timeout=3) as sock:
     assert sock.recv(4096) == b'', 'Total request budget must close a trickling body'
 assert request('GET', '/v1/status')['playerCount'] == 1
 
-connection = http.client.HTTPConnection(args.host, args.port, timeout=5)
+connection = http.client.HTTPConnection(args.host, args.port, timeout=8)
 connection.request('GET', '/v1/stream', headers={'Origin': args.origin})
 stream_socket = connection.sock
 stream = connection.getresponse()
@@ -97,10 +97,17 @@ def read_stream():
     except Exception as error:
         if not finished.is_set():
             errors.append(repr(error))
+            with condition:
+                condition.notify_all()
 
 
 thread = threading.Thread(target=read_stream, daemon=True)
 thread.start()
+print('Stream open; waiting up to 90 seconds for camera/pose initialization…', flush=True)
+with condition:
+    assert condition.wait_for(lambda: records or errors, timeout=90), 'No pose results after startup'
+    assert not errors, errors
+    assert records, 'No pose results after startup'
 latencies = []
 for count in [2, 1] * 10:
     started = time.monotonic()

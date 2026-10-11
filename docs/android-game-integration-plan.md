@@ -6,7 +6,10 @@ Prepared 2026-10-10 from the current repository and the research linked below. T
 
 The main app now keeps **Start**, opens One Player / Two Players, and then opens
 Song Select. Connect Client uses the Android protocol v2 transport with cancellable
-startup, player-mode boundaries, stale clearing, and bounded reconnects. Song Select
+startup, player-mode boundaries, stale clearing, and bounded reconnects. Opening
+a stream starts capture on demand; the game shows “Camera starting…” until its
+first pose, allowing up to 90 seconds on every connection/reconnect. Startup
+heartbeats keep the stream alive without marking tracking ready. Song Select
 shows each player's detection status. **Webcam (dummy)** is an explicit menu-testing
 option that bypasses Android pairing without camera capture or pose/scoring data. The published catalog is empty; the existing
 silent recording is available as a preview. Audio/countdown, live character mapping,
@@ -168,6 +171,11 @@ Build a small evaluation set containing good attempts, wrong limbs, mirrored mis
 Acceptance evidence must show that better matching attempts score higher, timing mistakes remain distinguishable after latency compensation, a static pose does not defeat a moving routine, and equivalent timestamped inputs score the same under tested delivery delays within the late-arrival allowance.
 
 ## Two-player recording and editing workflow
+
+The [song and dance authoring reference](song-dance-authoring-workflow.md) specifies
+the Docker-hosted editor, project persistence, timing/edit semantics, and runtime
+bundle contract. New recordings and compiled choreography use Android-shaped pose
+objects with separate visibility/presence; the demo tuple format requires migration.
 
 Deliver both a local authoring workflow and usable tools, rather than requiring hand edits to landmark JSON.
 

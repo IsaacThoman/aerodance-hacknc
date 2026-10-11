@@ -49,13 +49,22 @@ test('stale tracking clears even with a live heartbeat', async t => {
   assert.equal(h.source.view.status, 'connected');
   assert.equal(h.source.view.snapshot, null);
 });
+test('record subscription captures accepted snapshots once and keeps heartbeat timing separate', async t => {
+  const h = harness(t), records = [];
+  const unsubscribe = h.source.subscribeRecords(envelope => records.push(envelope));
+  h.source.connect('192.168.43.1'); await tick();
+  h.send(record(1)); await tick();h.send(record(1)); await tick();
+  h.advance(500);h.send({ protocolVersion: 2, type: 'heartbeat', sessionId: 'session', producerTimeMs: 500, lastPoseSeq: 1, pipelineState: 'running' });await tick();
+  assert.equal(records.length,2);assert.equal(records[0].record.seq,1);assert.equal(records[1].receivedBrowserTimeMs,500);assert.equal(h.source.view.snapshot,null);
+  unsubscribe();h.send(record(2));await tick();assert.equal(records.length,2);
+});
 
 test('mode chosen during startup is configured before the stream opens', async t => {
   let finish;
   const h = harness(t, count => count === 1 ? new Promise(resolve => { finish = () => resolve(Response.json({ playerCount: 1, sessionId: 'session', effectiveFromSeq: 1 })); }) : Response.json({ playerCount: 2, sessionId: 'session', effectiveFromSeq: 10 }));
   h.source.connect('192.168.43.1'); await tick();
   await h.source.setPlayerCount(2); finish(); await tick();
-  assert.equal(h.source.view.status, 'connected');
+  assert.equal(h.source.view.status, 'initializing');
   assert.deepEqual(h.requests.filter(r => r.url.endsWith('/v1/config')).map(r => JSON.parse(r.options.body).playerCount), [1, 2]);
 });
 
@@ -100,4 +109,72 @@ test('reconnect backoff is capped and stops after five failed reconnections', as
   assert.equal(source.view.status, 'error');
   t.mock.timers.tick(60000); await tick();
   assert.equal(streams, 6);
+});
+
+const heartbeat = (state = 'starting') => ({ protocolVersion: 2, type: 'heartbeat', sessionId: 'session',
+  producerTimeMs: 100, lastPoseSeq: null, pipelineState: state });
+
+test('on-demand startup stays initializing through heartbeats until the first empty or detected result', async t => {
+  const h = harness(t);
+  h.source.connect('192.168.43.1'); await tick();
+  assert.equal(h.source.view.status, 'initializing');
+  assert.match(h.source.view.message, /Starting camera.*90 seconds/);
+  h.advance(35000); h.send(heartbeat()); await tick();
+  h.send(heartbeat('running')); await tick();
+  assert.equal(h.source.view.status, 'initializing');
+  assert.equal(h.source.view.snapshot, null);
+  assert.equal(h.requests.filter(r => r.url.endsWith('/v1/status')).length, 1);
+  h.send(record(1, 1, [])); await tick();
+  assert.equal(h.source.view.status, 'connected');
+  assert.deepEqual(h.source.view.snapshot.poses, []);
+  assert.match(h.source.view.message, /Camera ready/);
+});
+
+test('mode changes during initialization configure the open stream and preserve startup messaging', async t => {
+  const h = harness(t);
+  h.source.connect('192.168.43.1'); await tick();
+  await h.source.setPlayerCount(2);
+  assert.equal(h.source.view.status, 'initializing');
+  assert.match(h.source.view.message, /Starting camera/);
+  h.send(record(1)); await tick();
+  assert.equal(h.source.view.status, 'initializing');
+  h.send(record(10, 2, [])); await tick();
+  assert.equal(h.source.view.status, 'connected');
+  assert.equal(h.requests.filter(r => r.url.endsWith('/v1/stream')).length, 1);
+});
+
+test('heartbeats do not extend the 90-second initialization deadline; reconnect also waits for a pose', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const h = harness(t);
+  h.source.connect('192.168.43.1'); await tick();
+  for (let i = 0; i < 17; i++) {
+    h.send(heartbeat()); await tick();
+    t.mock.timers.tick(5000); await tick();
+    assert.equal(h.source.view.status, 'initializing');
+  }
+  h.send(heartbeat('running')); await tick();
+  t.mock.timers.tick(5000); await tick();
+  assert.equal(h.source.view.status, 'reconnecting');
+  assert.match(h.source.view.message, /initialization timed out after 90 seconds/);
+  t.mock.timers.tick(1000); await tick();
+  assert.equal(h.source.view.status, 'initializing');
+  h.send(heartbeat()); await tick();
+  assert.equal(h.source.view.status, 'initializing');
+  h.send(record(1)); await tick();
+  assert.equal(h.source.view.status, 'connected');
+  t.mock.timers.tick(90000); await tick();
+  assert.equal(h.source.view.status, 'connected');
+});
+
+test('disconnect cancels an open initializing stream and its timeout', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const h = harness(t);
+  h.source.connect('192.168.43.1'); await tick();
+  h.send(heartbeat()); await tick();
+  const attempt = h.source.attempt;
+  h.source.disconnect(); await tick();
+  assert.equal(attempt.signal.aborted, true);
+  t.mock.timers.tick(95000); await tick();
+  assert.equal(h.source.view.status, 'disconnected');
+  assert.equal(h.requests.filter(r => r.url.endsWith('/v1/stream')).length, 1);
 });

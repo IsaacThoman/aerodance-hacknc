@@ -84,7 +84,7 @@ export default function App() {
           onSoundChange={setSound}
         />
       </Canvas>
-      {screen === 'songs' && <SongSelect playerCount={playerCount} connection={selectedConnection} onBack={() => { setMenuScreen('players'); setScreen('menu'); }} />}
+      {screen === 'songs' && <SongSelect sound={sound} playerCount={playerCount} connection={selectedConnection} onBack={() => { setMenuScreen('players'); setScreen('menu'); }} />}
       <ConnectionPanel source={source} connection={selectedConnection} inputMode={inputMode} onInputModeChange={changeInputMode} />
       <div className="hud">
         <div>

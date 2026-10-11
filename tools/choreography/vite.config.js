@@ -1,0 +1,10 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
+export default defineConfig({
+  root: fileURLToPath(new URL("./web", import.meta.url)),
+  plugins: [react()],
+  resolve: { dedupe: ["react", "react-dom", "three", "@react-three/fiber"] },
+  build: { outDir: "../dist", emptyOutDir: true },
+  server: { port: 5175, proxy: { "/api": "http://localhost:8082" } },
+});

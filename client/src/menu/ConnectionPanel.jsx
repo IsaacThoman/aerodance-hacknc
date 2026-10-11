@@ -9,7 +9,7 @@ export default function ConnectionPanel({ source, connection, inputMode, onInput
   const [open, setOpen] = useState(false);
   const [address, setAddress] = useState(savedClientAddress);
   const [error, setError] = useState('');
-  const active = ['connecting', 'connected', 'reconnecting'].includes(connection.status);
+  const active = ['connecting', 'initializing', 'connected', 'reconnecting'].includes(connection.status);
   return (
     <aside className="connection-panel" aria-label="Client connection">
       {open && (
@@ -31,7 +31,8 @@ export default function ConnectionPanel({ source, connection, inputMode, onInput
             <p>Use the same Wi-Fi network. Set the Android allowed origin to <code>{window.location.origin}</code> and allow local-network access in your browser.</p>
           </> : <p>Webcam capture and tracking are not implemented yet. This dummy option lets you continue through the menus without connecting Android.</p>}
           <div className="button-row">
-            {active ? <button type="button" onClick={() => source.disconnect()}>{connection.status === 'connected' ? 'Disconnect' : 'Cancel connection'}</button> : <button type="submit">Ok</button>}
+            {/* Disconnect replaces this button with a submit button; cancel the click's default action before that render. */}
+            {active ? <button type="button" onClick={e => { e.preventDefault(); source.disconnect(); }}>{connection.status === 'connected' ? 'Disconnect' : 'Cancel connection'}</button> : <button type="submit">Ok</button>}
             <button type="button" onClick={() => setOpen(false)}>Cancel</button>
           </div>
           <div role="status" className="connection-message">{error || connection.message || 'Ready to connect on port 1337.'}</div>
@@ -39,7 +40,7 @@ export default function ConnectionPanel({ source, connection, inputMode, onInput
       )}
       <button className="connect-toggle" onClick={() => setOpen(v => !v)} aria-expanded={open}>
         <span className={`connection-dot ${connection.status}`} />
-        {{ dummy: 'Webcam · Dummy', connected: 'Client Connected', connecting: 'Connecting…', reconnecting: 'Reconnecting…' }[connection.status] || 'Connect Client'}
+        {{ dummy: 'Webcam · Dummy', connected: 'Client Connected', connecting: 'Connecting…', initializing: 'Camera starting…', reconnecting: 'Reconnecting…' }[connection.status] || 'Connect Client'}
       </button>
     </aside>
   );

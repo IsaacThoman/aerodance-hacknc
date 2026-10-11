@@ -82,7 +82,7 @@ body,
 .connect-toggle { display: block; margin-left: auto; box-shadow: 0 4px 20px #00345055; }
 .connection-dot { display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .6em; background: #718994; }
 .connection-dot.connected { background: #168a54; }
-.connection-dot.connecting, .connection-dot.reconnecting { background: #e6a327; }
+.connection-dot.connecting, .connection-dot.initializing, .connection-dot.reconnecting { background: #e6a327; }
 .connection-dot.error { background: #d34248; }
 .connection-form { box-sizing: border-box; max-height: 70cqh; overflow: auto; width: min(330px, 72cqw); padding: 1.3em; margin-bottom: 1em; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1em; }
@@ -116,3 +116,10 @@ body,
 
 .connection-dot.dummy { background: #6478bb; }
 .player-slot.preview { border-style: dashed; border-color: #a9d5ff; }
+
+.song-list { display: grid; gap: .7em; }
+.song-list button { text-align: left; border-radius: 12px; }
+.song-list button span { display: block; font-size: .8em; margin-top: .3em; }
+.song-list button:disabled { opacity: .65; cursor: wait; }
+.song-character-preview { height: 30cqh; min-height: 140px; overflow: hidden; border-radius: 12px; }
+.song-select audio { display: block; width: 100%; margin-top: 1em; }

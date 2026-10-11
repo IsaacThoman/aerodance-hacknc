@@ -237,7 +237,7 @@ export default function Scene({ motion }) {
       <World />
       <Suspense fallback={null}>
         {[0, 1].map((person) => (
-          <group key={person} position={[person === 0 ? -2 : 2, 0.11, 0]}>
+          <group key={person} position={[person === 0 ? -2 : 2, 0.11, 0]} scale={[-1, 1, 1]}>
             <Character
               motion={motion}
               person={person}

@@ -9,10 +9,11 @@ const wait = (ms, signal) => new Promise((resolve, reject) => {
 
 /** Transport stays independent of React and the game/backend connection. */
 export class AndroidPoseSource {
-  constructor({ fetch: request = globalThis.fetch, now = () => performance.now() } = {}) {
+  constructor({ fetch: request = globalThis.fetch.bind(globalThis), now = () => performance.now() } = {}) {
     this.request = request;
     this.now = now;
     this.listeners = new Set();
+    this.recordListeners = new Set();
     this.playerCount = 1;
     this.generation = 0;
     this.state = new PoseState();
@@ -22,6 +23,11 @@ export class AndroidPoseSource {
     this.listeners.add(listener);
     listener(this.view);
     return () => this.listeners.delete(listener);
+  }
+  /** Capture every accepted record once, independently of render/watchdog updates. */
+  subscribeRecords(listener) {
+    this.recordListeners.add(listener);
+    return () => this.recordListeners.delete(listener);
   }
   publish(patch) {
     this.view = { ...this.view, ...patch };
@@ -82,7 +88,7 @@ export class AndroidPoseSource {
     this.playerCount = count;
     this.boundary = null;
     this.publish({ snapshot: null });
-    if (this.view.status !== 'connected') return;
+    if (!['connected', 'initializing'].includes(this.view.status)) return;
     const token = this.generation;
     const attempt = this.attempt;
     const signal = attempt.signal;
@@ -90,7 +96,8 @@ export class AndroidPoseSource {
     const timeout = setTimeout(() => attempt.abort(), 12000);
     try {
       await this.configure(signal);
-      if (token === this.generation && !signal.aborted) this.publish({ message: 'Waiting for fresh player tracking.' });
+      if (token === this.generation && !signal.aborted) this.publish({ message: this.view.status === 'initializing'
+        ? 'Starting camera and pose tracking. This can take up to 90 seconds.' : 'Waiting for fresh player tracking.' });
     } catch (error) {
       if (token === this.generation) attempt.abort();
       throw error;
@@ -113,7 +120,10 @@ export class AndroidPoseSource {
       this.state = new PoseState();
       this.boundary = null;
       this.publish({ status: this.connectedOnce ? 'reconnecting' : 'connecting', snapshot: null, message: 'Checking Android camera…' });
-      const startupTimeout = setTimeout(abort, 90000);
+      let startupTimedOut = false;
+      const startupExpired = () => { startupTimedOut = true; abort(); };
+      let startupTimeout = setTimeout(startupExpired, 90000);
+      let initializing = true;
       let reader;
       let failure;
       try {
@@ -135,15 +145,27 @@ export class AndroidPoseSource {
         const response = await this.request(`${this.base}/v1/stream`, { signal: attempt.signal, credentials: 'omit', cache: 'no-store' });
         if (!response.ok || !response.body) throw Error(response.status === 409 ? 'The camera stream is already in use. Close the other connection.' : `Pose stream HTTP ${response.status}`);
         clearTimeout(startupTimeout);
+        startupTimeout = setTimeout(startupExpired, 90000);
         if (signal.aborted || token !== this.generation) return;
         this.connectedOnce = true;
-        this.publish({ status: 'connected', message: 'Camera stream running. Step into view.', model: info.capabilities.poseModel });
+        this.publish({ status: 'initializing', snapshot: null,
+          message: 'Starting camera and pose tracking. This can take up to 90 seconds.', model: info.capabilities.poseModel });
         try { localStorage.setItem('aerodance-client-ip', this.ip); } catch { /* Storage may be disabled. */ }
         this.state.lastRecord = this.now();
         const decoder = new NdjsonDecoder(record => {
           if (record.sessionId !== session) throw Error('Android camera restarted');
-          if (record.type === 'heartbeat' && record.pipelineState !== 'running') throw Error(`Android camera is ${record.pipelineState}`);
-          if (this.state.accept(record, this.now())) this.retry = 0;
+          if (record.type === 'heartbeat' && !['starting', 'running'].includes(record.pipelineState)) throw Error(`Android camera is ${record.pipelineState}`);
+          const receivedBrowserTimeMs = this.now();
+          const accepted = this.state.accept(record, receivedBrowserTimeMs);
+          if (initializing && accepted && this.matchingSnapshot()) {
+            initializing = false;
+            clearTimeout(startupTimeout);
+            this.publish({ status: 'connected', message: 'Camera ready. Step into view.' });
+          }
+          if (accepted) this.retry = 0;
+          if (accepted || record.type === 'heartbeat') {
+            for (const listener of this.recordListeners) listener({ record, receivedBrowserTimeMs });
+          }
           this.publish({ snapshot: this.matchingSnapshot() });
         });
         reader = response.body.getReader();
@@ -153,7 +175,7 @@ export class AndroidPoseSource {
           if (done) { decoder.finish(); throw Error('Camera stream ended'); }
           decoder.push(value);
         }
-      } catch (error) { failure = error; }
+      } catch (error) { failure = startupTimedOut ? Error('Camera initialization timed out after 90 seconds') : error; }
       finally {
         clearTimeout(startupTimeout);
         signal.removeEventListener('abort', abort);
