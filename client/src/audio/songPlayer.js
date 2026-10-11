@@ -19,7 +19,7 @@ export async function createSongPlayer(blob, { startMs, endMs }) {
   const listeners = new Set();
   let source = null;
   let positionMs = startMs;
-  let startedAt = 0; // ctx time at which song time 0 would have played
+  let startedAt = 0; // ctx time at which song time 0 would have been scheduled
   const clamp = (ms) => Math.min(end, Math.max(startMs, ms));
 
   const stop = () => {
@@ -47,7 +47,7 @@ export async function createSongPlayer(blob, { startMs, endMs }) {
       source.connect(out);
       const at = ctx.currentTime + 0.03;
       source.start(at, positionMs / 1000, (end - positionMs) / 1000);
-      startedAt = at + latency() - positionMs / 1000;
+      startedAt = at - positionMs / 1000;
       const mine = source;
       source.onended = () => {
         if (source !== mine) return;

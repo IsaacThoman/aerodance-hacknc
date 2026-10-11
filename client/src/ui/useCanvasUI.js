@@ -20,7 +20,7 @@ import { playUISound } from '../audio/uiSounds.js';
  *   onDrag: (wdg, point, ui) => {},       // widgets with drag: true (sliders)
  *   onKey: (event, ui) => {},
  *   keyNav: bool | (ui) => bool,          // arrow keys step through the widgets, Enter/Space presses
- *   onBack: (ui) => {},                   // the phone remote's B button
+ *   onBack: (ui) => {},                   // the phone remote's B button (return false if unhandled)
  *   remote: EventTarget | null,           // phone remote input (default: remote/remoteLink.js):
  *                                         // move / down / up / back / leave, in design units
  *   update: (dt, ui) => {},               // per-frame animation; ui.ease() marks the overlay dirty
@@ -38,8 +38,9 @@ import { playUISound } from '../audio/uiSounds.js';
  * Content taller than the design height scrolls by drag or wheel: draw sets ui.contentHeight.
  * Works with <Canvas frameloop="demand">: input, ui.invalidate() and running animations
  * (anything that marks the overlay dirty) request the next frame.
- * While a remote is pointing, ui.remote is its cursor (content units); remote/RemoteDock.jsx
- * draws it over everything.
+ * While a remote is pointing, ui.remote is its cursor (content units). ui.mouse is the mouse
+ * over the canvas, cleared when it leaves or the remote moves. remote/RemoteDock.jsx draws the
+ * Wii hand at both, over everything.
  */
 
 // Hit areas are padded a little so a bubble's rim and edge count as part of it.
@@ -68,6 +69,7 @@ function createState() {
     h: 900,
     pointer: null,
     remote: null,
+    mouse: null,
     hover: {},
     press: 0,
     pressed: null,
@@ -135,6 +137,7 @@ export default function useCanvasUI(options) {
 
     const onMove = (e) => {
       s.pointer = toDesign(e);
+      s.mouse = e.pointerType === 'touch' ? null : s.pointer;
       s.pointerKind = e.pointerType;
       s.pointerMoved = true;
       if (s.drag) opts.current.onDrag?.(s.drag, s.pointer, s);
@@ -148,7 +151,7 @@ export default function useCanvasUI(options) {
       }
       wantCursor(el, key, !!(s.drag || widgetAt(s.pointer)));
     };
-    const onLeave = () => { s.pointer = null; wantCursor(el, key, false); };
+    const onLeave = () => { s.pointer = s.mouse = null; wantCursor(el, key, false); };
     // Buttons fire on release when the press started on the same button, so a
     // press anywhere on the bubble counts even if the pointer wobbles a little.
     // Shared by the mouse and the phone remote; returns the widget pressed.
@@ -241,6 +244,7 @@ export default function useCanvasUI(options) {
       // Hover easing redraws when the hovered widget changes; RemoteDock draws the cursor.
       move: (e) => {
         s.remote = s.pointer = fromRemote(e);
+        s.mouse = null;
         s.pointerKind = 'remote';
         s.pointerMoved = true;
         if (s.drag) opts.current.onDrag?.(s.drag, s.pointer, s);
@@ -249,8 +253,7 @@ export default function useCanvasUI(options) {
       up: (e) => { releaseAt(fromRemote(e)); s.dirty = true; },
       back: () => {
         if (!active() || !opts.current.onBack) return;
-        playUISound('back');
-        opts.current.onBack(s);
+        if (opts.current.onBack(s) !== false) playUISound('back');
       },
       leave: () => { s.remote = s.pointer = s.drag = s.pressed = null; s.dirty = true; },
     };

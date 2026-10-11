@@ -88,12 +88,14 @@ function StageContent({ id, routine, onReady, onDancersFail }) {
       toneMapping: gl.toneMapping,
       toneMappingExposure: gl.toneMappingExposure,
       autoClear: gl.autoClear,
+      infoAutoReset: gl.info.autoReset,
       shadow: { enabled: gl.shadowMap.enabled, type: gl.shadowMap.type, autoUpdate: gl.shadowMap.autoUpdate },
     };
     Object.assign(gl.shadowMap, { enabled: true, type: THREE.PCFShadowMap, autoUpdate: true });
     return () => {
       Object.assign(gl, { toneMapping: saved.toneMapping, toneMappingExposure: saved.toneMappingExposure, autoClear: saved.autoClear });
       Object.assign(gl.shadowMap, saved.shadow);
+      gl.info.autoReset = saved.infoAutoReset;
       gl.shadowMap.needsUpdate = true;
       beat.bpm = STAGE_BPM;
     };
@@ -119,7 +121,8 @@ function StageContent({ id, routine, onReady, onDancersFail }) {
           <Ready onReady={onReady} id={id} />
         </Suspense>
       </StageBoundary>
-      <DancerBoundary onFail={onDancersFail}>
+      {/* A new song or stage gives dancers that failed to load another try. */}
+      <DancerBoundary key={`${id}|${routine?.bundle.song.songId ?? ''}`} onFail={onDancersFail}>
         <Dancers routine={routine} {...meta.dancers} />
       </DancerBoundary>
     </>
@@ -130,10 +133,10 @@ export default function StageView({ active = false, stageId, routine, onState })
   const scene = useMemo(() => new THREE.Scene(), []);
   const [shown, setShown] = useState(null);
   const fade = useRef({ value: 0, settled: 0 });
-  const st = useRef({ loaded: null, failed: new Set(), dancersFailed: false, requested: undefined, reported: '' }).current;
+  const st = useRef({ loaded: null, failed: new Set(), dancersFailed: false, routine: null, requested: undefined, reported: '' }).current;
   const target = active ? resolveStage(stageId) : null;
   const props = useRef({});
-  props.current = { target, shown, onState };
+  props.current = { target, shown, onState, routine };
   // Keep dancing the last routine while the veil comes up on the way out.
   const lastRoutine = useRef(null);
   if (routine) lastRoutine.current = routine;
@@ -148,7 +151,8 @@ export default function StageView({ active = false, stageId, routine, onState })
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.1);
     const f = fade.current;
-    const { target: want, shown: have } = props.current;
+    const { target: want, shown: have, routine: current } = props.current;
+    if (current && current !== st.routine) { st.routine = current; st.dancersFailed = false; }
     if (want !== have) {
       // Veil up, then swap what's mounted behind it.
       f.value = Math.min(1, f.value + dt / FADE_UP);
@@ -156,6 +160,7 @@ export default function StageView({ active = false, stageId, routine, onState })
         st.requested = want;
         st.loaded = null;
         st.failed.delete(want);
+        st.dancersFailed = false;
         f.settled = 0;
         setShown(want);
       }

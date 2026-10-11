@@ -306,7 +306,8 @@ export default function SongSelect({
       st.scrubMs = song.playableStartMs + k * (song.playableEndMs - song.playableStartMs);
     },
     onKey: (e, s) => {
-      if (!live()) return;
+      // A held key shouldn't run through screens or spin the stages.
+      if (!live() || e.repeat) return;
       if (e.key === 'Escape') { playUISound('back'); back(); }
       else if (st.screen === 'preview' && e.key === 'ArrowLeft') { playUISound('select'); stepStage(-1); }
       else if (st.screen === 'preview' && e.key === 'ArrowRight') { playUISound('select'); stepStage(1); }

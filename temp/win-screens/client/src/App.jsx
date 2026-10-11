@@ -13,7 +13,7 @@ import { MODES, tempResults, winnerOf } from './results.js';
 
 /*
  * Win / end screens for every dance stage (temp/frutiger-character's stages, used as-is):
- * the stage behind, the dancers rearranged for the result, and a results card in the
+ * the stage behind, the dancers rearranged for the result, and the results in the
  * stage's HUD style. Player 1 or Player 2 wins, a tie, or a solo end screen, all with
  * (placeholder) scores.
  *
