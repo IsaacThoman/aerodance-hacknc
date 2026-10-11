@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aerodance — Thumbnails</title>
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;800&display=swap" rel="stylesheet" />
+    <style>
+      html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+      #root { display: grid; place-items: center; }
+      /* The 540x480 buffer shown at 3:2 with pixelated scaling, like the game's 640x480 at 16:9. */
+      .frame { width: min(100vw, calc(100dvh * 3 / 2)); aspect-ratio: 3 / 2; }
+      .frame canvas { display: block; width: 100% !important; height: 100% !important; image-rendering: pixelated; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
