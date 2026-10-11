@@ -7,7 +7,7 @@ import { STAGES } from '../../../frutiger-character/client/src/stages/index.js';
 import Dancers, { DANCER_LOOKS } from '../../../frutiger-character/client/src/stages/shared/Dancers.jsx';
 import { RenderPipeline, resetPost } from '../../../frutiger-character/client/src/stages/shared/post.jsx';
 import { drawTitle, titleWidth } from '../../../../client/src/ui/draw.js';
-import { BUFFER, DESIGN, SHOTS } from './shots.js';
+import { BUFFER as THUMBNAIL_BUFFER, DESIGN, SHOTS } from './shots.js';
 
 /*
  * Renders one thumbnail in-engine: a dance stage, the two captured dancers holding a pose,
@@ -25,10 +25,15 @@ import { BUFFER, DESIGN, SHOTS } from './shots.js';
  * drives it and writes the PNGs and GIFs.
  *
  * URL: ?shot=<id> (shots.js), or ?spec=<JSON> for a one-off shot. &loop=<from>,<to> makes
- * that stretch of the dance loop seamlessly (for GIFs).
+ * that stretch of the dance loop seamlessly, and &buffer=<w>x<h> renders at another 3:2 size
+ * (both for GIFs).
  */
 
 const STEP = 1 / 60;
+const BUFFER = (() => {
+  const size = new URLSearchParams(window.location.search).get('buffer')?.split('x').map(Number);
+  return size ? { width: size[0], height: size[1], aspect: THUMBNAIL_BUFFER.aspect } : THUMBNAIL_BUFFER;
+})();
 const LOOP_BLEND = 0.6;
 
 // The dance with its stretch from..to (seconds) made loopable: over the last LOOP_BLEND
@@ -109,13 +114,17 @@ function makeLogo(logo) {
   return { scene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1) };
 }
 
-// Reads the drawing buffer top-down as base64 RGBA.
-function readFrame(gl) {
+// Reads the drawing buffer (or a render target) top-down as base64 RGBA.
+function readFrame(gl, target = null) {
   const ctx = gl.getContext();
   const { width, height } = BUFFER;
-  gl.setRenderTarget(null);
   const pixels = new Uint8Array(width * height * 4);
-  ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixels);
+  if (target) {
+    gl.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+  } else {
+    gl.setRenderTarget(null);
+    ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixels);
+  }
   const flipped = new Uint8Array(pixels.length);
   const row = width * 4;
   for (let y = 0; y < height; y++) flipped.set(pixels.subarray((height - 1 - y) * row, (height - y) * row), y * row);
@@ -137,12 +146,19 @@ async function until(test, what, timeout = 60000) {
 function Thumbnail({ shot, motion }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
+  const get = useThree((s) => s.get);
   const size = useThree((s) => s.size);
+  const dancers = useRef();
   const { meta, Component: Stage } = STAGES.find((s) => s.meta.id === shot.stage);
   const playback = useRef(shot.pose);
   const { opacity, ...placement } = shot.dancers ?? {};
   const looks = useMemo(() => (opacity === undefined ? DANCER_LOOKS : DANCER_LOOKS.map((look) => ({ ...look, opacity }))), [opacity]);
   const hud = useMemo(() => ({ scene: new THREE.Scene(), camera: new THREE.OrthographicCamera() }), []);
+  // The dancers alone, white on black, from the shot's camera (GIFs never hold their pixels).
+  const mask = useMemo(
+    () => ({ target: new THREE.WebGLRenderTarget(BUFFER.width, BUFFER.height), material: new THREE.MeshBasicMaterial(), black: new THREE.Color(0) }),
+    [],
+  );
   const stageReady = useRef(false);
   const onReady = useCallback(() => { stageReady.current = true; }, []);
 
@@ -170,11 +186,29 @@ function Thumbnail({ shot, motion }) {
       await nextTask();
     };
 
+    const readMask = () => {
+      const camera = get().camera;
+      dancers.current.traverse((o) => o.layers.enable(1));
+      const saved = { background: scene.background, fog: scene.fog, layers: camera.layers.mask, shadows: gl.shadowMap.autoUpdate };
+      Object.assign(scene, { background: mask.black, fog: null, overrideMaterial: mask.material });
+      camera.layers.set(1);
+      gl.shadowMap.autoUpdate = false;
+      gl.setRenderTarget(mask.target);
+      gl.clear();
+      gl.render(scene, camera);
+      Object.assign(scene, { background: saved.background, fog: saved.fog, overrideMaterial: null });
+      camera.layers.mask = saved.layers;
+      gl.shadowMap.autoUpdate = saved.shadows;
+      gl.setRenderTarget(null);
+      return readFrame(gl, mask.target);
+    };
+
     // Plays the clock forward to 60 fps frame `to` (frames only go forward), letting React
-    // commit between batches, then reads it back without and with the wordmark.
+    // commit between batches, then reads it back without and with the wordmark, and
+    // optionally the dancers' mask.
     // The rig places hands and feet from the previous frame's body, so a held pose is exact
     // while a danced one trails by a frame, as in the game.
-    const capture = async (to, { dance = false, plain = true, logo = true } = {}) => {
+    const capture = async (to, { dance = false, plain = true, logo = true, mask: withMask = false } = {}) => {
       await (loading ??= load());
       if (to < frame) throw new Error(`Frame ${to} is already behind the clock (${frame})`);
       for (let i = frame + 1; i <= to; i++) {
@@ -191,6 +225,7 @@ function Thumbnail({ shot, motion }) {
         gl.autoClear = true;
         result.logo = readFrame(gl);
       }
+      if (withMask) result.mask = readMask();
       return result;
     };
 
@@ -205,7 +240,7 @@ function Thumbnail({ shot, motion }) {
       render: () => capture(shotFrame),
       frame: (i, options) => capture(i, { ...options, dance: true }),
     };
-  }, [gl, scene, shot]);
+  }, [gl, scene, get, mask, shot]);
 
   return (
     <>
@@ -215,7 +250,9 @@ function Thumbnail({ shot, motion }) {
         <Stage motion={motion} playback={playback} />
         <Ready onReady={onReady} />
       </Suspense>
-      <Dancers motion={motion} playback={playback} {...meta.dancers} {...placement} looks={looks} />
+      <group ref={dancers}>
+        <Dancers motion={motion} playback={playback} {...meta.dancers} {...placement} looks={looks} />
+      </group>
     </>
   );
 }

@@ -9,11 +9,11 @@
 // Builds the capture page with Vite, opens it in headless Chrome (GPU WebGL), steps each
 // shot's stage to its time and reads back the 540x480 buffer. Each buffer pixel is written
 // as an exact 4x3 block (2160x1440, 3:2) into a lossless PNG: no filtering or resampling.
-// GIFs go through ffmpeg: one 256-color palette for the clip, ordered dithering at the
-// buffer's resolution, then the same exact 4x3 blocks.
+// GIFs go through ffmpeg: one 256-color palette for the clip and ordered dithering at the
+// buffer's resolution, at the thumbnails' grid (exact 4x3 blocks) or a clip's own size.
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -141,15 +141,64 @@ function toRgb(base64) {
 
 // --- GIF ----------------------------------------------------------------------------
 
+// Background pixels that moved no more than `threshold` on every channel since the
+// previous output frame keep that frame's color. Every output pixel stays within
+// `threshold` of the render. Pixels on or next to a dancer (this frame or the last) are
+// never held: the reef moving behind their translucent gel would leave faint ghosts.
+function dilate(mask, width, height, radius) {
+  const rows = new Uint8Array(mask.length);
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++)
+      if (mask[y * width + x])
+        for (let dx = Math.max(0, x - radius); dx <= Math.min(width - 1, x + radius); dx++) rows[y * width + dx] = 1;
+  const out = new Uint8Array(mask.length);
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++)
+      if (rows[y * width + x])
+        for (let dy = Math.max(0, y - radius); dy <= Math.min(height - 1, y + radius); dy++) out[dy * width + x] = 1;
+  return out;
+}
+
+function holder(threshold, width, height) {
+  let previous = null;
+  let lastMask = null;
+  return (rgb, maskBase64) => {
+    const rgba = Buffer.from(maskBase64, 'base64');
+    const mask = dilate(Uint8Array.from({ length: width * height }, (_, p) => (rgba[p * 4] > 0 ? 1 : 0)), width, height, 2);
+    if (previous) {
+      for (let i = 0, p = 0; i < rgb.length; i += 3, p++) {
+        if (
+          !mask[p] &&
+          !lastMask[p] &&
+          Math.abs(rgb[i] - previous[i]) <= threshold &&
+          Math.abs(rgb[i + 1] - previous[i + 1]) <= threshold &&
+          Math.abs(rgb[i + 2] - previous[i + 2]) <= threshold
+        ) {
+          rgb[i] = previous[i];
+          rgb[i + 1] = previous[i + 1];
+          rgb[i + 2] = previous[i + 2];
+        }
+      }
+    }
+    previous = rgb;
+    lastMask = mask;
+    return rgb;
+  };
+}
+
 // Plays a clip frame by frame into ffmpeg. The palette is shared by the whole clip and
-// dithered at the buffer's resolution; each pixel then becomes a 4x3 block and is mapped
-// back onto the same palette (exact matches, no dithering), so the blocks stay whole.
+// dithered at the buffer's resolution; at the thumbnails' grid each pixel then becomes a
+// 4x3 block and is mapped back onto the same palette (exact matches, no dithering), so the
+// blocks stay whole. Held pixels repeat exactly, which the GIF stores as unchanged.
 async function renderClip(page, clip) {
   const shot = SHOTS.find((s) => s.id === clip.shot);
   if (!shot) throw new Error(`Unknown shot "${clip.shot}"`);
   const every = 60 / clip.fps;
   if (!Number.isInteger(every)) throw new Error(`fps ${clip.fps} does not divide 60`);
-  await page.goto(`${base}?shot=${encodeURIComponent(shot.id)}&loop=${clip.from},${clip.to}`);
+  const [width, height] = clip.buffer ?? [BUFFER.width, BUFFER.height];
+  const [sx, sy] = clip.buffer ? [1, 1] : UPSCALE;
+  const size = clip.buffer ? `&buffer=${width}x${height}` : '';
+  await page.goto(`${base}?shot=${encodeURIComponent(shot.id)}&loop=${clip.from},${clip.to}${size}`);
   await page.waitForFunction(() => window.__thumb, null, { timeout: 60000 });
   // 60 fps frame indices on the clip's frame grid, which includes the still's frame.
   const shotFrame = await page.evaluate(() => window.__thumb.shotFrame);
@@ -158,32 +207,39 @@ async function renderClip(page, clip) {
 
   const file = path.join(outDir, shot.logo ? 'with-logo' : 'no-logo', `${clip.id}.gif`);
   await mkdir(path.dirname(file), { recursive: true });
-  const [sx, sy] = UPSCALE;
-  const filter = [
-    '[0:v]split[a][b]',
-    '[a]palettegen=stats_mode=full[p]',
-    '[p]split[p1][p2]',
-    '[b][p1]paletteuse=dither=bayer:bayer_scale=5[q]',
-    `[q]scale=iw*${sx}:ih*${sy}:flags=neighbor[s]`,
-    '[s][p2]paletteuse=dither=none',
-  ].join(';');
+  const dither = 'paletteuse=dither=bayer:bayer_scale=5';
+  const filter = (sx === 1 && sy === 1
+    ? ['[0:v]split[a][b]', '[a]palettegen=stats_mode=full[p]', `[b][p]${dither}`]
+    : [
+        '[0:v]split[a][b]',
+        '[a]palettegen=stats_mode=full[p]',
+        '[p]split[p1][p2]',
+        `[b][p1]${dither}[q]`,
+        `[q]scale=iw*${sx}:ih*${sy}:flags=neighbor[s]`,
+        '[s][p2]paletteuse=dither=none',
+      ]
+  ).join(';');
   const ffmpeg = spawn('ffmpeg', [
-    '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-video_size', `${BUFFER.width}x${BUFFER.height}`,
+    '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-video_size', `${width}x${height}`,
     '-framerate', String(clip.fps), '-i', '-', '-filter_complex', filter, '-loop', '0', '-y', file,
   ], { stdio: ['pipe', 'inherit', 'inherit'] });
   const exited = once(ffmpeg, 'close');
   ffmpeg.on('error', (e) => { throw new Error(`Could not run ffmpeg: ${e.message}`); });
 
+  const hold = clip.hold ? holder(clip.hold, width, height) : (rgb) => rgb;
   for (let k = 0; k < count; k++) {
     const frame = await page.evaluate(
-      ([i, logo]) => window.__thumb.frame(i, { plain: !logo, logo }),
-      [first + k * every, !!shot.logo],
+      ([i, logo, mask]) => window.__thumb.frame(i, { plain: !logo, logo, mask }),
+      [first + k * every, !!shot.logo, !!clip.hold],
     );
-    if (!ffmpeg.stdin.write(toRgb(frame.logo ?? frame.plain))) await once(ffmpeg.stdin, 'drain');
+    if (!ffmpeg.stdin.write(hold(toRgb(frame.logo ?? frame.plain), frame.mask))) await once(ffmpeg.stdin, 'drain');
   }
   ffmpeg.stdin.end();
   const [code] = await exited;
   if (code !== 0) throw new Error(`ffmpeg exited with ${code}`);
+  const { size: bytes } = await stat(file);
+  if (clip.maxBytes && bytes > clip.maxBytes) throw new Error(`${(bytes / 1e6).toFixed(2)} MB is over the ${clip.maxBytes / 1e6} MB limit`);
+  return `${width * sx}x${height * sy}, ${count} frames, ${(bytes / 1e6).toFixed(2)} MB`;
 }
 
 // --- Capture ------------------------------------------------------------------------
@@ -208,8 +264,9 @@ async function worker() {
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     const started = performance.now();
     try {
+      let detail = '';
       if (gifs) {
-        await renderClip(page, shot);
+        detail = ` ${await renderClip(page, shot)}`;
       } else {
         const query = option('spec') ? `spec=${encodeURIComponent(JSON.stringify(shot))}` : `shot=${encodeURIComponent(shot.id)}`;
         await page.goto(`${base}?${query}`);
@@ -223,7 +280,7 @@ async function worker() {
         console.log(`WebGL: ${await page.evaluate(() => window.__thumb.renderer)}`);
       }
       const seconds = ((performance.now() - started) / 1000).toFixed(1);
-      console.log(`✓ ${shot.id} (${seconds}s)${errors.length ? `\n  ${errors.join('\n  ')}` : ''}`);
+      console.log(`✓ ${shot.id}${detail} (${seconds}s)${errors.length ? `\n  ${errors.join('\n  ')}` : ''}`);
     } catch (e) {
       failed++;
       console.error(`✗ ${shot.id}: ${e.message}${errors.length ? `\n  ${errors.join('\n  ')}` : ''}`);

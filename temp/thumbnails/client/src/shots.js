@@ -261,8 +261,14 @@ export const SHOTS = [
  *   from, to: dance-capture seconds; the GIF loops from `to` back to `from`, with the
  *     dancers' last 0.6 s easing into the start so they loop seamlessly
  *   fps: frames per second (divides 60)
+ *   buffer: [width, height] to render at instead of the thumbnails' 540x480 grid, with
+ *     square pixels and no upscaling (default: the 2160x1440 thumbnail frame)
+ *   hold: background pixels whose color moves no more than this (0-255, per channel) since
+ *     the last frame keep their last color, so the water's faint shimmer costs almost
+ *     nothing in the GIF (the dancers are never held)
+ *   maxBytes: fail if the GIF comes out larger
  */
 export const CLIPS = [
-  // The poses at 5.45 s and 9.75 s are already close, so the blend is gentle.
-  { id: 'reef-inside', shot: 'reef-inside', from: 5.45, to: 9.75, fps: 20 },
+  // Under 5 MB (Devpost's limit): 720x480, 3.6 s from the hands-up to the reach, held water.
+  { id: 'reef-inside', shot: 'reef-inside', from: 6.1, to: 9.7, fps: 20, buffer: [720, 480], hold: 10, maxBytes: 5e6 },
 ];
