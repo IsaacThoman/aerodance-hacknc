@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import QRCode from 'qrcode';
 import Scene from './Scene.jsx';
@@ -7,6 +7,7 @@ import MenuDancers from './menu/MenuDancers.jsx';
 import { loadSound, saveSound } from './menu/soundSettings.js';
 import BattleScreen from './battle/BattleScreen.jsx';
 import DebugPanel from './battle/DebugPanel.jsx';
+import { FAKE_DANCE_MS, fakeDance } from './battle/fakeDance.js';
 import { api, createBattle, seatTokens, useBattle } from './battle/api.js';
 import PhoneApp from './phone/PhoneApp.jsx';
 import { socket } from './socket.js';
@@ -83,6 +84,8 @@ function DisplayApp() {
   // Start pressed in the lobby; the dance itself hooks in here and reports with seatTokens.
   const [playing, setPlaying] = useState(false);
   const battle = useBattle(battleId);
+  const battleRef = useRef(battle);
+  battleRef.current = battle;
 
   const openBattle = useCallback((id) => {
     history.pushState(null, '', id ? `/battle/${id}` : '/');
@@ -108,6 +111,18 @@ function DisplayApp() {
       setBattleId(null);
     }
   }, [battle]);
+
+  // No real dance yet: Start runs a timed fake one that reports random scores (fakeDance.js).
+  useEffect(() => {
+    if (!playing || !battleId) return undefined;
+    const t = setTimeout(() => {
+      const b = battleRef.current;
+      if (b?.id === battleId && b.status === 'open') {
+        fakeDance(b).catch((err) => console.error('fake dance could not report:', err.message));
+      }
+    }, FAKE_DANCE_MS);
+    return () => clearTimeout(t);
+  }, [playing, battleId]);
 
   useEffect(() => { saveSound(sound); }, [sound]);
 
