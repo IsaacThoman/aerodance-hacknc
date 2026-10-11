@@ -18,7 +18,7 @@ import { COUNTDOWN_MS, GameSession, LATE_ALLOWANCE_MS } from './game/GameSession
 import { recordResults } from './game/bestScores.js';
 import { PLAYERS, winnerOf } from './game/results.js';
 import StageView from './stage/StageView.jsx';
-import { DEFAULT_STAGE } from '../../packages/stages/catalog.js';
+import { resolveStage } from '../../packages/stages/catalog.js';
 import { AndroidPoseSource } from './pose/AndroidPoseSource.js';
 import { ReplayPoseSource, parseRecording } from './pose/ReplayPoseSource.js';
 import { socket } from './socket.js';
@@ -111,9 +111,8 @@ function DisplayApp() {
   const activeSource = replay ?? (inputMode === 'android' ? source : null);
   // The Connect Client card holds the menus while it's open.
   const [connectOpen, setConnectOpen] = useState(false);
-  // Song Select's preview: the routine to dance, on which stage, and how that stage is doing.
+  // Song Select's preview: the routine to dance, and how its stage is doing.
   const [preview, setPreview] = useState(null);
-  const [stageId, setStageId] = useState(DEFAULT_STAGE);
   const [stage, setStage] = useState({ showing: false, ready: false, stage: null, failed: false });
   const menuOpen = screen === 'menu';
   const selectedConnection = replay ? replayView : inputMode === 'webcam'
@@ -280,6 +279,8 @@ function DisplayApp() {
   const inBattleSong = !!battleId && (battleStage === 'songs' || battleStage === 'game');
   const songsOpen = screen === 'songs' && (!battleId || battleStage === 'songs');
   const gameRoutine = useMemo(() => game?.routine() ?? null, [game]);
+  // Every song dances on its own stage, picked in Dance Studio (Open Reef if unset or unknown).
+  const stageId = resolveStage((game?.bundle ?? preview?.bundle)?.song.stage);
   // The players' own characters, while the song is on.
   const liveDancers = useMemo(() => (game && ['countdown', 'playing', 'paused', 'finishing'].includes(gamePhase) ? {
     playerCount: game.playerCount,
@@ -320,9 +321,7 @@ function DisplayApp() {
           connection={selectedConnection}
           onBack={leaveSongs}
           onOpenConnect={() => setConnectOpen(true)}
-          stageId={stageId}
           stageState={stage}
-          onStageChange={setStageId}
           onPreviewChange={setPreview}
           onDance={startGame}
         />

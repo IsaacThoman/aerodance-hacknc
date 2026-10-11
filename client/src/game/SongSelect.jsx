@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import {
-  FONT, ICONS, TAU, drawCaps, drawChip, drawGlassCircle, drawGlassPanel, drawHeader, drawLink, drawPill, drawPlayerLeds,
+  FONT, ICONS, drawCaps, drawChip, drawGlassCircle, drawGlassPanel, drawHeader, drawLink, drawPill, drawPlayerLeds,
   drawProgress, drawShadowText, ellipsize, paragraph, roundRect, text,
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
@@ -12,9 +12,9 @@ import { loadSongBundle } from '../songs/loadBundle.js';
 import { validateCatalog } from '../../../packages/pose/song.js';
 import { SCORER_VERSION } from '../../../packages/score/scorer.js';
 import { bestScore } from './bestScores.js';
-import { STAGE_LIST, preloadStage, resolveStage, stageName } from '../../../packages/stages/index.js';
+import { preloadStage, resolveStage, stageName } from '../../../packages/stages/index.js';
 import {
-  BACK, BAR, DANCE, LINK_Y, PAGE_DOWN, PAGE_UP, PLAY, READY, RETRY, ROWS, SCRUB, STAGE_CARD, STAGE_NEXT, STAGE_PREV, rowRect, slotRect,
+  BACK, BAR, DANCE, LINK_Y, PAGE_DOWN, PAGE_UP, PLAY, READY, RETRY, ROWS, SCRUB, rowRect, slotRect,
 } from './layout.js';
 
 /**
@@ -23,9 +23,9 @@ import {
  *   list     the published songs (songs/manifest.json, found by server/songCatalog.js),
  *            four to a page, and each player's readiness from the pose input
  *   preview  a song's music with its reference dancers on the song's stage (StageView,
- *            mounted by App from onPreviewChange), a stage picker, play / pause, a
- *            scrubbable timeline and Dance!, which hands the bundle to the game (onDance);
- *            the menu music ducks underneath
+ *            mounted by App from onPreviewChange; each song's stage is picked in Dance
+ *            Studio), play / pause, a scrubbable timeline and Dance!, which hands the
+ *            bundle to the game (onDance); the menu music ducks underneath
  *
  * Bundles are fully verified before they play (songs/loadBundle.js). Back / Escape / the
  * remote's B go from the preview to the list and from the list to the player count.
@@ -33,7 +33,7 @@ import {
  * and -preview-time-ms for tests.
  *
  * <SongSelect visible blocked playerCount={1} connection={view} onBack onOpenConnect
- *   stageId stageState={{ showing, ready, stage, failed }} onStageChange onPreviewChange onDance />
+ *   stageState={{ showing, ready, stage, failed }} onPreviewChange onDance />
  */
 
 const CATALOG_URL = () => new URL(`${import.meta.env.BASE_URL}songs/manifest.json`, window.location.href).href;
@@ -84,68 +84,13 @@ function drawSlot(g, rect, i, status, hover) {
   text(g, ellipsize(g, status.label, w - 132), x + 120, cy + 17, { size: 25, weight: 700, color: status.kind === 'detected' ? '#9effdf' : '#ffffff' });
 }
 
-function drawStageCard(g, stageId, songStage, stageState, hover, press) {
-  const stage = STAGE_LIST.find((s) => s.id === stageId);
-  drawGlassPanel(g, STAGE_CARD, 30);
-  for (const [c, id, icon] of [[STAGE_PREV, 'stage-prev', 'left'], [STAGE_NEXT, 'stage-next', 'right']]) {
-    const hv = hover[id] ?? 0;
-    const cc = { ...c, r: c.r + press(id) * -2 };
-    drawGlassCircle(g, cc, hv);
-    g.lineWidth = 4;
-    g.lineCap = 'round';
-    g.lineJoin = 'round';
-    g.strokeStyle = '#ffffff';
-    ICONS[icon](g, c.x, c.y, c.r * 1.5);
-  }
-  const cx = STAGE_CARD.x + STAGE_CARD.w / 2;
-  const maxW = STAGE_CARD.w - 170;
-  // Accent orb, like the /dance/ name card.
-  const [light, dark] = stage.accent;
-  g.font = `800 30px ${FONT}`;
-  const name = ellipsize(g, stage.name, maxW - 34);
-  const nameW = g.measureText(name).width;
-  const ox = cx - nameW / 2 - 22;
-  const oy = STAGE_CARD.y + 44;
-  const orb = g.createRadialGradient(ox - 4, oy - 5, 1, ox, oy, 12);
-  orb.addColorStop(0, '#ffffff');
-  orb.addColorStop(0.35, light);
-  orb.addColorStop(1, dark);
-  g.beginPath();
-  g.arc(ox, oy, 11, 0, TAU);
-  g.fillStyle = orb;
-  g.fill();
-  drawShadowText(g, name, cx + 14, STAGE_CARD.y + 44, { size: 30, weight: 800, align: 'center' });
-  const loading = stageState.stage !== stageId || (!stageState.ready && !stageState.failed);
-  const sub = stageState.failed && stageState.stage === stageId ? ["This stage couldn't load.", '#ffb38a']
-    : loading ? ['Loading stage…', '#bff4ff'] : [stage.subtitle, '#bff4ff'];
-  g.font = `600 20px ${FONT}`;
-  text(g, ellipsize(g, sub[0], maxW), cx, STAGE_CARD.y + 78, { size: 20, color: sub[1], align: 'center' });
-  // Where this stage sits in the list; the ring marks the song's own stage.
-  const gap = 24;
-  STAGE_LIST.forEach((s, i) => {
-    const dx = cx + (i - (STAGE_LIST.length - 1) / 2) * gap;
-    const dy = STAGE_CARD.y + 110;
-    g.beginPath();
-    g.arc(dx, dy, s.id === stageId ? 6 : 4.5, 0, TAU);
-    g.fillStyle = s.id === stageId ? '#ffffff' : 'rgba(255,255,255,0.4)';
-    g.fill();
-    if (s.id === songStage) {
-      g.beginPath();
-      g.arc(dx, dy, 10, 0, TAU);
-      g.lineWidth = 2;
-      g.strokeStyle = '#6ff3d6';
-      g.stroke();
-    }
-  });
-}
-
 export default function SongSelect({
   visible = false, blocked = false, playerCount = 1, connection, onBack, onOpenConnect,
-  stageId, stageState = {}, onStageChange, onPreviewChange, onDance,
+  stageState = {}, onPreviewChange, onDance,
 }) {
   const gl = useThree((state) => state.gl);
   const props = useRef({});
-  props.current = { visible, blocked, playerCount, connection, onBack, onOpenConnect, stageId, stageState, onStageChange, onPreviewChange, onDance };
+  props.current = { visible, blocked, playerCount, connection, onBack, onOpenConnect, stageState, onPreviewChange, onDance };
   const st = useRef({
     alpha: 0, screen: 'list', next: 'list', swap: 1, page: 0,
     catalog: { status: 'idle', songs: [], error: '' }, catalogCtl: null,
@@ -209,9 +154,7 @@ export default function SongSelect({
       playing: () => st.player?.state === 'playing',
     };
     st.routine = routine;
-    const stage = resolveStage(song.stage);
-    preloadStage(stage);
-    props.current.onStageChange?.(stage);
+    preloadStage(resolveStage(song.stage));
     props.current.onPreviewChange?.(routine);
     duckMenuMusic(true);
     go('preview');
@@ -251,12 +194,6 @@ export default function SongSelect({
     st.loading = null;
     props.current.onBack?.();
   };
-  const stepStage = (dir) => {
-    const i = STAGE_LIST.findIndex((s) => s.id === props.current.stageId);
-    const next = STAGE_LIST[(i + dir + STAGE_LIST.length) % STAGE_LIST.length].id;
-    preloadStage(STAGE_LIST[(i + dir * 2 + STAGE_LIST.length * 2) % STAGE_LIST.length].id);
-    props.current.onStageChange?.(next);
-  };
   const dance = () => {
     const { bundle } = st;
     if (!bundle) return;
@@ -278,8 +215,6 @@ export default function SongSelect({
       if (st.screen === 'preview') {
         const list = [
           { id: 'back', circle: BACK },
-          { id: 'stage-prev', circle: STAGE_PREV },
-          { id: 'stage-next', circle: STAGE_NEXT },
           { id: 'dance', rect: DANCE },
         ];
         if (st.player) list.push({ id: 'play', rect: PLAY }, { id: 'scrub', drag: true, rect: SCRUB_HIT });
@@ -305,8 +240,6 @@ export default function SongSelect({
       else if (wdg.id === 'retry') fetchCatalog();
       else if (wdg.id === 'demo') window.open('/dance/', '_blank', 'noopener');
       else if (wdg.id.startsWith('slot-')) props.current.onOpenConnect?.();
-      else if (wdg.id === 'stage-prev') stepStage(-1);
-      else if (wdg.id === 'stage-next') stepStage(1);
       else if (wdg.id === 'play') togglePlay();
       else if (wdg.id === 'dance') dance();
       s.invalidate();
@@ -318,11 +251,9 @@ export default function SongSelect({
       st.scrubMs = song.playableStartMs + k * (song.playableEndMs - song.playableStartMs);
     },
     onKey: (e, s) => {
-      // A held key shouldn't run through screens or spin the stages.
+      // A held key shouldn't run through screens.
       if (!live() || e.repeat) return;
       if (e.key === 'Escape') { playUISound('back'); back(); }
-      else if (st.screen === 'preview' && e.key === 'ArrowLeft') { playUISound('select'); stepStage(-1); }
-      else if (st.screen === 'preview' && e.key === 'ArrowRight') { playUISound('select'); stepStage(1); }
       else if (st.screen === 'preview' && e.key === ' ' && s.pointerKind !== 'key') { playUISound('select'); togglePlay(); }
       else return;
       e.preventDefault();
@@ -349,7 +280,7 @@ export default function SongSelect({
       const slots = Array.from({ length: p.playerCount }, (_, i) => slotStatus(c, i).label);
       const key = [
         st.screen, st.catalog.status, st.page, st.loading?.id, st.loadError, st.previewState, st.previewError,
-        slots.join('|'), cuesFor(c, p.playerCount).map(([t]) => t).join('|'), p.stageId, p.stageState.stage, p.stageState.ready, p.stageState.failed,
+        slots.join('|'), cuesFor(c, p.playerCount).map(([t]) => t).join('|'), p.stageState.stage, p.stageState.ready, p.stageState.failed,
       ].join('~');
       if (key !== st.drawn) { st.drawn = key; s.invalidate(); }
       // The timeline and clock move while the song plays or is dragged.
@@ -463,11 +394,10 @@ export default function SongSelect({
         g.font = `800 64px ${FONT}`;
         drawShadowText(g, ellipsize(g, song.title, 900), BACK.x - 38, BACK.y + 84, { size: 64, weight: 800 });
         g.font = `700 30px ${FONT}`;
-        drawShadowText(g, ellipsize(g, song.artist, 900), BACK.x - 36, BACK.y + 140, { size: 30, color: '#d8f6ff' });
+        drawShadowText(g, ellipsize(g, `${song.artist} · ${stageName(resolveStage(song.stage))}`, 900), BACK.x - 36, BACK.y + 140, { size: 30, color: '#d8f6ff' });
 
-        drawStageCard(g, p.stageId, resolveStage(song.stage), p.stageState, h, press);
-
-        const error = st.previewError || (p.stageState.dancersFailed ? 'Character preview could not load.' : '');
+        const stageFailed = p.stageState.failed && p.stageState.stage === resolveStage(song.stage);
+        const error = st.previewError || (stageFailed ? "This song's stage couldn't load." : p.stageState.dancersFailed ? 'Character preview could not load.' : '');
         if (error) drawShadowText(g, error, BAR.x, BAR.y - 86, { size: 26, color: '#ffb38a' });
         drawShadowText(g, 'Preview the routine, then press Dance! to play it for a score.', BAR.x, BAR.y - 34, { size: 21, weight: 600, color: '#e6f8ff' });
         drawPill(g, DANCE, { label: 'Dance!', sub: p.playerCount === 1 ? 'One player' : 'Two players', icon: 'play', hover: h.dance ?? 0, press: press('dance') });

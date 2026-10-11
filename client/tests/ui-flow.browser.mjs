@@ -11,9 +11,9 @@ import { bundleFixture } from './fixtures/songBundle.js';
 import { BACK as MENU_BACK, ONE_PLAYER, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
 import { KEYS, MODES, PILL, PRIMARY } from '../src/connect/layout.js';
 import {
-  BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, PLAY, RESULTS_RETRY, STAGE_NEXT, rowRect, slotRect,
+  BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, PLAY, RESULTS_RETRY, rowRect, slotRect,
 } from '../src/game/layout.js';
-import { STAGE_LIST, resolveStage } from '../../packages/stages/catalog.js';
+import { resolveStage } from '../../packages/stages/catalog.js';
 
 const app = express();
 app.use(express.static('dist'));
@@ -194,17 +194,13 @@ try {
     await until({ songScreen: 'list', songReady: 'true', stage: '' });
   }
 
-  // A song's own stage, the picker through all six, and back to the song's stage.
+  // A song dances on its own stage (picked in Dance Studio); players can't change it.
   await serveFixture('club');
   await openSong(1, 0);
   await until({ songScreen: 'preview', songReady: 'true', stage: 'club', stageReady: 'true' });
-  const at = STAGE_LIST.findIndex((s) => s.id === 'club');
-  for (let step = 1; step <= STAGE_LIST.length; step++) {
-    await click(STAGE_NEXT);
-    await until({ stage: STAGE_LIST[(at + step) % STAGE_LIST.length].id, stageReady: 'true' });
-  }
-  await page.keyboard.press('ArrowLeft');
-  await until({ stage: STAGE_LIST[(at - 1 + STAGE_LIST.length) % STAGE_LIST.length].id, stageReady: 'true' });
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(500);
+  assert.equal((await data()).stage, 'club');
   await click(BACK);
   await until({ songScreen: 'list', songReady: 'true', stage: '' });
   await click(rowRect(0));
@@ -318,7 +314,7 @@ try {
   await until({ songScreen: 'list', songReady: 'true' }, 10000);
   assert.equal((await data()).gamePhase, undefined);
   assert.deepEqual(errors, []);
-  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam dummy), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, song stages and the stage picker, Android startup, first-pose readiness, disconnect, startup cancellation, a scored two-player song with the autoplay ghost (countdown, pause, resume, results, Play again, quit) and no runtime errors.');
+  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam dummy), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, each song on its own stage, Android startup, first-pose readiness, disconnect, startup cancellation, a scored two-player song with the autoplay ghost (countdown, pause, resume, results, Play again, quit) and no runtime errors.');
 } catch (error) {
   console.error(error);
   if (testPage) console.error(await testPage.locator('canvas').evaluate((c) => JSON.stringify(c.dataset)).catch(() => ''));
