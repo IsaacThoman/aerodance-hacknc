@@ -1,17 +1,17 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import {
-  FONT, drawCaps, drawGlassCircle, drawGlassPanel, drawHeader, drawPill, drawPlayerLeds, drawProgress, drawShadowText, ellipsize, ICONS,
+  FONT, drawCaps, drawGlassCircle, drawGlassPanel, drawHeader, drawHeadline as headline, drawPill, drawPlayerLeds, drawProgress, drawShadowText, ellipsize, ICONS,
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { playUISound } from '../audio/uiSounds.js';
 import { COUNTDOWN_MS, READY_HOLD_MS } from './GameSession.js';
 import { WEBCAM_STILL_MS } from './webcamCalibration.js';
 import { drawWebcamPreview } from '../../../packages/pose/browser/preview.js';
-import { PLAYERS, REVEAL, backOut, clamp01, timeline } from './results.js';
+import { PLAYERS, backOut, clamp01 } from './results.js';
 import {
   GAME_CALIBRATION_PREVIEW, GAME_CALIBRATION_PROGRESS, GAME_PAUSE, GAME_PAUSE_PANEL, GAME_PROGRESS, GAME_QUIT, GAME_READY_BACK, GAME_READY_START, GAME_RESTART, GAME_RESUME,
-  LIVE_PANEL, RESULTS_CONTINUE, RESULTS_RETRY, RESULTS_SONGS, livePanelCenterX,
+  LIVE_PANEL, livePanelCenterX,
 } from './layout.js';
 
 /**
@@ -25,12 +25,11 @@ import {
  *   playing    each player's score, combo and judgements under their live character, the
  *              song's progress, and a pause button (Escape, the remote's B, a hidden tab)
  *   paused     Resume (with a fresh countdown), Restart, Song select
- *   results    the winner (or the solo score), grades and judgements, a new best, then
- *              Play again / Song select (or Continue, back to a battle)
+ *   results    hands the overlay to ResultsScreen, shared with finished battles
  *
  * The canvas reports data-game-phase, -game-countdown, -game-time-ms and -game-scores for tests.
  *
- * <GameScreen visible session={GameSession} results={ref} battle onQuit onRetry onContinue />
+ * <GameScreen visible session={GameSession} onQuit onRetry />
  */
 
 const JUDGEMENT_LOOK = {
@@ -41,7 +40,6 @@ const JUDGEMENT_LOOK = {
   lost: ['LOST TRACKING', ['#ffffff', '#e2e9f2', '#9fb3c8']],
 };
 const POPUP_S = 0.9;
-const GOLD = ['#fff6cc', '#ffd34d', '#f0a500'];
 const CALIBRATION_STATUS = {
   missing: ['Step into view', '#ffffff'],
   body: ['Keep shoulders, hips and feet in view', '#ffe27a'],
@@ -54,34 +52,6 @@ const fmt = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
-const pct = (x) => `${Math.round(x * 100)}%`;
-
-/** Headline in the wordmark's treatment: dark halo, hard drop shadow, glossy tinted face. */
-function headline(g, str, x, y, size, face, maxW) {
-  g.save();
-  if ('letterSpacing' in g) g.letterSpacing = `${-size * 0.015}px`;
-  g.font = `800 ${size}px ${FONT}`;
-  g.textAlign = 'center';
-  g.textBaseline = 'alphabetic';
-  g.shadowColor = 'rgba(0, 28, 70, 0.55)';
-  g.shadowBlur = 46;
-  g.shadowOffsetY = 10;
-  g.fillStyle = 'rgba(0, 40, 90, 0.35)';
-  g.fillText(str, x, y, maxW);
-  g.shadowColor = 'rgba(0, 34, 84, 0.75)';
-  g.shadowBlur = 4;
-  g.shadowOffsetY = size * 0.09;
-  g.fillStyle = '#ffffff';
-  g.fillText(str, x, y, maxW);
-  g.shadowColor = 'transparent';
-  const grad = g.createLinearGradient(0, y - size * 0.75, 0, y);
-  grad.addColorStop(0, face[0]);
-  grad.addColorStop(0.5, face[1]);
-  grad.addColorStop(1, face[2]);
-  g.fillStyle = grad;
-  g.fillText(str, x, y, maxW);
-  g.restore();
-}
 
 function drawPlayerHud(g, id, result, readiness, popups, now) {
   const cx = livePanelCenterX(id) * 1600;
@@ -108,74 +78,13 @@ function drawPlayerHud(g, id, result, readiness, popups, now) {
   }
 }
 
-function drawResults(g, show, now, song, battle) {
-  const { results, winner } = show;
-  const { t, count, reveal } = timeline(show, now);
-  const solo = results.length === 1;
-  let title;
-  let face = ['#ffffff', '#ffffff', '#d5f3ff'];
-  let pop = 1;
-  if (solo) title = 'SONG COMPLETE!';
-  else if (t < REVEAL) title = 'And the winner is…';
-  else {
-    pop = backOut(clamp01((t - REVEAL) / 0.32));
-    if (winner === null) { title = "IT'S A TIE!"; face = GOLD; }
-    else { const p = PLAYERS[winner]; title = `${p.name.toUpperCase()} WINS!`; face = ['#ffffff', p.light, p.color]; }
-  }
-  g.save();
-  g.translate(800, 116);
-  g.scale(pop, pop);
-  headline(g, title, 0, 0, t < REVEAL && !solo ? 70 : 96, face, 1200);
-  g.restore();
-  g.font = `600 24px ${FONT}`;
-  drawShadowText(g, ellipsize(g, `${song.title} · ${song.artist}`, 1100), 800, 172, { size: 24, weight: 600, align: 'center' });
-
-  const xs = solo ? [800] : [500, 1100];
-  results.forEach((r, i) => {
-    const x = xs[i];
-    const p = PLAYERS[i];
-    const win = !solo && winner === i;
-    const lose = !solo && winner !== null && !win;
-    g.save();
-    g.globalAlpha *= lose ? 1 - 0.2 * reveal : 1;
-    const status = solo ? 'FINAL SCORE' : winner === null && t >= REVEAL ? 'TIED' : null;
-    if (status) drawCaps(g, status, x, 590, { size: 20, align: 'center' });
-    drawPlayerLeds(g, x - 104, 624, { player: i + 1, glow: 1, scale: 0.36 });
-    drawCaps(g, p.name.toUpperCase(), x - 52, 625, { size: 22 });
-    const grow = win ? 0.12 * backOut(clamp01((t - REVEAL) / 0.32)) : 0;
-    g.save();
-    g.translate(x, 700);
-    g.scale(1 + grow, 1 + grow);
-    headline(g, Math.round(r.score * count).toLocaleString('en-US'), 0, 0, 78, win && reveal > 0 ? GOLD : ['#ffffff', p.light, p.color], 520);
-    g.restore();
-    // Grade, accuracy and judgements once the count finishes.
-    g.globalAlpha *= clamp01((t - REVEAL + 0.2) / 0.4);
-    const j = r.judgements;
-    g.font = `800 24px ${FONT}`;
-    drawShadowText(g, `Grade ${r.grade} · ${pct(r.accuracy)}`, x, 742, { size: 24, weight: 800, align: 'center' });
-    const line = `${j.perfect} Perfect · ${j.good} Good · ${j.ok} OK · ${j.miss + j.lost} Miss · combo ${r.maxCombo}`;
-    g.font = `700 19px ${FONT}`;
-    drawShadowText(g, ellipsize(g, line, 560), x, 770, { size: 19, weight: 700, align: 'center', color: '#e6f8ff' });
-    if (r.coverage < 0.8) drawShadowText(g, `Tracked for ${pct(r.coverage)} of the song`, x, 560, { size: 19, weight: 700, align: 'center', color: '#ffe27a' });
-    g.restore();
-  });
-  if (show.best?.isNewBest && !battle) {
-    g.save();
-    g.globalAlpha *= clamp01((t - REVEAL - 0.3) / 0.4);
-    headline(g, 'NEW BEST!', 800, 232, 40, GOLD, 600);
-    g.restore();
-  } else if (show.best?.best && !battle) {
-    drawShadowText(g, `Best ${show.best.best.score.toLocaleString('en-US')} (${show.best.best.grade})`, 800, 222, { size: 22, weight: 700, align: 'center', color: '#bff4ff' });
-  }
-}
-
-export default function GameScreen({ visible = false, blocked = false, session, results, battle = false, onQuit, onRetry, onContinue }) {
+export default function GameScreen({ visible = false, blocked = false, session, onQuit, onRetry }) {
   const gl = useThree((state) => state.gl);
   const props = useRef({});
-  props.current = { visible, blocked, session, results, battle, onQuit, onRetry, onContinue };
+  props.current = { visible, blocked, session, onQuit, onRetry };
   const st = useRef({ alpha: 0, popups: [], reported: '', countdownShown: null }).current;
 
-  const live = () => props.current.visible && !props.current.blocked && st.alpha > 0.3;
+  const live = () => props.current.visible && !props.current.blocked && phase() !== 'results' && st.alpha > 0.3;
   const phase = () => props.current.session?.phase ?? 'loading';
 
   const ui = useCanvasUI({
@@ -191,9 +100,6 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       }
       if (ph === 'countdown' || ph === 'playing') return [{ id: 'pause', circle: GAME_PAUSE, nav: false }];
       if (ph === 'paused') return [{ id: 'resume', rect: GAME_RESUME }, { id: 'restart', rect: GAME_RESTART }, { id: 'quit', rect: GAME_QUIT, sound: 'back' }];
-      if (ph === 'results') {
-        return props.current.battle ? [{ id: 'continue', rect: RESULTS_CONTINUE }] : [{ id: 'retry', rect: RESULTS_RETRY }, { id: 'quit', rect: RESULTS_SONGS }];
-      }
       return [];
     },
     onActivate: (wdg, s) => {
@@ -204,7 +110,6 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       else if (wdg.id === 'resume') session?.resume();
       else if (wdg.id === 'restart' || wdg.id === 'retry') p.onRetry?.();
       else if (wdg.id === 'quit') p.onQuit?.();
-      else if (wdg.id === 'continue') p.onContinue?.();
       s.invalidate();
     },
     onKey: (e, s) => {
@@ -319,16 +224,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
         return;
       }
 
-      if (ph === 'results') {
-        const show = p.results?.current;
-        if (show) drawResults(g, show, performance.now() / 1000, song, p.battle);
-        if (p.battle) drawPill(g, RESULTS_CONTINUE, { label: 'Continue', icon: 'right', hover: h.continue ?? 0, press: press('continue') });
-        else {
-          drawPill(g, RESULTS_RETRY, { label: 'Play again', icon: 'replay', hover: h.retry ?? 0, press: press('retry') });
-          drawPill(g, RESULTS_SONGS, { label: 'Song select', icon: 'list', hover: h.quit ?? 0, press: press('quit') });
-        }
-        return;
-      }
+      if (ph === 'results') return; // ResultsScreen owns every completed round.
 
       // During the song: the players' scores, judgements and the song's progress.
       const scores = session.scorer.results();

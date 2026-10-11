@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { Suspense, createRef, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import Character from '../../../packages/character/Character.jsx';
@@ -126,13 +126,14 @@ function Confetti({ colors, show }) {
 export default function ResultsDancers({ motion, playback, show, floor, accent }) {
   const { position = [0, 0, 0], rotationY = 0, spacing = 4, scale = 1 } = floor;
   const s0 = show.current;
-  const solo = s0.results.length === 1;
-  const seats = solo ? [0] : [0, 1];
-  const groups = [useRef(), useRef()];
-  const halo = [useRef(0), useRef(0)];
+  const count = s0.results.length;
+  const solo = count === 1;
+  const seats = Array.from({ length: count }, (_, i) => i);
+  const groups = useMemo(() => seats.map(() => createRef()), [count]);
+  const halo = useMemo(() => seats.map(() => ({ current: 0 })), [count]);
   const column = useRef(0);
-  const winColor = s0.winner === null ? GOLD : PLAYERS[s0.winner].color;
-  const confettiColors = useMemo(() => (s0.winner === null ? [GOLD, '#ffffff', accent[0]] : [PLAYERS[s0.winner].color, PLAYERS[s0.winner].light, '#ffffff', accent[0], GOLD]), [s0.winner, accent]);
+  const winColor = s0.winner === null ? GOLD : PLAYERS[s0.winner % PLAYERS.length].color;
+  const confettiColors = useMemo(() => (s0.winner === null ? [GOLD, '#ffffff', accent[0]] : [PLAYERS[s0.winner % PLAYERS.length].color, PLAYERS[s0.winner % PLAYERS.length].light, '#ffffff', accent[0], GOLD]), [s0.winner, accent]);
 
   useFrame(() => {
     const s = show.current;
@@ -142,7 +143,7 @@ export default function ResultsDancers({ motion, playback, show, floor, accent }
     seats.forEach((seat) => {
       const g = groups[seat].current;
       if (!g) return;
-      const start = solo ? 0 : (seat === 0 ? -1 : 1) * (spacing / 2);
+      const start = solo ? 0 : (seat - (count - 1) / 2) * spacing / (count > 2 ? 2 : 1);
       let x = start;
       let z = 0;
       let sc = 1;
@@ -150,7 +151,7 @@ export default function ResultsDancers({ motion, playback, show, floor, accent }
       else if (s.winner === seat) { x = start * (1 - k); z = 0.8 * k; }
       else if (s.winner !== null) { x = start * (1 + 0.55 * k); z = -1.6 * k; sc = 1 - 0.15 * k; }
       g.position.set(x, 0, z);
-      g.scale.setScalar(sc);
+      g.scale.setScalar(sc * (count > 2 ? 0.65 : 1));
       const lit = solo || s.winner === null || s.winner === seat;
       halo[seat].current = lit ? glow : 0;
     });
@@ -167,9 +168,9 @@ export default function ResultsDancers({ motion, playback, show, floor, accent }
           <group key={seat} ref={groups[seat]}>
             {/* Mirrored like a dance coach, on an inner group: the outer one is rescaled every frame. */}
             <group scale={[-1, 1, 1]}>
-              <Character motion={motion} person={seat} playback={playback} appearance={DANCER_LOOKS[seat]} />
+              <Character motion={motion} person={seat % 2} playback={playback} appearance={DANCER_LOOKS[seat % DANCER_LOOKS.length]} />
             </group>
-            <Halo color={featured === null ? GOLD : PLAYERS[seat].color} intensity={halo[seat]} />
+            <Halo color={featured === null ? GOLD : PLAYERS[seat % PLAYERS.length].color} intensity={halo[seat]} />
           </group>
         ))}
       </Suspense>

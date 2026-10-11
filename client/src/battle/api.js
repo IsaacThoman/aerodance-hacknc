@@ -42,6 +42,13 @@ export const seatTokens = {
   },
 };
 
+// Remember the song/stage and detailed grades for finished links reopened in this tab.
+// Public battle state remains authoritative for scores and the winner.
+export const battleResults = {
+  get: (id) => session.get(`aerodance.battleResults.${id}`),
+  set: (id, song, results) => session.set(`aerodance.battleResults.${id}`, { song, results }),
+};
+
 export async function createBattle(players = 2) {
   const battle = await api('POST', '/battles', { players });
   seatTokens.add(battle.id, Object.fromEntries(battle.players.map((p) => [p.seat, p.token])));

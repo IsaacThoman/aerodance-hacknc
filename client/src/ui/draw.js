@@ -893,3 +893,30 @@ export function drawPlayerLeds(g, cx, cy, { player, glow = 1, scale = 1 } = {}) 
     g.restore();
   }
 }
+
+/** Headline in the wordmark's treatment: dark halo, hard drop shadow, glossy tinted face. */
+export function drawHeadline(g, str, x, y, size, face, maxW) {
+  g.save();
+  if ('letterSpacing' in g) g.letterSpacing = `${-size * 0.015}px`;
+  g.font = `800 ${size}px ${FONT}`;
+  g.textAlign = 'center';
+  g.textBaseline = 'alphabetic';
+  g.shadowColor = 'rgba(0, 28, 70, 0.55)';
+  g.shadowBlur = 46;
+  g.shadowOffsetY = 10;
+  g.fillStyle = 'rgba(0, 40, 90, 0.35)';
+  g.fillText(str, x, y, maxW);
+  g.shadowColor = 'rgba(0, 34, 84, 0.75)';
+  g.shadowBlur = 4;
+  g.shadowOffsetY = size * 0.09;
+  g.fillStyle = '#ffffff';
+  g.fillText(str, x, y, maxW);
+  g.shadowColor = 'transparent';
+  const grad = g.createLinearGradient(0, y - size * 0.75, 0, y);
+  grad.addColorStop(0, face[0]);
+  grad.addColorStop(0.5, face[1]);
+  grad.addColorStop(1, face[2]);
+  g.fillStyle = grad;
+  g.fillText(str, x, y, maxW);
+  g.restore();
+}
