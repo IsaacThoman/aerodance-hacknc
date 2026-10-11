@@ -22,7 +22,7 @@ test('legacy import rejects invalid tuples, timestamps, IDs and confidence',()=>
   }
 });
 test('committed demo is a migrated object take, with all legacy scores retained',async()=>{
-  const data=JSON.parse(await readFile(new URL('../../temp/frutiger-character/client/public/motion/dance.json',import.meta.url)));
+  const data=JSON.parse(await readFile(new URL('../../packages/character/assets/dance.json',import.meta.url)));
   validateMotionTake(data);assert.equal(data.samples.length,420);
   for (const sample of data.samples) {
     assert.equal(sample.legacyConfidence.length,2);

@@ -22,7 +22,7 @@ export default defineConfig({
       await writeFile(`${options.dir}/songs/manifest.json`, JSON.stringify(catalog, null, 2) + '\n');
     },
   }],
-  // The menu dancers import code from temp/frutiger-character; keep one copy of each runtime.
+  // The menu dancers import code from packages/character; keep one copy of each runtime.
   resolve: { dedupe: ['react', 'react-dom', 'three', '@react-three/fiber'] },
   build: {
     outDir: '../dist',

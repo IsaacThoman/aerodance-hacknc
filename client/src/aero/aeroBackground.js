@@ -24,8 +24,8 @@ import { Water } from 'three/addons/objects/Water.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createMountainGeometry } from './mountainGeometry.js';
 import { createLakeNormalPixels } from './lakeNormals.js';
-import { createFlockInstances } from '../../../temp/flock-camera/client/world-instances.js';
-import flockCameraUrl from '../../../temp/flock-camera/client/public/models/flock-camera-world.glb?url';
+import { createFlockInstances } from './flock/world-instances.js';
+import flockCameraUrl from './flock/flock-camera-world.glb?url';
 
 const TAU = Math.PI * 2;
 
@@ -1038,7 +1038,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
   dcars.frustumCulled = false; root.add(dcars);
 
   /* ------------------------------------------------------- Flock cameras */
-  // Licence-plate camera poles (the World LOD from temp/flock-camera) on the kerb a little before
+  // Licence-plate camera poles (the World LOD in ./flock) on the kerb a little before
   // about half the intersections, aimed down the nearside lane at traffic heading into the junction.
   {
     const KERB = 12.2; // street centre to the kerb band (the road surface ends at 11.35 m)

@@ -3,7 +3,7 @@ import { Canvas, createPortal, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { PCFShadowMap } from 'three';
 import { validateMotion } from '../../../../packages/character/motion.js';
-import motionUrl from '../../../frutiger-character/client/public/motion/dance.json?url';
+import motionUrl from '../../../../packages/character/assets/dance.json?url';
 import { STAGES } from '../../../../packages/stages/index.js';
 import { RenderPipeline, resetPost } from '../../../../packages/stages/shared/post.jsx';
 import { HUD_HEIGHT, HUD_WIDTH, useHudLayer } from '../../../../packages/stages/shared/hud.jsx';

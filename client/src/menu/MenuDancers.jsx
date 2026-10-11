@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import Character from '../../../packages/character/Character.jsx';
 import { validateMotion } from '../../../packages/character/motion.js';
-import motionUrl from '../../../temp/frutiger-character/client/public/motion/dance.json?url';
+import motionUrl from '../../../packages/character/assets/dance.json?url';
 
 /**
  * The two captured Frutiger dancers on a glass puck, pinned to the right of the screen.

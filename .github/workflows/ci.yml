@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          # Matches the Dockerfile's node:24-alpine image.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run studio:test
+      - run: npm run build
+      - run: npm run studio:build
+
+  browser:
+    # The canvas UI flow in Chromium; the Dockerfile's ui-test stage brings Playwright.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build --target ui-test -t aerodance-ui-browser-test .
+      - run: docker run --rm aerodance-ui-browser-test
