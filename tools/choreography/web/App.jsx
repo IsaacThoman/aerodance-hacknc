@@ -906,7 +906,7 @@ export default function App() {
             await openProject(await request('/api/projects',{method:'POST',body:{}}));
             await refresh();
           })}>Create new project</button>
-          <small>Existing projects are preserved. Open incompatible projects with an editor that supports their format.</small>
+          <small>Existing projects are preserved.</small>
         </>}
       </div>
     );
@@ -928,18 +928,19 @@ export default function App() {
             aria-label="Open project"
             value={project.projectId}
             disabled={recording || busy}
-            onChange={(e) =>
-              execute(async () => {
+            onChange={(e) => {
+              const projectId = e.currentTarget.value;
+              return execute(async () => {
                 await saveProject();
                 await openProject(
-                  await request(`/api/projects/${e.target.value}`),
+                  await request(`/api/projects/${projectId}`),
                 );
-              })
-            }
+              });
+            }}
           >
             {projects.map((p) => (
-              <option value={p.projectId} key={p.projectId} disabled={p.schemaVersion != null && p.schemaVersion !== 1}>
-                {p.title}{p.schemaVersion != null && p.schemaVersion !== 1 ? ` (requires project format ${p.schemaVersion})` : ''}
+              <option value={p.projectId} key={p.projectId} disabled={p.schemaVersion != null && ![1, 2].includes(p.schemaVersion)}>
+                {p.title}{p.schemaVersion != null && ![1, 2].includes(p.schemaVersion) ? ` (unsupported project format ${p.schemaVersion})` : ''}
               </option>
             ))}
           </select>
