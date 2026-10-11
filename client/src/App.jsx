@@ -21,7 +21,6 @@ import StageView from './stage/StageView.jsx';
 import { resolveStage } from '../../packages/stages/catalog.js';
 import { AndroidPoseSource } from './pose/AndroidPoseSource.js';
 import { ReplayPoseSource, parseRecording } from './pose/ReplayPoseSource.js';
-import { socket } from './socket.js';
 
 function FixedRenderResolution() {
   const gl = useThree((state) => state.gl);
@@ -93,8 +92,6 @@ export default function App() {
 }
 
 function DisplayApp() {
-  const [connected, setConnected] = useState(socket.connected);
-  const [stats, setStats] = useState({ online: 0 });
   // 'menu' (MainMenu, opening on menuScreen), 'songs' (Song Select) or 'game' (a song).
   const [screen, setScreen] = useState('menu');
   const [menuScreen, setMenuScreen] = useState('main');
@@ -261,21 +258,6 @@ function DisplayApp() {
   // Music, Menu music, Mute all).
   useLoopingMusic('/music/pod-lounge.mp3', 'menuMusic');
 
-  useEffect(() => {
-    const onConnect = () => setConnected(true);
-    const onDisconnect = () => setConnected(false);
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on('stats', setStats);
-    // The socket may have connected before these listeners were added.
-    setConnected(socket.connected);
-    return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('stats', setStats);
-    };
-  }, []);
-
   const inBattleSong = !!battleId && (battleStage === 'songs' || battleStage === 'game');
   const songsOpen = screen === 'songs' && (!battleId || battleStage === 'songs');
   const gameRoutine = useMemo(() => game?.routine() ?? null, [game]);
@@ -363,13 +345,6 @@ function DisplayApp() {
           onInputModeChange={changeInputMode}
         />
       </Canvas>
-      <div className="hud">
-        <div>
-          <span className={`status ${connected ? 'online' : ''}`} />
-          {connected ? 'Server online' : 'Server offline'}
-        </div>
-        <div>online: {stats.online}</div>
-      </div>
     </div>
   );
 }
