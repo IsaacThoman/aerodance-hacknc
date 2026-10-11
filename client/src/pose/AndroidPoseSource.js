@@ -1,12 +1,11 @@
 import { deviceEndpoint, NdjsonDecoder, PoseState } from './protocol.js';
-import { ClockSync } from './clockSync.js';
+import { StreamClock } from './streamClock.js';
 
-// Camera exposure and readout before Android's frame callback. Not measured on the board yet
-// (docs/scoring.md): one 30 fps frame is the working estimate. Never tune it from scores.
-export const CAPTURE_DELAY_MS = 33;
-// Without clock sync, the network's share of the delay: a typical one-way Wi-Fi trip.
-const FALLBACK_NETWORK_MS = 15;
+// The delay the stream clock can't see: the fastest delivery from Android to the browser, and
+// the camera's own delay before Android's frame callback. An estimate, not yet measured.
+export const LATENCY_EXTRA_MS = 10;
 const NO_TIMING = { method: 'none', uncertaintyMs: null };
+const STREAM_TIMING = { method: 'stream-clock', uncertaintyMs: null };
 
 const wait = (ms, signal) => new Promise((resolve, reject) => {
   const abort = () => { clearTimeout(timer); reject(new Error('Connection cancelled')); };
@@ -19,9 +18,10 @@ const wait = (ms, signal) => new Promise((resolve, reject) => {
  * Transport stays independent of React and the game/backend connection.
  *
  * Record listeners get { record, receivedBrowserTimeMs, captureBrowserTimeMs, timing }:
- * captureBrowserTimeMs is when the camera saw the pose, on the performance.now() clock. With
- * Android's /v1/time (capabilities.timeSync) it comes from the synchronized clocks; otherwise
- * it is estimated from arrival less Android's processing time (timing.method says which).
+ * captureBrowserTimeMs is when the camera saw the pose, on the performance.now() clock: its
+ * frameReceivedTimeMs mapped through the stream clock (streamClock.js), less LATENCY_EXTRA_MS.
+ * The fastest-delivered pose lands at arrival less Android's detection time and
+ * LATENCY_EXTRA_MS; slower ones keep their frame times instead of absorbing the network delay.
  */
 export class AndroidPoseSource {
   constructor({ fetch: request = globalThis.fetch.bind(globalThis), now = () => performance.now() } = {}) {
@@ -32,8 +32,8 @@ export class AndroidPoseSource {
     this.playerCount = 1;
     this.generation = 0;
     this.state = new PoseState();
+    this.clock = new StreamClock();
     this.view = { status: 'disconnected', message: '', snapshot: null, configuring: false, timing: NO_TIMING };
-    this.clock = null;
   }
   subscribe(listener) {
     this.listeners.add(listener);
@@ -53,37 +53,15 @@ export class AndroidPoseSource {
     this.generation++;
     this.controller?.abort();
     clearInterval(this.watchdog);
-    this.stopClock();
     this.state = new PoseState();
+    this.clock = new StreamClock();
     this.boundary = null;
     this.publish({ status: 'disconnected', snapshot: null, configuring: false, message: '', timing: NO_TIMING });
   }
-  stopClock() {
-    this.clock?.stop();
-    this.clock = null;
-  }
-  /** Synchronizes with Android's clock in the background; the stream never waits for it. */
-  startClock(info, signal) {
-    this.stopClock();
-    if (!info.capabilities?.timeSync) {
-      this.publish({ timing: { method: 'receipt-estimate', uncertaintyMs: null } });
-      return;
-    }
-    this.publish({ timing: { method: 'receipt-estimate', uncertaintyMs: null } });
-    const clock = new ClockSync({
-      request: this.request, now: this.now, base: this.base, sessionId: info.sessionId,
-      onUpdate: (e) => {
-        if (this.clock === clock && e) this.publish({ timing: { method: 'clock-sync', uncertaintyMs: e.uncertaintyMs } });
-      },
-    });
-    this.clock = clock;
-    clock.start(signal).catch(() => {});
-  }
   /** When the camera saw a pose record, on the browser clock. */
   captureTime(record, receivedBrowserTimeMs) {
-    const synced = this.clock?.toBrowser(record.frameReceivedTimeMs);
-    if (synced !== null && synced !== undefined) return synced - CAPTURE_DELAY_MS;
-    return receivedBrowserTimeMs - (record.resultTimeMs - record.frameReceivedTimeMs) - FALLBACK_NETWORK_MS - CAPTURE_DELAY_MS;
+    this.clock.observe(record.resultTimeMs, receivedBrowserTimeMs);
+    return this.clock.toBrowser(record.frameReceivedTimeMs) - LATENCY_EXTRA_MS;
   }
   connect(ip) {
     const base = deviceEndpoint(ip);
@@ -162,6 +140,7 @@ export class AndroidPoseSource {
       const abort = () => attempt.abort();
       signal.addEventListener('abort', abort, { once: true });
       this.state = new PoseState();
+      this.clock = new StreamClock(); // Android may have rebooted onto a new clock
       this.boundary = null;
       this.publish({ status: this.connectedOnce ? 'reconnecting' : 'connecting', snapshot: null, message: 'Checking Android camera…' });
       let startupTimedOut = false;
@@ -192,8 +171,7 @@ export class AndroidPoseSource {
         startupTimeout = setTimeout(startupExpired, 90000);
         if (signal.aborted || token !== this.generation) return;
         this.connectedOnce = true;
-        this.startClock(info, attempt.signal);
-        this.publish({ status: 'initializing', snapshot: null,
+        this.publish({ status: 'initializing', snapshot: null, timing: STREAM_TIMING,
           message: 'Starting camera and pose tracking. This can take up to 90 seconds.', model: info.capabilities.poseModel });
         try { localStorage.setItem('aerodance-client-ip', this.ip); } catch { /* Storage may be disabled. */ }
         this.state.lastRecord = this.now();
@@ -228,7 +206,6 @@ export class AndroidPoseSource {
         attempt.abort();
         if (reader) { await reader.cancel().catch(() => {}); reader.releaseLock(); }
       }
-      this.stopClock();
       if (signal.aborted || token !== this.generation) return;
       this.state = new PoseState();
       const message = `${(failure?.message || 'Connection interrupted').replace(/\.$/, '')}. Check Android Start, Wi-Fi, the allowed origin, and browser local-network permission.`;

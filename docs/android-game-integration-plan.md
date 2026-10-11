@@ -21,7 +21,8 @@ real-board and deployed HTTPS acceptance remain outstanding.
 **Gameplay status (2026-10-11).** Dance! on the preview now plays a song for a score:
 a ready check, the scheduled three-second countdown, live player characters in the top
 corners, pause/resume, the late-arrival allowance and a results screen; battles report
-real scores. Browser clock mapping uses Android's `GET /v1/time`, and scoring follows
+real scores. Browser clock mapping comes from the pose stream itself (`client/src/pose/streamClock.js`;
+Android's `GET /v1/time` is no longer used), and scoring follows
 [the scoring document](scoring.md). See [the completion plan](game-completion-plan.md)
 for what remains: human-labelled scoring evaluation, the camera capture-delay
 measurement, real-board and HTTPS acceptance, and more songs.

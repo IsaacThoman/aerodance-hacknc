@@ -15,7 +15,7 @@ The first implementation pass (branch `feat/playable-game`) built M0–M5 in cod
 | M0 Foundations | GitHub Actions CI (web, Docker browser flow, Android); the client no longer imports from `temp/`; `ReplayPoseSource` (autoplay ghost and recording replay) and pose recordings (`?record`). | Record real sessions on the board as the fixture set. |
 | M1 Gameplay loop | Ready check, scheduled countdown, pause/resume, finishing allowance, results with Play again / Song select, best scores; browser flow covers a whole scored song. | — |
 | M2 Live characters | Live calibration, held joints, display smoothing, corner panels on every stage. | Manual check of left/right, crossed arms, crouch, foot lifts with people on the board. |
-| M3 Timing | `GET /v1/time` on Android, browser clock sync, audible-clock mapping, capture-time placement, 750 ms late allowance. | Measure the board's camera delay (`CAPTURE_DELAY_MS` is an estimate); have Dance Studio's recorder use the clock sync. |
+| M3 Timing | `GET /v1/time` on Android (since replaced in the browser by a stream-derived clock mapping, `streamClock.js`), audible-clock mapping, capture-time placement, 750 ms late allowance. | Measure the remaining delay (`LATENCY_EXTRA_MS` is an estimate); have Dance Studio's recorder use the stream clock. |
 | M4 Scoring | `packages/score` (scorer v1), HUD judgements and combo, deterministic tests, [docs/scoring.md](scoring.md). | Tune thresholds against human-ranked recordings. |
 | M5 Battles | Battles play a real song and report real scores; phones follow `danceMs`; the fake dance is gone. | A real two-person battle end to end. |
 

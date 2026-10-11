@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AndroidPoseSource } from '../src/pose/AndroidPoseSource.js';
+import { AndroidPoseSource, LATENCY_EXTRA_MS } from '../src/pose/AndroidPoseSource.js';
 
 const info = { protocolVersion: 2, sessionId: 'session', pipelineState: 'running', capabilities: { supportedPlayerCounts: [1, 2], poseModel: 'synthetic' } };
 const record = (seq, playerCount = 1, ids = [0]) => ({ protocolVersion: 2, type: 'pose', sessionId: 'session', seq, playerCount,
@@ -177,4 +177,19 @@ test('disconnect cancels an open initializing stream and its timeout', async t =
   t.mock.timers.tick(95000); await tick();
   assert.equal(h.source.view.status, 'disconnected');
   assert.equal(h.requests.filter(r => r.url.endsWith('/v1/stream')).length, 1);
+});
+
+test('poses keep their frame times when the network delays them', async t => {
+  const h = harness(t), records = [];
+  h.source.subscribeRecords(envelope => records.push(envelope));
+  h.source.connect('192.168.43.1'); await tick();
+  const pose = (seq, frame) => ({ ...record(seq), frameReceivedTimeMs: frame, resultTimeMs: frame + 120 });
+  h.advance(5000); h.send(pose(1, 77)); await tick();
+  assert.equal(records[0].timing.method, 'stream-clock');
+  // The first pose: arrival less 120 ms of detection on Android and LATENCY_EXTRA_MS.
+  assert.equal(records[0].captureBrowserTimeMs, 5000 - 120 - LATENCY_EXTRA_MS);
+  // Wi-Fi stalls; the next two poses arrive together, 400 ms late.
+  h.advance(5500); h.send(pose(2, 177)); h.send(pose(3, 277)); await tick();
+  assert.ok(Math.abs(records[1].captureBrowserTimeMs - (5100 - 120 - LATENCY_EXTRA_MS)) < 0.2);
+  assert.ok(Math.abs(records[2].captureBrowserTimeMs - (5200 - 120 - LATENCY_EXTRA_MS)) < 0.2);
 });

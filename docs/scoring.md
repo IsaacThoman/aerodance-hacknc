@@ -22,12 +22,12 @@ which drives the pop-ups and the combo.
   ineligible (`quality.scoreEligible`) and the track's `unscorableIntervals` never count.
 - **Live poses.** Every pose record from the pose source, placed at the song position
   that was audible when the camera captured it, not when the pose arrived:
-  - Android with clock sync (`GET /v1/time`, `capabilities.timeSync`): the frame time
-    `frameReceivedTimeMs` mapped onto the browser clock, less `CAPTURE_DELAY_MS`
-    ([`client/src/pose/clockSync.js`](../client/src/pose/clockSync.js)).
-  - Android without clock sync: arrival time, less Android's processing time
-    (`resultTimeMs - frameReceivedTimeMs`), a 15 ms network allowance and
-    `CAPTURE_DELAY_MS`.
+  - Android: the frame time `frameReceivedTimeMs` mapped onto the browser clock, less
+    `LATENCY_EXTRA_MS` (10 ms). The mapping comes from the stream alone
+    ([`client/src/pose/streamClock.js`](../client/src/pose/streamClock.js)): the
+    smallest arrival-minus-`resultTimeMs` seen is the clock offset plus the fastest
+    delivery, so a pose delayed by Wi-Fi or delivered in a burst keeps its real time.
+    The estimate follows clock drift of up to 200 ppm and resets on each connection.
   - The browser time then goes through the song player's audible clock (`songTimeAt`,
     from `AudioContext.getOutputTimestamp`, or `currentTime - outputLatency`).
 - **Late arrivals.** Intervals are scored 750 ms behind the song (`LATE_ALLOWANCE_MS`),
@@ -122,6 +122,6 @@ against people dancing**: no human-labelled set of attempts exists yet, which is
 next step the integration plan calls for. Play with `?record` in the URL to download
 each song's live poses as a recording. Replay one with
 `?input=recording&recording=<url>`, and score a batch of recordings to compare against
-human rankings. `CAPTURE_DELAY_MS` (33 ms) is a working estimate for the board's camera
-until it is measured with an external timing test. It must never be tuned to raise
-scores.
+human rankings. `LATENCY_EXTRA_MS` (10 ms) is a working estimate for the network and
+camera delay not covered by the detection time, until it is measured with an external
+timing test. It must never be tuned to raise scores.
