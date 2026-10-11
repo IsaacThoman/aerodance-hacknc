@@ -11,6 +11,7 @@ import DebugPanel from './battle/DebugPanel.jsx';
 import { FAKE_DANCE_MS, fakeDance } from './battle/fakeDance.js';
 import { api, createBattle, seatTokens, startBattle, useBattle } from './battle/api.js';
 import PhoneApp from './phone/PhoneApp.jsx';
+import ConnectionPanel from './connect/ConnectionPanel.jsx';
 import { AndroidPoseSource } from './pose/AndroidPoseSource.js';
 import { socket } from './socket.js';
 
@@ -58,6 +59,8 @@ function DisplayApp() {
   const [inputMode, setInputMode] = useState('android');
   const [source] = useState(() => new AndroidPoseSource());
   const [connection, setConnection] = useState(source.view);
+  // The Connect Client card holds the menus while it's open.
+  const [connectOpen, setConnectOpen] = useState(false);
   const menuOpen = screen === 'menu';
   const selectedConnection = inputMode === 'webcam'
     ? { status: 'dummy', snapshot: null, message: 'Webcam dummy selected. Continue through the menus to test the flow.' }
@@ -160,6 +163,7 @@ function DisplayApp() {
         <MenuDancers visible={menuOpen || !!battleId} />
         <MainMenu
           visible={menuOpen && !battleId}
+          blocked={connectOpen}
           initialScreen={menuScreen}
           onStart={choosePlayers}
           onBattle={newBattle}
@@ -179,6 +183,15 @@ function DisplayApp() {
           onMenu={() => openBattle(null)}
         />
         <DebugPanel battle={battleId ? battle : null} />
+        <ConnectionPanel
+          visible={!battleId}
+          open={connectOpen}
+          onOpenChange={setConnectOpen}
+          source={source}
+          connection={selectedConnection}
+          inputMode={inputMode}
+          onInputModeChange={changeInputMode}
+        />
       </Canvas>
       <div className="hud">
         <div>

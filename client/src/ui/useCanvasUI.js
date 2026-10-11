@@ -19,7 +19,7 @@ import { playUISound } from '../audio/uiSounds.js';
  *   onActivate: (wdg, ui) => {},          // press and release on the same widget
  *   onDrag: (wdg, point, ui) => {},       // widgets with drag: true (sliders)
  *   onKey: (event, ui) => {},
- *   keyNav: bool,                         // arrow keys step through the widgets, Enter/Space presses
+ *   keyNav: bool | (ui) => bool,          // arrow keys step through the widgets, Enter/Space presses
  *   onBack: (ui) => {},                   // the phone remote's B button
  *   remote: EventTarget | null,           // phone remote input (default: remote/remoteLink.js):
  *                                         // move / down / up / back / leave, in design units
@@ -209,7 +209,9 @@ export default function useCanvasUI(options) {
     const center = (wdg) => (wdg.rect ? { x: wdg.rect.x + wdg.rect.w / 2, y: wdg.rect.y + wdg.rect.h / 2 } : { x: wdg.circle.x, y: wdg.circle.y });
     const onKey = (e) => {
       opts.current.onKey?.(e, s);
-      if (e.defaultPrevented || !opts.current.keyNav || !active() || e.metaKey || e.ctrlKey || e.altKey) return;
+      const { keyNav } = opts.current;
+      if (e.defaultPrevented || !(typeof keyNav === 'function' ? keyNav(s) : keyNav) || !active()) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]')) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         const list = (opts.current.widgets?.(s) ?? []).filter((wdg) => !wdg.drag && wdg.nav !== false);
