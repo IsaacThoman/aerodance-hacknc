@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useFrame, useLoader } from "@react-three/fiber";
+import { useFrame, useLoader, useThree } from "@react-three/fiber";
 import {
   AnimationMixer,
   MeshPhysicalMaterial,
@@ -10,6 +10,7 @@ import {
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createRetargeter } from "./motion.js";
 import { createPoseApplier } from "./retarget.js";
+import { LivePoseFilter } from './livePoseFilter.js';
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import modelUrl from "./assets/aero-character.glb?url";
 
@@ -21,6 +22,7 @@ export default function Character({
   playback,
   poseRef,
   calibration,
+  live = false,
   url = modelUrl,
 }) {
   const gltf = useLoader(GLTFLoader, url);
@@ -29,7 +31,9 @@ export default function Character({
     () => (motion ? createRetargeter(model, motion, person) : null),
     [model, motion, person],
   );
-  const applyPose = useMemo(() => calibration ? createPoseApplier(model, calibration) : null, [model, calibration]);
+  const applyPose = useMemo(() => calibration ? createPoseApplier(model, calibration, {smoothDistance:live}) : null, [model, calibration, live]);
+  const poseFilter=useMemo(()=>new LivePoseFilter(),[model,calibration,live]);
+  const invalidate=useThree(state=>state.invalidate);
   const mixer = useMemo(() => new AnimationMixer(model), [model]);
   const ink = useMemo(() => new MeshBasicMaterial({ color: "#020611" }), []);
   const gel = useMemo(() => {
@@ -125,7 +129,10 @@ export default function Character({
     };
   }, [animation, gltf, mixer, retarget, applyPose]);
   useFrame((_, delta) => {
-    if (applyPose) applyPose(poseRef.current);
+    if (applyPose) {
+      applyPose(live ? poseFilter.update(poseRef.current,delta) : poseRef.current,delta);
+      if(live && (poseFilter.settling || applyPose.settling)) invalidate();
+    }
     else if (retarget) retarget(playback.current);
     else mixer.update(Math.min(delta, 0.05));
   });

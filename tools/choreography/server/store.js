@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import {
+  COMPILER_VERSION,
   validateProject,
   validateTake,
   compileProject,
@@ -105,6 +106,7 @@ export class Store {
         const p = await this.read(folder, "project.json");
         projects.push({
           projectId: p.projectId,
+          schemaVersion: p.schemaVersion,
           title: p.metadata.title,
           artist: p.metadata.artist,
           updatedAt: p.updatedAt,
@@ -173,7 +175,7 @@ export class Store {
       rigProfile: "frutiger-seven-bone-v1",
       createdAt: p.createdAt,
       publishedAt: p.updatedAt,
-      build: { compilerVersion: "1.0.0", projectRevision: p.revision },
+      build: { compilerVersion: COMPILER_VERSION, projectRevision: p.revision },
     };
     const files = new Map([
       ["song.json", json(song)],

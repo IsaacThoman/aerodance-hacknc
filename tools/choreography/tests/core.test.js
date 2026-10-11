@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { poseModel, MEDIAPIPE_VERSION } from '../../../packages/pose/browser/models.js';
 import {
   newProject,
   addTake,
@@ -26,6 +27,39 @@ const pose = (playerId, x = 0.2) => ({
     visibility: 0.9,
     presence: 0.95,
   })),
+});
+test('webcam take timing follows frames despite variable inference latency and retains model provenance', () => {
+  const model = poseModel('full');
+  const metadata = { sourceKind: 'webcam', takeId: 'webcam-take', status: {
+    modelId: model.id, modelHash: model.sha256, packageVersion: MEDIAPIPE_VERSION, delegate: 'CPU',
+  } };
+  const records = [20, 180, 30].map((delay, i) => ({
+    receivedBrowserTimeMs: 1000 + i * 100 + delay,
+    audioPositionAtReceiptMs: 2000 + i * 100 + delay,
+    audioPositionAtFrameMs: 2000 + i * 100, audioPlaybackRate: 1,
+    record: { schema: 'aerodance.webcam-record', schemaVersion: 1, type: 'pose', sessionId: 'webcam', seq: i + 1,
+      playerCount: 2, input: { width: 640, height: 480, mirrored: false }, modelId: 'full',
+      frameBrowserTimeMs: 1000 + i * 100, resultBrowserTimeMs: 1000 + i * 100 + delay,
+      mediaTimeMs: i * 100, timingMethod: 'browser-frame-observation', poses: [pose(0), pose(1)] },
+  }));
+  const take = takeFromRecords(records, metadata);
+  assert.equal(take.source, 'webcam'); assert.equal(take.offsetMs, 2000);
+  assert.deepEqual(take.samples.map(s => s.takeTimeMs), [0, 100, 200]);
+  assert.equal(take.provenance.modelHash, model.sha256);
+  const changed = structuredClone(records); changed[1].record.modelId = 'lite';
+  assert.throws(() => takeFromRecords(changed, metadata), /changed/);
+  const android = structuredClone(records); android[1].record.schema = undefined; android[1].record.protocolVersion = 2;
+  assert.throws(() => takeFromRecords(android, metadata), /Invalid webcam/);
+});
+test('unsupported project tracks and null clips fail validation before the editor renders them', () => {
+  const project=newProject('format-fixture');
+  const future=structuredClone(project); future.schemaVersion=2;
+  future.tracks=future.tracks.map(({playerId,label})=>({playerId,label,dataId:'edited',originalDataId:'original',offsetMs:0}));
+  assert.throws(()=>validateProject(future),/Unsupported project format 2/);
+  const broken=structuredClone(project); broken.tracks[0].clips=[null,{takeId:'missing'}];
+  assert.throws(()=>validateProject(broken),/Invalid clips/);
+  const missing=structuredClone(project); delete missing.tracks[0].clips;
+  assert.throws(()=>validateProject(missing),/Invalid clips/);
 });
 function fixture() {
   const take = {

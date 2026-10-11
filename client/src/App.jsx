@@ -15,7 +15,7 @@ import ConnectionPanel from './connect/ConnectionPanel.jsx';
 import SongSelect from './game/SongSelect.jsx';
 import StageView from './stage/StageView.jsx';
 import { DEFAULT_STAGE } from '../../packages/stages/catalog.js';
-import { AndroidPoseSource } from './pose/AndroidPoseSource.js';
+import { PoseSourceController } from './pose/PoseSourceController.js';
 import { socket } from './socket.js';
 
 function FixedRenderResolution() {
@@ -58,9 +58,9 @@ function DisplayApp() {
   const [screen, setScreen] = useState('menu');
   const [menuScreen, setMenuScreen] = useState('main');
   const [playerCount, setPlayerCount] = useState(1);
-  // The pose input: the Android client, or the webcam dummy (menus only, no tracking yet).
+  // Shared live pose input for Android or an in-browser webcam.
   const [inputMode, setInputMode] = useState('android');
-  const [source] = useState(() => new AndroidPoseSource());
+  const [source] = useState(() => new PoseSourceController());
   const [connection, setConnection] = useState(source.view);
   // The Connect Client card holds the menus while it's open.
   const [connectOpen, setConnectOpen] = useState(false);
@@ -69,9 +69,7 @@ function DisplayApp() {
   const [stageId, setStageId] = useState(DEFAULT_STAGE);
   const [stage, setStage] = useState({ showing: false, ready: false, stage: null, failed: false });
   const menuOpen = screen === 'menu';
-  const selectedConnection = inputMode === 'webcam'
-    ? { status: 'dummy', snapshot: null, message: 'Webcam dummy selected. Continue through the menus to test the flow.' }
-    : connection;
+  const selectedConnection = connection;
   const [sound, setSound] = useState(loadSound);
   const [battleId, setBattleId] = useState(battleRoute);
   // Start pressed in the lobby; the dance itself hooks in here and reports with seatTokens.
@@ -131,18 +129,17 @@ function DisplayApp() {
   }, [source]);
 
   const changeInputMode = useCallback((mode) => {
-    source.disconnect();
+    source.setMode(mode);
     setInputMode(mode);
-    source.setPlayerCount(playerCount).catch(() => {});
-  }, [source, playerCount]);
+  }, [source]);
 
   // One or two players picked: Android switches modes at its next stream boundary.
   const choosePlayers = useCallback((count) => {
-    if (inputMode === 'android' && source.view.configuring) return;
+    if (source.view.configuring) return;
     setPlayerCount(count);
     setScreen('songs');
-    if (inputMode === 'android') source.setPlayerCount(count).catch(() => {});
-  }, [inputMode, source]);
+    source.setPlayerCount(count).catch(() => {});
+  }, [source]);
   const leaveSongs = useCallback(() => {
     setMenuScreen('players');
     setScreen('menu');

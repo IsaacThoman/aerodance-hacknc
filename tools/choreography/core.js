@@ -11,6 +11,9 @@ import {
 } from "../../packages/pose/choreography.js";
 import { calibratePoses } from "../../packages/character/calibration.js";
 import { DEFAULT_STAGE, STAGE_LIST } from "../../packages/stages/catalog.js";
+import { validateWebcamRecord } from '../../packages/pose/webcamRecord.js';
+import { poseModel, MEDIAPIPE_VERSION } from '../../packages/pose/browser/models.js';
+export const COMPILER_VERSION='1.1.0';
 
 export function newProject(id = crypto.randomUUID()) {
   const now = new Date().toISOString();
@@ -59,7 +62,7 @@ const assert = (ok, message) => {
 export function validateProject(p) {
   assert(
     p?.schema === "aerodance.project" && p.schemaVersion === 1,
-    "Unsupported project",
+    `Unsupported project format ${p?.schemaVersion ?? 'unknown'}. This editor supports project format 1.`,
   );
   assert(/^[a-zA-Z0-9-]{1,80}$/.test(p.projectId), "Invalid project ID");
   assert(
@@ -119,25 +122,26 @@ export function validateProject(p) {
   assert(
     Array.isArray(p.tracks) &&
       p.tracks.length === 2 &&
-      p.tracks[0].playerId === 0 &&
-      p.tracks[1].playerId === 1,
+      p.tracks[0]?.playerId === 0 &&
+      p.tracks[1]?.playerId === 1,
     "Two ordered tracks required",
   );
   assert(
     Array.isArray(p.takes) &&
+      p.takes.every(t => t && typeof t.takeId === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(t.takeId)) &&
       new Set(p.takes.map((t) => t.takeId)).size === p.takes.length,
     "Invalid takes",
   );
   const ids = new Set(p.takes.map((t) => t.takeId));
   for (const track of p.tracks) {
-    assert(Array.isArray(track.clips), "Invalid clips");
+    assert(Array.isArray(track.clips) && track.clips.every(c => c && typeof c === 'object'), "Invalid clips");
     const clips = [...track.clips].sort(
       (a, b) => a.songStartMs - b.songStartMs,
     );
     let end = -Infinity;
     for (const c of clips) {
       assert(
-        ids.has(c.takeId) &&
+        c && ids.has(c.takeId) &&
           [0, 1].includes(c.sourcePlayerId) &&
           ["sourceStartMs", "sourceEndMs", "songStartMs", "timeScale"].every(
             (k) => finite(c[k]),
@@ -348,6 +352,7 @@ export function importMotion(
   });
 }
 export function takeFromRecords(records, metadata) {
+  if (metadata.sourceKind === 'webcam') return webcamTakeFromRecords(records, metadata);
   const poses = records.filter((e) => e.record?.type === "pose");
   assert(poses.length >= 2, "Take needs at least two pose records");
   const first = poses[0],
@@ -442,6 +447,42 @@ export function takeFromRecords(records, metadata) {
     },
   });
 }
+export function webcamTakeFromRecords(records, metadata) {
+  const envelopes = records.filter(e => e.record);
+  assert(envelopes.length >= 2, 'Take needs at least two pose records');
+  const first = envelopes[0], input = first.record.input, session = first.record.sessionId;
+  const model = poseModel(first.record.modelId), config = metadata.status;
+  assert(config?.modelId === model.id && config.modelHash === model.sha256 &&
+    config.packageVersion === MEDIAPIPE_VERSION && ['GPU', 'CPU'].includes(config.delegate), 'Invalid webcam model configuration');
+  const rate = first.audioPlaybackRate;
+  assert(finite(rate) && rate > 0, 'Invalid capture audio rate');
+  const samples = [];
+  let lastSeq = 0, lastTime = -Infinity, lastBrowserTime = -Infinity, sequenceGaps = 0;
+  for (const e of envelopes) {
+    const r = validateWebcamRecord(e.record);
+    assert(r.sessionId === session && r.modelId === model.id && r.playerCount === 2 &&
+      r.input.width === input.width && r.input.height === input.height && e.audioPlaybackRate === rate,
+    'Capture source/session/model/mode/geometry changed');
+    assert(r.seq > lastSeq && r.mediaTimeMs > lastTime && r.frameBrowserTimeMs > lastBrowserTime &&
+      finite(e.audioPositionAtFrameMs) && finite(e.receivedBrowserTimeMs) &&
+      e.receivedBrowserTimeMs >= r.resultBrowserTimeMs, 'Invalid webcam frame/audio timing');
+    if (lastSeq) sequenceGaps += Math.max(0, r.seq - lastSeq - 1);
+    const t = r.mediaTimeMs - first.record.mediaTimeMs;
+    if (samples.length && t - samples.at(-1).takeTimeMs > 200)
+      samples.push({ takeTimeMs: samples.at(-1).takeTimeMs + 200, poses: [], quality: [] });
+    samples.push({ takeTimeMs: t, poses: copy(r.poses), quality: qualityFor(r.poses), sourceSeq: r.seq });
+    lastSeq = r.seq; lastTime = r.mediaTimeMs; lastBrowserTime = r.frameBrowserTimeMs;
+  }
+  return validateTake({ schema: 'aerodance.take', schemaVersion: 1, takeId: metadata.takeId,
+    name: metadata.name || 'Webcam take', source: 'webcam', input, samples,
+    offsetMs: first.audioPositionAtFrameMs, timeScale: rate, createdAt: metadata.createdAt,
+    status: config, interruptionReason: metadata.interruptionReason || null,
+    provenance: { sessionId: session, sequenceGaps, modelId: model.id, modelHash: model.sha256,
+      packageVersion: config.packageVersion, delegate: config.delegate, thresholds: config.thresholds,
+      sourceRateHz: (envelopes.length - 1) * 1000 / (lastTime - first.record.mediaTimeMs),
+      alignmentMethod: 'browser-frame-audio-anchor', frameTimingMethod: 'browser-frame-observation',
+      audioAnchor: config.audioAnchor, timingUncertaintyMs: null } });
+}
 export function addTake(project, take) {
   const p = copy(project);
   p.takes.push({
@@ -449,6 +490,7 @@ export function addTake(project, take) {
     name: take.name,
     source: take.source,
     input: take.input,
+    ...(take.source === 'webcam' ? { modelId: take.provenance?.modelId, sourceRateHz: take.provenance?.sourceRateHz } : {}),
   });
   const first = take.samples[0].takeTimeMs,
     last = take.samples.at(-1).takeTimeMs;
@@ -704,6 +746,7 @@ export function compileProject(project, takes) {
           s.poses.filter((v) => v.playerId === t.playerId),
         ),
         input,
+        { adaptiveDistance: t.clips.length>0 && t.clips.every(c=>takes.get(c.takeId).source==='webcam') },
       ),
       unscorableIntervals: ops
         .filter(
@@ -746,7 +789,7 @@ export function compileProject(project, takes) {
     samples,
     markers: p.markers,
     provenance: {
-      compilerVersion: "1.0.0",
+      compilerVersion: COMPILER_VERSION,
       projectRevision: p.revision,
       qualityPolicyVersion: 1,
       sources: p.takes.map((t) => ({

@@ -24,7 +24,7 @@ function Environment() {
   }, [gl, scene, camera]);
   return null;
 }
-function Actor({ pose, calibration, id, mirrored }) {
+function Actor({ pose, calibration, id, mirrored, live }) {
   const invalidate = useThree((state) => state.invalidate);
   const poseRef = useRef(pose);
   poseRef.current = pose;
@@ -43,6 +43,7 @@ function Actor({ pose, calibration, id, mirrored }) {
         poseRef={poseRef}
         calibration={calibration}
         appearance={appearance}
+        live={live}
       />
     </group>
   );
@@ -149,6 +150,7 @@ export default function Preview({
                   id={t.playerId}
                   calibration={t.calibration}
                   mirrored={mirrored}
+                  live={readOnly}
                   pose={snapshot.poses.find((p) => p.playerId === t.playerId)}
                 />
               ))}

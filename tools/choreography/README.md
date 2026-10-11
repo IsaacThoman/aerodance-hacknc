@@ -44,7 +44,7 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    by the browser audio decoder. Set the real artist, authors/choreographers, the
    **Stage** the game shows the routine on (Open Reef by default), and
    distribution licenses or permissions.
-2. Import a pose JSON/Android NDJSON, or connect Android and **Record new take**.
+2. Import a pose JSON/Android NDJSON, or select a pose source and **Record new take**.
    For Android set Allowed Origin to the exact origin printed in the capture panel.
    Close other stream viewers and keep Android active. Connecting starts the
    camera and pose tracker; the panel shows initialization for up to 90 seconds
@@ -55,10 +55,24 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    again. Set **Recording delay (seconds)** from 0 to 60 (default 3). A visible
    countdown gives you time to get into position before music and movement
    capture start. **Cancel countdown** stops the wait without adding a take.
+   For **Webcam**, choose a camera and **Lite / Full / Heavy**, then **Start camera**
+   and allow permission. The mirrored setup preview labels the two camera-side
+   slots. Camera/model preferences are remembered in this browser. Changes restart
+   tracking; controls are locked during recording and countdown. Use HTTPS or
+   localhost for camera access. Models run in a worker; the status shows GPU/CPU
+   and measured pose cadence. Video stays local; recording saves pose records.
+   Stand upright with shoulders, hips, and feet visible while body calibration
+   collects 20 reliable frames per player. The preview compensates for changes in
+   apparent body size when you step back, including the floor and hip anchor.
+   Use **Recalibrate body** at your final dancing position if the starting stance
+   was poor. This button is locked during recording. Webcam-only exports retain
+   the same distance compensation for playback; existing Android bundles retain
+   their original calibration mode. This handles body size in the image, rather
+   than correcting optical lens distortion.
 3. Scrub the waveform, step samples, or play at 0.25/0.5/1 speed. Switch between
    Skeleton, Frutiger, and Both. The two preview characters have independent rigs.
-   Choose **Live view** to preview Android poses without recording or importing
-   music. Connect Android in the capture panel first, then step into view. Live
+   Choose **Live view** to preview Android or webcam poses without recording or importing
+   music. Connect a pose source in the capture panel first, then step into view. Live
    poses are read-only in all three display modes; music can play for rehearsal.
    Choose **Playback** to return to the timeline and edit the routine. Recording
    automatically uses the live preview.
@@ -81,9 +95,15 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    timing review, long missing references, rights, and empty score coverage.
 
 Changes autosave after a short idle interval. **Save** forces persistence.
+This editor supports project format 1. Saved projects in another format are
+reported and skipped at startup; the next compatible project opens instead.
+If none can be opened, **Create new project** starts a separate project. Incompatible
+files stay on disk and require an editor that supports their project format.
+Project format versions are separate from the supported character calibration
+profiles 1 and 2.
 Revision conflicts report an error; reloading fetches the saved project instead
 of silently overwriting it. Upload/capture errors show in the message bar. Hidden
-tabs and lost Android connections interrupt recording; acknowledged source data
+tabs and lost pose connections interrupt recording; acknowledged source data
 stays on disk. Failed uploads retain a recoverable capture prefix under `capture/`.
 
 The committed capture at
@@ -96,6 +116,11 @@ endpoint poses within one second. Reconstructed confidence is null and scoring
 is disabled until explicitly approved. Longer gaps need another take or a score
 exclusion. The Frutiger rig is stylized 2.5D; elbows/knees remain editable in the
 skeleton even though the character has no articulated elbow/knee bones.
+The character uses the original wrist and foot mapping. Live Frutiger previews
+smooth landmark movement and distance estimates for display; skeletons, saved
+takes, edits, and recorded playback use their original coordinates. Distance
+compensation uses the torso's image size so noisy inferred depth cannot resize
+the whole character. Recalibrate after choosing your dancing position.
 
 ## Install a song in the game
 
@@ -142,6 +167,13 @@ cover missing tracking, capture discontinuities, revision conflicts, idempotent
 batches, backup restore, deterministic bundle checksums, and unsafe archives.
 
 ## Current limits
+
+- Webcam capture uses browser frame observations and an audio-clock anchor,
+  preserving video frame intervals through variable inference delays. Camera
+  buffering and audio output delay remain uncalibrated; review start/end alignment.
+  Takes retain model/hash, runtime version, delegate, timing method, and cadence.
+  Webcam fixtures cover Chromium runtime/capture integration; real duet accuracy,
+  hardware performance, and Safari/Firefox/mobile compatibility need manual checks.
 
 - Captures subtract the measured Android processing delay (`resultTimeMs` minus
   `frameReceivedTimeMs`) from the first pose's audio receipt position. Subsequent

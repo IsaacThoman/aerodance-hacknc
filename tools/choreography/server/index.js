@@ -12,6 +12,7 @@ import {
   validateTake,
 } from "../core.js";
 import { validate as validateWire } from "../../../client/src/pose/protocol.js";
+import { validateWebcamRecord } from '../../../packages/pose/webcamRecord.js';
 
 export function createStudio({
   dataDir = process.env.STUDIO_DATA_DIR || path.resolve("studio-data"),
@@ -43,9 +44,11 @@ export function createStudio({
   app.post("/api/projects", body, async (_req, res) =>
     res.status(201).json(await store.save(newProject(), null)),
   );
-  app.get("/api/projects/:projectId", async (req, res) =>
-    res.json(await store.read(req.params.projectId, "project.json")),
-  );
+  app.get("/api/projects/:projectId", async (req, res) => {
+    const project=await store.read(req.params.projectId, 'project.json');
+    validateProject(project);
+    res.json(project);
+  });
   app.put("/api/projects/:projectId", body, async (req, res) => {
     if (req.body.projectId !== req.params.projectId)
       throw Error("Project ID mismatch");
@@ -61,7 +64,7 @@ export function createStudio({
     ),
   );
   app.post("/api/projects/:projectId/import", body, async (req, res) => {
-    await store.read(req.params.projectId, "project.json");
+    validateProject(await store.read(req.params.projectId, "project.json"));
     res.status(201).json(await store.writeTake(req.params.projectId, req.body));
   });
   app.post("/api/projects/:projectId/audio", raw, async (req, res) => {
@@ -89,6 +92,7 @@ export function createStudio({
     };
     const next = await store.locked(projectId, async () => {
       const p = await store.read(projectId, "project.json");
+      validateProject(p);
       if (p.revision !== Number(req.query.revision))
         throw Object.assign(
           Error("Project changed. Save/reload before uploading."),
@@ -128,8 +132,9 @@ export function createStudio({
       );
   });
   app.post("/api/projects/:projectId/takes", body, async (req, res) => {
+    if (!['android', 'webcam'].includes(req.body.sourceKind || 'android')) throw Error('Invalid capture source');
     const projectId = id(req.params.projectId);
-    await store.read(projectId, "project.json");
+    validateProject(await store.read(projectId, "project.json"));
     const takeId = randomUUID(),
       metadata = {
         takeId,
@@ -137,6 +142,7 @@ export function createStudio({
         name: String(req.body.name || "Android take").slice(0, 200),
         createdAt: new Date().toISOString(),
         status: req.body.status || null,
+        sourceKind: req.body.sourceKind || 'android',
       };
     const folder = store.location(projectId, "capture", takeId);
     await fs.mkdir(path.join(folder, "batches"), { recursive: true });
@@ -158,6 +164,7 @@ export function createStudio({
         records.length > 500
       )
         throw Error("Invalid record batch");
+      const metadata = JSON.parse(await fs.readFile(path.join(folder, 'capture.json'), 'utf8'));
       for (const e of records) {
         if (
           !Number.isSafeInteger(e.ordinal) ||
@@ -171,7 +178,10 @@ export function createStudio({
         if (e.record) {
           if (Buffer.byteLength(JSON.stringify(e.record)) > 16384)
             throw Error("Wire record exceeds 16 KiB");
-          validateWire(e.record);
+          if (metadata.sourceKind === 'webcam') {
+            validateWebcamRecord(e.record);
+            if (!Number.isFinite(e.audioPositionAtFrameMs)) throw Error('Missing webcam audio anchor');
+          } else validateWire(e.record);
         } else if (!e.event) throw Error("Missing record/event");
       }
       await store.locked(`${projectId}/${takeId}`, async () => {

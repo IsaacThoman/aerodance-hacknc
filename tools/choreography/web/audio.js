@@ -39,6 +39,11 @@ export class AudioTransport {
           (this.context.currentTime - this.startTime) * 1000 * this.rate
       : this.positionMs;
   }
+  atBrowserTime(browserTimeMs) {
+    if (!this.audioAnchor) throw Error('Start audio before mapping camera frames');
+    return this.audioAnchor.songPositionMs +
+      (browserTimeMs - this.audioAnchor.browserTimeMs) * this.audioAnchor.rate;
+  }
   async play(positionMs = 0, delaySeconds = 0, rate = 1) {
     if (!this.buffer) throw Error("Import song audio before playing");
     await this.contextReady();
@@ -46,6 +51,11 @@ export class AudioTransport {
     this.positionMs = positionMs;
     this.rate = rate;
     this.startTime = this.context.currentTime + delaySeconds;
+    this.audioAnchor = {
+      browserTimeMs: performance.now() + (this.startTime - this.context.currentTime) * 1000,
+      songPositionMs: positionMs, rate,
+      method: 'audio-context-browser-observation', timingUncertaintyMs: null,
+    };
     this.source = this.context.createBufferSource();
     this.source.buffer = this.buffer;
     this.source.playbackRate.value = rate;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AndroidPoseSource } from "../../../client/src/pose/AndroidPoseSource.js";
+import { PoseSourceController } from "../../../client/src/pose/PoseSourceController.js";
+import WebcamControls from './WebcamControls.jsx';
 import { DEFAULT_STAGE, STAGE_LIST } from "../../../packages/stages/catalog.js";
 import { NdjsonDecoder } from "../../../client/src/pose/protocol.js";
 import {
@@ -16,11 +17,12 @@ import {
   addTake,
   appendOperation,
   replaceRange,
+  validateProject,
 } from "../core.js";
 import { AudioTransport } from "./audio.js";
 import { Recorder } from "./recorder.js";
 import Preview from "./Preview.jsx";
-import { calibratePoses } from "../../../packages/character/calibration.js";
+import { LiveCalibration } from '../../../packages/character/liveCalibration.js';
 
 async function request(url, { body, ...options } = {}) {
   const response = await fetch(url, {
@@ -108,8 +110,10 @@ export default function App() {
     [recordDelay, setRecordDelay] = useState(3),
     [countdown, setCountdown] = useState(null);
   const [liveTracks, setLiveTracks] = useState(null);
-  const liveHistory = useRef({ session: null, seq: null, frames: [] });
-  const source = useMemo(() => new AndroidPoseSource(), []),
+  const [inputMode, setInputMode] = useState('android');
+  const liveHistory = useRef(new LiveCalibration());
+  const [calibrationCounts, setCalibrationCounts] = useState([0, 0]);
+  const source = useMemo(() => new PoseSourceController(), []),
     transport = useMemo(() => new AudioTransport(), []),
     recorder = useRef(null),
     recordStopping = useRef(false),
@@ -178,6 +182,9 @@ export default function App() {
     }
   }, []);
   async function openProject(p) {
+    // Never install a newer/incompatible project into render state. In particular,
+    // version 2 dataId tracks do not have the version 1 clip arrays this UI edits.
+    validateProject(copy(p));
     if (recordingRef.current)
       throw Error("Stop recording before switching projects");
     transport.pause();
@@ -216,10 +223,20 @@ export default function App() {
     execute(async () => {
       const list = await request("/api/projects");
       setProjects(list);
-      const p = list.length
-        ? await request(`/api/projects/${list[0].projectId}`)
-        : await request("/api/projects", { method: "POST", body: {} });
-      await openProject(p);
+      if(!list.length) {
+        await openProject(await request('/api/projects',{method:'POST',body:{}}));
+      } else {
+        const failures=[];
+        let opened=false;
+        for(const summary of list) {
+          try {
+            await openProject(await request(`/api/projects/${summary.projectId}`));
+            opened=true; break;
+          } catch(e) { failures.push(`${summary.title}: ${e.message}`); }
+        }
+        if(!opened) throw Error(`No saved project can be opened. ${failures.join(' ')}`);
+        if(failures.length) setNotice(`Opened a compatible project. Skipped incompatible or unavailable projects: ${failures.join(' ')}`);
+      }
       await refresh();
     });
     return () => {
@@ -230,28 +247,17 @@ export default function App() {
   useEffect(() => source.subscribe(setConnection), [source]);
   useEffect(() => {
     const s = connection.snapshot;
-    if (!s?.poses.length) return;
-    const history = liveHistory.current;
-    if (history.session !== s.sessionId) {
-      history.session = s.sessionId;
-      history.seq = null;
-      history.frames = [];
-      setLiveTracks(null);
+    if (!s) {
+      liveHistory.current.reset();
+      setCalibrationCounts([0, 0]);
+      setLiveTracks(null); return;
     }
-    if (history.seq === s.seq || history.frames.length >= 20) return;
-    history.seq = s.seq;
-    history.frames.push(s.poses);
-    setLiveTracks(
-      [0, 1].map((playerId) => ({
-        playerId,
-        calibration: calibratePoses(
-          history.frames.flatMap((poses) =>
-            poses.filter((p) => p.playerId === playerId),
-          ),
-          s.input,
-        ),
-      })),
-    );
+    const history = liveHistory.current;
+    const previousSession=history.session;
+    const changed=history.accept(s);
+    if(changed || previousSession!==history.session) {
+      setLiveTracks(history.tracks); setCalibrationCounts(history.counts);
+    }
   }, [connection.snapshot]);
   useEffect(() => {
     if (!dirty || !project || recording) return;
@@ -286,7 +292,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (recording && connection.status !== "connected")
-      void stopRecording("Android connection interrupted");
+      void stopRecording("Pose source connection interrupted");
   }, [recording, connection.status]);
   useEffect(() => {
     let frame;
@@ -536,7 +542,8 @@ export default function App() {
     await execute(async () => {
       if (!transport.buffer) throw Error("Import music before recording");
       if (connection.status !== "connected")
-        throw Error("Connect Android before recording");
+        throw Error("Connect a pose source before recording");
+      if (!connection.snapshot) throw Error('Wait for fresh camera frames before recording');
       await saveProject();
       recordEnd.current = project.playableEndMs;
       if (!Number.isFinite(recordDelay) || recordDelay < 0 || recordDelay > 60)
@@ -564,7 +571,9 @@ export default function App() {
       setMode("both");
       setRecordCount(0);
       setNotice(
-        "Camera processing delay is compensated automatically. Review alignment for remaining camera and network delay before export.",
+        inputMode === 'webcam'
+          ? 'Webcam frames use a browser/audio clock anchor. Review remaining camera buffering and audio output delay before export.'
+          : 'Camera processing delay is compensated automatically. Review alignment for remaining camera and network delay before export.',
       );
     });
   }
@@ -614,7 +623,15 @@ export default function App() {
     return (
       <div className="loading">
         <span className="brand-orb" />
-        Opening Dance Studio…{error && <p role="alert">{error}</p>}
+        {error ? 'Unable to open saved projects.' : 'Opening Dance Studio…'}
+        {error && <>
+          <p role="alert">{error}</p>
+          <button disabled={busy} onClick={() => execute(async () => {
+            await openProject(await request('/api/projects',{method:'POST',body:{}}));
+            await refresh();
+          })}>Create new project</button>
+          <small>Existing projects are preserved. Open incompatible projects with an editor that supports their format.</small>
+        </>}
       </div>
     );
   const duration = project.durationMs || 1000,
@@ -647,8 +664,8 @@ export default function App() {
             }
           >
             {projects.map((p) => (
-              <option value={p.projectId} key={p.projectId}>
-                {p.title}
+              <option value={p.projectId} key={p.projectId} disabled={p.schemaVersion != null && p.schemaVersion !== 1}>
+                {p.title}{p.schemaVersion != null && p.schemaVersion !== 1 ? ` (requires project format ${p.schemaVersion})` : ''}
               </option>
             ))}
           </select>
@@ -771,6 +788,7 @@ export default function App() {
                   <small>
                     {t.source} · {takes.get(t.takeId)?.samples.length || 0}{" "}
                     samples
+                    {t.modelId ? ` · ${t.modelId}${Number.isFinite(t.sourceRateHz) ? ` · ${t.sourceRateHz.toFixed(1)} poses/s` : ''}` : ''}
                   </small>
                 </div>
               </button>
@@ -839,12 +857,18 @@ export default function App() {
           )}
           <div className="capture">
             <div className="section-heading">
-              ANDROID CAPTURE{" "}
+              {inputMode === 'webcam' ? 'WEBCAM CAPTURE' : 'ANDROID CAPTURE'}{" "}
               <i
                 className={`dot ${connection.status === "connected" ? "green" : ""}`}
               />
             </div>
-            <label>
+            <label>Pose source
+              <select aria-label="Pose source" value={inputMode} disabled={recording || busy}
+                onChange={e => { source.setMode(e.target.value); setInputMode(e.target.value); }}>
+                <option value="android">Android</option><option value="webcam">Webcam</option>
+              </select>
+            </label>
+            {inputMode === 'webcam' ? <WebcamControls source={source} connection={connection} disabled={recording || busy} /> : <label>
               Controller IP
               <input
                 aria-label="Android IP address"
@@ -852,7 +876,7 @@ export default function App() {
                 disabled={recording}
                 onChange={(e) => setIp(e.target.value)}
               />
-            </label>
+            </label>}
             <button
               disabled={recording}
               onClick={() =>
@@ -862,7 +886,7 @@ export default function App() {
                     return;
                   }
                   await source.setPlayerCount(2);
-                  source.connect(ip);
+                  await source.connect(inputMode === 'android' ? ip : undefined);
                 })
               }
             >
@@ -870,15 +894,15 @@ export default function App() {
                 ? "Disconnect"
                 : ["connecting", "initializing", "reconnecting"].includes(connection.status)
                   ? "Cancel connection"
-                : "Connect Android"}
+                : inputMode === 'webcam' ? 'Start camera' : 'Connect Android'}
             </button>
             <p className="connection-status">
               {connection.status} ·{" "}
               {connection.message || "Two players, one controller"}
             </p>
-            <small className="origin">
+            {inputMode === 'android' && <small className="origin">
               Allowed Origin: <code>{location.origin}</code>
-            </small>
+            </small>}
             <div className="tracking">
               {[0, 1].map((id) => (
                 <span key={id}>
@@ -892,6 +916,18 @@ export default function App() {
                 </span>
               ))}
             </div>
+            {inputMode === 'webcam' && <div className="body-calibration">
+              <button disabled={recording || busy || connection.status !== 'connected'}
+                onClick={() => {
+                  liveHistory.current.reset();
+                  if(connection.snapshot) liveHistory.current.accept(connection.snapshot);
+                  setLiveTracks(liveHistory.current.tracks);
+                  setCalibrationCounts(liveHistory.current.counts);
+                }}>Recalibrate body</button>
+              <small role="status">{calibrationCounts.every(count => count >= 20)
+                ? 'Body calibration ready · distance compensation on'
+                : `Stand upright with feet visible · P1 ${calibrationCounts[0]}/20 · P2 ${calibrationCounts[1]}/20`}</small>
+            </div>}
             <label>
               Recording delay (seconds)
               <input
@@ -979,7 +1015,7 @@ export default function App() {
             }
             tracks={
               showingLive
-                ? liveTracks || fallbackTracks
+                ? liveTracks || (inputMode === 'webcam' ? [] : fallbackTracks)
                 : compiled.data?.tracks || fallbackTracks
             }
             mode={mode}
@@ -998,7 +1034,7 @@ export default function App() {
             emptyHint={
               showingLive
                 ? connection.status === "disconnected"
-                  ? "Connect Android in the capture panel to preview your moves."
+                  ? "Connect a pose source in the capture panel to preview your moves."
                   : connection.message || "Step into the camera view."
                 : undefined
             }
@@ -1678,7 +1714,7 @@ export default function App() {
           LOCAL WORKSPACE · {busy ? "Working…" : "Ready"}
         </span>
         <span>
-          Immutable takes · Android pose v2 payload · Bundle schema v1
+          Immutable takes · MediaPipe image landmarks · Bundle schema v1
         </span>
         <span className="status-version">DANCE STUDIO / 01</span>
       </footer>

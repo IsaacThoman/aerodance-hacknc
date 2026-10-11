@@ -8,6 +8,8 @@ The server still records `spin` events in the `spins` hypertable, but the curren
 
 See [the Android/game integration plan](docs/android-game-integration-plan.md) for pairing, player selection, live character animation, latency-aware scoring, and choreography recording/editing work.
 
+See [the browser webcam plan](docs/browser-webcam-plan.md) for shared game/editor webcam input and selectable in-browser MediaPipe Lite, Full, and Heavy models.
+
 See [the song and dance authoring workflow](docs/song-dance-authoring-workflow.md) for the proposed Docker-hosted editor, Android-compatible pose format, raw landmark editing, Frutiger playback, and portable song bundle contract.
 
 The editor is implemented as [Dance Studio](tools/choreography/README.md).
@@ -34,7 +36,7 @@ Every in-game button (menus, battle screens, the phone view, the debug strip) ma
 
 **Start → One Player / Two Players → Song Select → song preview**, all drawn in-engine. Back (or Escape, or the phone remote's B) from Song Select returns to the player count, and every screen works with the mouse, touch, the keyboard (arrows and Enter) and the phone remote.
 
-- **Connect Client** (`client/src/connect/`): the status pill in the top-right corner opens a card for the pose input. **Android Client** takes the board's IP on an on-screen keypad (or the keyboard), defaulting to `192.168.43.1` and remembering the last address that connected; the card shows the origin to set as Android's allowed origin and every connection message, and connects, cancels or disconnects. **Webcam (dummy)** lets both player modes be tested without Android: it skips pairing and doesn't use the camera or tracking yet. The server HUD (top left) is the separate backend connection.
+- **Connect Client** (`client/src/connect/`): the status pill in the top-right corner opens a card for the pose input. **Android Client** takes the board's IP on an on-screen keypad (or the keyboard), defaulting to `192.168.43.1` and remembering the last address that connected; the card shows the origin to set as Android's allowed origin and every connection message, and connects, cancels or disconnects. **Webcam** offers camera selection and in-browser MediaPipe **Lite / Full / Heavy** tracking for both player modes. Start camera requests permission; the mirrored setup preview shows player placement. Model/camera changes restart tracking and release the old camera. The server HUD (top left) is the separate backend connection.
 - **Android:** the game reads Android protocol v2 directly (`client/src/pose/`), applies the player count at the stream's sequence boundary and clears missing or stale tracking. Connecting starts the board's camera and pose tracker; Song Select shows **Camera starting…** until the first pose, allowing up to 90 seconds on each connection or reconnect, then each player's slot turns **Detected**. Disconnecting releases the camera to save battery. Browsers block the board's plain-http stream from an https page, so pair from a local http deploy for now.
 - **Song Select** (`client/src/game/SongSelect.jsx`) lists the published songs four to a page with each player's readiness. Extract Dance Studio's song ZIPs into `client/public/songs/`: Song Select finds the exported folders without manifest edits (`server/songCatalog.js`), and builds generate the catalog for static hosting, so rebuild or redeploy to publish changes. The repo ships Austin's “Rockefeller Street Bad Test” routine. Bundles are fully verified before they play ([game song bundles](docs/game-song-bundles.md)).
 - **Preview:** a song's music plays through the mixer (the menu music ducks) with its reference dancers on the song's **dance stage**, rendered inside the game canvas (`client/src/stage/StageView.jsx`, stages from `packages/stages`). Each song picks its stage in Dance Studio and defaults to Open Reef; the stage card on the preview tries any of the six. Countdown, live player characters, calibrated timing, scoring and results are still to come ([integration plan](docs/android-game-integration-plan.md)).
@@ -46,9 +48,27 @@ when using Podman):
 docker build --target test -t aerodance-ui-test .
 docker build --target ui-test -t aerodance-ui-browser-test .
 docker run --rm aerodance-ui-browser-test
+docker build --target webcam-test -t aerodance-webcam-test .
+docker run --rm aerodance-webcam-test
 ```
 
 The browser flow (`client/tests/ui-flow.browser.mjs`) clicks the canvas in design units and reads the state each overlay reports on its `data-*` attributes. It skips GPU rasterization in software-only containers; set `UI_RENDER=1` for a full rendered check on a capable GPU.
+
+Webcam requires **HTTPS or localhost**; a plain HTTP LAN address cannot request
+camera access. Models and the matching WASM runtime are prepared during development
+startup/build and served locally by both apps. The first preparation downloads
+about 46 MB of pinned models; later local builds reuse verified `.cache/` assets.
+Only the chosen model loads in the browser. Frames stay local; Dance Studio uploads
+pose records when recording. Stop, switching source, leaving the page, or hiding
+the webcam tab releases the camera. Inference uses a worker and prefers CPU when
+WebGL is rendered in software; the status shows the active model, delegate, and
+tracking rate. Heavy needs more processing capacity; slow results never count as
+fresh player detection.
+
+After both builds, `node client/tests/webcam.browser.mjs` (with Playwright installed)
+checks the actual models, a synthetic two-person camera stream, Studio recording,
+export, and game bundle preview. Physical duet accuracy, hardware performance,
+and browser/device coverage still need manual validation.
 
 ## Captured dance demo
 

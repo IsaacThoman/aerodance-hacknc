@@ -10,13 +10,18 @@ export class Recorder {
     this.failure = null;
   }
   async start() {
+    this.sourceKind = this.source.view.sourceKind || 'android';
+    this.modelId = this.source.view.model;
     this.metadata = await this.request(
       `/api/projects/${this.projectId}/takes`,
       {
         method: "POST",
         body: {
           name: `Take · ${new Date().toLocaleTimeString()}`,
-          status: { poseModel: this.source.view.model, protocolVersion: 2 },
+          sourceKind: this.sourceKind,
+          status: this.sourceKind === 'webcam'
+            ? { ...this.source.view.modelConfig, audioAnchor: this.transport.audioAnchor }
+            : { poseModel: this.source.view.model, protocolVersion: 2 },
         },
       },
     );
@@ -36,15 +41,23 @@ export class Recorder {
     });
     this.unsubscribe = this.source.subscribeRecords((e) => {
       if (!this.running) return;
+      if (e.event) {
+        this.pending.push({ ordinal: this.ordinal++, receivedBrowserTimeMs: e.receivedBrowserTimeMs,
+          audioPositionAtReceiptMs: this.transport.current(), event: e.event });
+        if (e.event.type === 'source-stopped') this.onFailure(e.event.reason || 'Pose source stopped');
+        return;
+      }
       if (
         e.record.sessionId !== this.session ||
+        (this.sourceKind === 'webcam' &&
+          (e.record.schema !== 'aerodance.webcam-record' || e.record.modelId !== this.modelId)) ||
         (e.record.type === "pose" &&
           (e.record.playerCount !== 2 ||
             e.record.input.width !== this.input.width ||
             e.record.input.height !== this.input.height ||
             e.record.input.mirrored !== false))
       ) {
-        this.onFailure("Android session, player mode or geometry changed");
+        this.onFailure("Capture source, session, model, player mode or geometry changed");
         return;
       }
       const audioPositionAtReceiptMs =
@@ -54,10 +67,13 @@ export class Recorder {
           : 0);
       // Ignore the lead-in, including late inference results for frames that
       // arrived before music started. Device timestamp differences need no sync.
-      const processingDelayMs = e.record.type === "pose"
+      const processingDelayMs = this.sourceKind === 'android' && e.record.type === "pose"
         ? e.record.resultTimeMs - e.record.frameReceivedTimeMs
         : 0;
-      if (audioPositionAtReceiptMs - processingDelayMs * this.transport.rate < this.transport.positionMs)
+      const audioPositionAtFrameMs = this.sourceKind === 'webcam'
+        ? this.transport.atBrowserTime(e.record.frameBrowserTimeMs)
+        : audioPositionAtReceiptMs - processingDelayMs * this.transport.rate;
+      if (audioPositionAtFrameMs < this.transport.positionMs)
         return;
       this.captureStartedAt ??= performance.now();
       if (e.record.type === "pose") this.poseCount++;
@@ -66,6 +82,7 @@ export class Recorder {
         receivedBrowserTimeMs: e.receivedBrowserTimeMs,
         audioPositionAtReceiptMs,
         audioPlaybackRate: this.transport.rate,
+        ...(this.sourceKind === 'webcam' ? { audioPositionAtFrameMs } : {}),
         record: e.record,
       };
       this.pending.push(envelope);

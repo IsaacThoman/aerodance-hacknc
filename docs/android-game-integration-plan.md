@@ -10,8 +10,9 @@ startup, player-mode boundaries, stale clearing, and bounded reconnects. Opening
 a stream starts capture on demand; the game shows “Camera starting…” until its
 first pose, allowing up to 90 seconds on every connection/reconnect. Startup
 heartbeats keep the stream alive without marking tracking ready. Song Select
-shows each player's detection status. **Webcam (dummy)** is an explicit menu-testing
-option that bypasses Android pairing without camera capture or pose/scoring data.
+shows each player's detection status. **Webcam** supplies real in-browser MediaPipe
+input with camera selection, Lite/Full/Heavy models, and a mirrored setup preview.
+See the [webcam plan and implementation status](browser-webcam-plan.md).
 Song Select discovers exported song bundles and previews music with one or two
 reference characters. The local catalog includes “Rockefeller Street Bad Test”;
 the silent recording remains a separate preview. Gameplay countdown, live player
@@ -26,13 +27,13 @@ real-board and deployed HTTPS acceptance remain outstanding.
 4. Show one or two large Frutiger reference characters in the central dance area, playing the recorded choreography. Show a smaller Frutiger character displaying player one's live pose in the top left; show player two's in the top right only in two-player mode. Label the live panels and show each player's score and tracking status.
 5. Score each player against their corresponding reference track, accounting for input timing. End at the song's authored endpoint and show results, Retry, and Song Select.
 
-Default decisions: one Android device captures both people; two-player participants stay in separate camera halves; gameplay requires a connected, usable pose source; the initial supported deployment is desktop Chrome. Real webcam capture is a later adapter; a dummy webcam option now permits menu testing without Android. The shared architecture must be designed now. These are implementation defaults, not additional requirements the user must resolve before work begins.
+Default decisions: one Android device or browser webcam captures both people; two-player participants stay in separate camera halves; gameplay requires a connected, usable pose source; the initial supported deployment is desktop Chrome. Both sources share connection/readiness and pose payloads. These are implementation defaults, not additional requirements the user must resolve before work begins.
 
 ## What exists and what is missing
 
 | Area | Current evidence | Required change |
 | --- | --- | --- |
-| Game flow | Start opens player selection, then Song Select with discovered song bundles and a finite music/reference preview on the song's dance stage, all in-engine. Webcam dummy bypasses device pairing for menu testing. | Countdown, live player panels, calibrated timing, scoring, and results. |
+| Game flow | Start opens player selection, then Song Select with discovered song bundles and a finite music/reference preview on the song's dance stage, all in-engine. Android and webcam supply real readiness; Studio records both sources. | Countdown, live player panels, calibrated timing, scoring, and results. |
 | Android connection | The game adapter consumes protocol v2 status/config/NDJSON with bounded startup, freshness, and reconnect handling. | Validate real-board pairing from deployed HTTPS and integrate the shared pose model. |
 | Player slots | Android emits explicit `playerId: 0/1`; two-player IDs represent fixed camera halves. | Map IDs to player panels and tracks; never use pose-array position as identity. |
 | Recorded characters | `packages/character/Character.jsx` and `motion.js` animate the GLB from recorded `dance.json`; the stages live in `packages/stages`. | Add live pose support. |
@@ -49,7 +50,7 @@ Use [the Android streaming specification](../client-android/camera-to-client-str
 ```mermaid
 flowchart LR
     A[Android HTTP adapter] --> P[Timestamped pose snapshots]
-    W[Future webcam adapter] --> P
+    W[Browser webcam adapter] --> P
     F[Fixture/replay adapter] --> P
     P --> H[Bounded history and clock mapping]
     P --> L[Live calibration and display smoothing]
@@ -63,7 +64,7 @@ flowchart LR
     E --> U[Scores and results]
 ```
 
-Introduce a small `PoseSource` interface: `connect`, `disconnect`, `setPlayerCount`, capabilities/status, and subscriptions for complete pose snapshots and source errors. Keep transport details behind it. Provide Android and deterministic fixture adapters initially; implement webcam later without changing scoring or character rendering.
+The shared `PoseSourceController` provides `connect`, `disconnect`, `setPlayerCount`, status, and subscriptions for complete pose snapshots and capture records. Keep transport details behind it. Android retains its wire protocol; webcam uses its own frame-clock capture schema. Future scoring and character rendering consume their common landmark payload.
 
 Use an internal pose snapshot containing source/session ID, sequence, player count, input dimensions/mirroring, source frame time, mapped browser frame time, receipt time, timing uncertainty, and poses keyed by player ID. Each pose has 33 landmarks with separate optional visibility/presence. Preserve relative depth as relative depth. Keep raw samples available for scoring; display smoothing must not alter scoring input.
 

@@ -44,7 +44,6 @@ const SCRUB_HIT = { x: SCRUB.x - 12, y: SCRUB.y - 24, w: SCRUB.w + 24, h: SCRUB.
 
 // What each player slot says, from the pose input.
 function slotStatus(connection, id) {
-  if (connection.status === 'dummy') return { label: 'Preview ready', kind: 'preview' };
   if (connection.snapshot?.poses?.some((p) => p.playerId === id)) return { label: 'Detected', kind: 'detected' };
   if (connection.status === 'initializing') return { label: 'Camera starting…' };
   if (connection.status === 'connected') return { label: 'Step into view' };
@@ -56,8 +55,8 @@ function cuesFor(connection, playerCount) {
   const cues = [];
   if (connection.status === 'connected' && connection.model === 'synthetic') cues.push(['Synthetic test source · tracking is simulated.']);
   if (connection.status === 'initializing' && connection.message) cues.push([connection.message]);
-  if (connection.status === 'dummy') cues.push(['Webcam dummy · menu testing enabled · camera capture and tracking are not implemented.']);
-  if (playerCount === 2 && connection.status !== 'dummy') cues.push([PLACEMENT_CUE, '#ffe27a']);
+  if (connection.sourceKind === 'webcam' && connection.status === 'connected') cues.push([connection.message]);
+  if (playerCount === 2) cues.push([PLACEMENT_CUE, '#ffe27a']);
   return cues;
 }
 

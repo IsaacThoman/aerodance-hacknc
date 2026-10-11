@@ -1188,3 +1188,6 @@ small {
   .transport { margin-bottom: 8px; }
   .range-controls { margin-top: 8px; }
 }
+.webcam-controls canvas { display: block; width: 100%; max-width: 320px; height: auto; border-radius: 12px; margin: 8px 0; }
+.webcam-controls small { display: block; }
+.body-calibration small { display: block; margin: 5px 0 8px; color: var(--muted); }

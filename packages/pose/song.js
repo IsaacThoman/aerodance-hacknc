@@ -53,7 +53,8 @@ export function validateSongChoreography(song, choreography) {
     s.maxInterpolationGapMs > 0 && s.maxInterpolationGapMs <= 200 && finite(s.confidenceThreshold) &&
     s.confidenceThreshold >= 0 && s.confidenceThreshold <= 1, 'Invalid sampling policy');
   for (const track of choreography.tracks) {
-    require(track.calibration.profileVersion === 1 && text(track.label) && Array.isArray(track.unscorableIntervals), 'Invalid track metadata');
+    const calibration=track.calibration;
+    require((calibration.profileVersion===1 || calibration.profileVersion===2 && calibration.cameraScaleMode==='body-relative') && text(track.label) && Array.isArray(track.unscorableIntervals), 'Invalid track metadata');
     for (const interval of track.unscorableIntervals) require(finite(interval.startMs) && finite(interval.endMs) &&
       interval.startMs >= song.playableStartMs && interval.startMs < interval.endMs && interval.endMs <= song.playableEndMs && text(interval.reason), 'Invalid score exclusion');
   }

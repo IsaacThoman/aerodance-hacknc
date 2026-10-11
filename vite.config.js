@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { discoverSongs, songCatalogMiddleware } from './server/songCatalog.js';
+import { poseAssetsPlugin } from './scripts/poseAssets.mjs';
 
 if (existsSync('.env')) process.loadEnvFile();
 
@@ -11,7 +12,7 @@ const serverPort = process.env.PORT || 3000;
 
 export default defineConfig({
   root: 'client',
-  plugins: [react(), {
+  plugins: [react(), poseAssetsPlugin(), {
     name: 'song-discovery',
     configureServer(server) {
       server.middlewares.use('/songs/manifest.json', songCatalogMiddleware(fileURLToPath(new URL('./client/public/songs/', import.meta.url))));
