@@ -16,8 +16,8 @@ import {
  * The gameplay overlay, drawn in-engine over the song's stage (StageView draws the dancers
  * and the players' live characters):
  *
- *   ready      "step into your spot": each player's tracking, then the countdown starts
- *              itself once everyone has been tracked for a second (or Start now)
+ *   ready      the countdown starts once everyone has been tracked for a second
+ *              (or Start now)
  *   countdown  3, 2, 1 from the song's scheduled start
  *   playing    each player's score, combo and judgements under their live character, the
  *              song's progress, and a pause button (Escape, the remote's B, a hidden tab)
@@ -39,11 +39,6 @@ const JUDGEMENT_LOOK = {
 };
 const POPUP_S = 0.9;
 const GOLD = ['#fff6cc', '#ffd34d', '#f0a500'];
-const READINESS = {
-  missing: ['Step into view', '#ffffff'],
-  calibrating: ['Hold still…', '#bff4ff'],
-  ready: ['Ready!', '#9effdf'],
-};
 
 const fmt = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -272,19 +267,6 @@ export default function GameScreen({ visible = false, blocked = false, session, 
         if (ph === 'error') drawShadowText(g, session.error, 800, 520, { size: 30, align: 'center', color: '#ffb38a' });
         if (ph === 'ready') {
           const readiness = session.readiness();
-          const panel = { x: 360, y: 400, w: 880, h: 250 };
-          drawGlassPanel(g, panel, 30);
-          drawCaps(g, session.playerCount === 2 ? 'STEP INTO YOUR SPOTS' : 'STEP INTO VIEW', 800, panel.y + 40, { size: 22, align: 'center' });
-          const cue = session.playerCount === 2
-            ? 'Player 1 on the left, player 2 on the right. Keep your whole body in the camera.'
-            : 'Keep your whole body in the camera. The song starts once you are tracked.';
-          drawShadowText(g, cue, 800, panel.y + 80, { size: 22, weight: 600, align: 'center', color: '#e6f8ff' });
-          const xs = session.playerCount === 2 ? [600, 1000] : [800];
-          readiness.forEach((r, id) => {
-            const [label, color] = READINESS[r];
-            drawPlayerLeds(g, xs[id], panel.y + 140, { player: id + 1, glow: r === 'ready' ? 1 : 0.35, scale: 0.42 });
-            drawShadowText(g, label, xs[id], panel.y + 200, { size: 30, weight: 800, align: 'center', color });
-          });
           const hold = session.readySince === null ? 0 : clamp01((performance.now() - session.readySince) / READY_HOLD_MS);
           const allReady = readiness.every((r) => r === 'ready');
           drawPill(g, GAME_READY_START, {
