@@ -8,7 +8,14 @@ const KEY = 'aerodance-best-scores';
 const keyFor = (songId, playerCount, scorerVersion) => `${songId}|${playerCount}p|v${scorerVersion}`;
 
 function read(storage) {
-  try { return JSON.parse(storage.getItem(KEY)) ?? {}; } catch { return {}; }
+  try {
+    const scores = JSON.parse(storage.getItem(KEY)) ?? {};
+    // F replaces the old failing label; point totals and scorer version are unchanged.
+    for (const best of Object.values(scores)) {
+      if (best?.grade === 'D') best.grade = 'F';
+    }
+    return scores;
+  } catch { return {}; }
 }
 
 export function bestScore(songId, playerCount, scorerVersion, storage = globalThis.localStorage) {

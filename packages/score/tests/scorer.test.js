@@ -81,7 +81,7 @@ test('holding one pose through a moving routine scores poorly', () => {
   const results = play((id) => held[id]);
   for (const id of [0, 1]) {
     assert.ok(results[id].score < 0.6 * perfect[id].score, `held ${results[id].score}`);
-    assert.ok(['C', 'D'].includes(results[id].grade));
+    assert.ok(['C', 'F'].includes(results[id].grade));
   }
 });
 
@@ -97,6 +97,7 @@ test('nobody in view earns nothing and every judgement is lost tracking', () => 
   const results = play(() => null);
   for (const r of results) {
     assert.equal(r.score, 0);
+    assert.equal(r.grade, 'F');
     assert.equal(r.coverage, 0);
     assert.equal(r.judgements.lost, r.judgements.perfect + r.judgements.good + r.judgements.ok + r.judgements.miss + r.judgements.lost);
   }
@@ -167,5 +168,8 @@ test('thresholds map scores to judgements and grades', () => {
   assert.equal(judge(0.1), 'miss');
   assert.equal(gradeFor(0.95), 'S');
   assert.equal(gradeFor(0.55), 'C');
-  assert.equal(gradeFor(0.2), 'D');
+  assert.equal(gradeFor(0.5), 'C');
+  assert.equal(gradeFor(0.499999), 'F');
+  assert.equal(gradeFor(0.2), 'F');
+  assert.equal(gradeFor(0), 'F');
 });

@@ -40,7 +40,7 @@ export const JUDGEMENTS = [
   ['miss', -Infinity],
 ];
 const LOST_SHARE = 0.6;
-export const GRADES = [['S', 0.9], ['A', 0.8], ['B', 0.65], ['C', 0.5], ['D', -Infinity]];
+export const GRADES = [['S', 0.9], ['A', 0.8], ['B', 0.65], ['C', 0.5], ['F', -Infinity]];
 
 const shiftFactor = (shift) => {
   const off = Math.abs(shift);

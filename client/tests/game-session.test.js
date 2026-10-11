@@ -304,3 +304,19 @@ test('best scores keep the top score per song, mode and scorer version', () => {
   assert.equal(recordResults('song', 1, [r(100)], storage).isNewBest, true);
   assert.equal(bestScore('song', 2, 2, storage), null);
 });
+
+test('saved failing best scores display F without losing the previous record', () => {
+  const saved = { score: 200_000, grade: 'D', accuracy: 0.2, at: '2026-10-01T00:00:00.000Z' };
+  let data = JSON.stringify({ 'song|1p|v1': saved });
+  const storage = { getItem: () => data, setItem: (k, v) => { data = v; } };
+  const expected = { ...saved, grade: 'F' };
+  assert.deepEqual(bestScore('song', 1, 1, storage), expected);
+
+  const result = { score: 100_000, grade: 'F', accuracy: 0.1, scorerVersion: 1 };
+  assert.deepEqual(recordResults('song', 1, [result], storage), {
+    previous: expected, best: expected, isNewBest: false,
+  });
+  assert.equal(recordResults('song', 1, [{ ...result, score: 300_000, accuracy: 0.3 }], storage).isNewBest, true);
+  assert.equal(bestScore('song', 1, 1, storage).grade, 'F');
+  assert.equal(JSON.parse(data)['song|1p|v1'].grade, 'F');
+});

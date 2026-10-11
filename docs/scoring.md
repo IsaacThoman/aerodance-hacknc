@@ -86,7 +86,7 @@ limb weight is **lost**: it scores 0.
   intervals lost is **Lost tracking**.
 - **Combo.** Consecutive judgements other than Miss and Lost tracking.
 - **Grade.** From accuracy (points earned out of 1,000,000): S 90%, A 80%, B 65%,
-  C 50%, otherwise D.
+  C 50%, otherwise F.
 - **Coverage.** The share of scored intervals where the player was tracked. Below 80%,
   the results screen says so.
 
