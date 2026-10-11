@@ -22,8 +22,8 @@ export const SUN_DIR = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e),
 // Mean sea level; the dancers stand on the sand just above it.
 export const WATER_Y = -0.7;
 
-// Cove shoreline: z = z0 - k * x^2 on each side; land ends past the headlands.
-export const SHORE = { z0: -1.4, left: 0.1, right: 0.1, endLeft: -46, endRight: -50 };
+// Shoreline depth: open sea from here to the horizon, all the way across.
+export const SHORE = { z0: -1.4 };
 
 // Uniforms shared by every custom shader in the stage, updated once per frame.
 export const world = {

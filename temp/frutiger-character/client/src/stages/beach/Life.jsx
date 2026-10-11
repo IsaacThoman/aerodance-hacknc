@@ -7,7 +7,7 @@ import { SUN_AZIMUTH, WATER_Y, world } from './palette.js';
 import { makeLitMaterial } from './shaders.js';
 import { dolphinGeometry, gullGeometry } from './props.js';
 
-// Gulls: circling over the cove, gliding high, and crossing near the lens.
+// Gulls: circling over the shallows, gliding high, and crossing near the lens.
 const GULLS = (() => {
   const rand = makeRandom(91);
   const list = [];
@@ -84,7 +84,7 @@ function dropGeometry(count) {
   return g;
 }
 
-// A pod of dolphins leaping in turn across the cove mouth.
+// A pod of dolphins leaping in turn just offshore.
 const POD = { period: 5.2, air: 0.3, height: 2.3, length: 7.5 };
 const DOLPHINS = [
   { x: -6, z: -58, lag: 0, speed: 1.4 },

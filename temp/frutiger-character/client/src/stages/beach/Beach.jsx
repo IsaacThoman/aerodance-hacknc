@@ -7,21 +7,18 @@ import { makeRandom } from '../shared/random.js';
 import { WATER_Y, world } from './palette.js';
 import { patchMaterial } from './shaders.js';
 import { sandHeight } from './terrain.js';
-import { blob, color, finalize, merge, place } from './geometry.js';
+import { color, finalize, merge, place } from './geometry.js';
 import {
   beachBallGeometry,
   bucketGeometry,
   flipFlopGeometry,
   sandcastleGeometry,
   towelGeometry,
-  lifeguardGeometry,
-  loungerGeometry,
   palmGeometry,
   surfboardGeometry,
   surfRackGeometry,
-  umbrellaGeometry,
 } from './props.js';
-import { LIFEGUARD, LOUNGERS, PALMS, SURF_RACK, UMBRELLAS, ground, onArm } from './layout.js';
+import { PALM, SURF_RACK, ground } from './layout.js';
 import meta from './meta.js';
 
 const sandFragment = {
@@ -87,7 +84,7 @@ const sandFragment = {
   `,
 };
 
-/** Sand: a camera-dense grid shaped by the cove's height function. */
+/** Sand: a camera-dense grid shaped by the beach's height function. */
 function Sand() {
   const geometry = useDisposable(() => {
     const NX = 150;
@@ -112,40 +109,12 @@ function Sand() {
   return <mesh geometry={geometry} material={material} receiveShadow />;
 }
 
-/** Palms and glossy jungle bushes along both arms of the cove; one swaying mesh. */
-function Vegetation() {
+/** The coconut palm, swaying in the sea breeze. */
+function Palm() {
   const geometry = useDisposable(() => {
-    const parts = [];
-    PALMS.forEach((p, i) => {
-      const [x, y, z] = p.side ? onArm(p.side, p.z, p.inland) : ground(p.x, p.z);
-      for (const g of palmGeometry({ height: p.height, lean: p.lean, heading: p.heading, fronds: p.fronds, seed: 30 + i, frondLength: p.height * 0.42, hue: (i % 3) * 0.015 })) {
-        parts.push(place(g, { position: [x, y, z] }));
-      }
-    });
-    const rand = makeRandom(8);
-    const greens = ['#2f9a40', '#47b23e', '#23843c', '#62bf48', '#1f8a52'];
-    for (const side of [-1, 1]) {
-      const end = side < 0 ? -40 : -52;
-      for (let z = -6; z > end; z -= rand.range(2.2, 3.6)) {
-        for (let k = 0; k < 2; k++) {
-          const inland = rand.range(10, 16) + k * 6;
-          const [x, y] = onArm(side, z, inland);
-          const s = rand.range(1.2, 2.3) * (1 + k * 0.4);
-          const g = blob({ radius: s, detail: 2, squash: [1, rand.range(0.7, 0.95), 1], amount: 0.24, freq: 1.8, seed: 200 + parts.length });
-          place(g, { position: [x, y + s * 0.35, z], rotation: [0, rand.range(0, 6), 0] });
-          const c1 = color(rand.pick(greens));
-          const c2 = c1.clone().multiplyScalar(0.5);
-          const top = c1.clone().lerp(color('#eaff9a'), 0.35);
-          parts.push(
-            finalize(g, {
-              paint: (p, n, out) => out.copy(c2).lerp(c1, THREE.MathUtils.smoothstep(n.y, -0.4, 0.4)).lerp(top, THREE.MathUtils.smoothstep(n.y, 0.6, 1) * 0.6),
-              sway: 0.05,
-            }),
-          );
-        }
-      }
-    }
-    return merge(parts);
+    const { x, z, height, lean, heading, fronds } = PALM;
+    const at = ground(x, z);
+    return merge(palmGeometry({ height, lean, heading, fronds, seed: 30, frondLength: height * 0.42 }).map((g) => place(g, { position: at })));
   });
   const material = useDisposable(() =>
     patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, side: THREE.DoubleSide }), { sway: 0.32, key: 'veg', ibl: 0.3, translucency: 0.8 }),
@@ -179,22 +148,10 @@ function starfish() {
   return finalize(g, { paint: '#ff8a4a' });
 }
 
-/** Static glossy props: umbrellas, loungers, lifeguard tower, surf rack, shells. */
+/** Static glossy props: surf rack, shells, towel and sandcastle. */
 function BeachProps() {
   const geometry = useDisposable(() => {
     const parts = [];
-    UMBRELLAS.forEach((u) => {
-      const [x, y, z] = onArm(u.side, u.z, u.inland);
-      parts.push(place(umbrellaGeometry({ stripes: u.stripes, tilt: u.tilt }), { position: [x, y - 0.1, z] }));
-    });
-    LOUNGERS.forEach((l) => {
-      const [x, y, z] = onArm(l.side, l.z, l.inland);
-      parts.push(place(loungerGeometry({ towel: l.towel }), { position: [x, y - 0.05, z], rotation: [0, l.heading, 0] }));
-    });
-    {
-      const [x, y, z] = onArm(LIFEGUARD.side, LIFEGUARD.z, LIFEGUARD.inland);
-      parts.push(place(lifeguardGeometry(), { position: [x, y - 0.1, z], rotation: [0, LIFEGUARD.heading, 0], scale: 1.05 }));
-    }
     {
       const [x, z] = SURF_RACK.at;
       const y = sandHeight(x, z);
@@ -248,7 +205,7 @@ const BALLS = [
   { x: -3.4, z: -9.5, r: 0.45, float: true },
 ];
 
-/** Glossy beach balls: two resting on the sand, one bobbing in the cove. */
+/** Glossy beach balls: two resting on the sand, one bobbing in the shallows. */
 function BeachBalls() {
   const mesh = useRef();
   const geometry = useDisposable(() => beachBallGeometry());
@@ -276,7 +233,7 @@ export function Beach() {
   return (
     <>
       <Sand />
-      <Vegetation />
+      <Palm />
       <BeachProps />
       <BeachBalls />
     </>

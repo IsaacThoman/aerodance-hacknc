@@ -43,7 +43,7 @@ export default function BeachStage() {
   return (
     <>
       <Clock />
-      <StageCamera position={[0, 1.79, 16]} target={[0, 1.24, 1]} fov={35} near={0.3} far={3000} orbit={[0.04, 0.012]} sway={[0.12, 0.05, 0]} />
+      <StageCamera position={[0, 1.77, 16]} target={[0, 1.22, 1]} fov={35} near={0.3} far={3000} orbit={[0.04, 0.012]} sway={[0.12, 0.05, 0]} />
       <StageEnvironment top="#7286d8" horizon="#ffb48c" bottom="#d8b083" lights={ENV_LIGHTS} intensity={1} />
       <hemisphereLight args={['#b8a0f0', '#c98a5f', 0.36]} />
       <directionalLight

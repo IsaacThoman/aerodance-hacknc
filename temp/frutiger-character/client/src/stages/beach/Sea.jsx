@@ -58,7 +58,7 @@ void main() {
   r.y = abs(r.y);
   float F = (0.02 + 0.98 * pow(1.0 - ndv, 5.0)) * 0.5;
 
-  // Water body: aqua over the sandy cove, teal then deep blue offshore.
+  // Water body: aqua over the sandy shallows, teal then deep blue offshore.
   float depth0 = ${WATER_Y.toFixed(3)} - groundHeight(p);
   float depth = uWaterY - groundHeight(p);
   vec3 body = mix(uMid, uDeep, smoothstep(25.0, 140.0, dist));
