@@ -5,6 +5,7 @@ import { enqueueJob, pool, tx } from './db.js';
 import { AgentError, agentCall } from './agent.js';
 import { changes } from './events.js';
 import { HttpError, explorerAddress, explorerTx, getProfile, shortId } from './profiles.js';
+import { trophySvg, trophyTraits } from './trophyArt.js';
 
 export const MAX_SEATS = 8;
 export const HYPE_SOL = 0.005;
@@ -104,7 +105,8 @@ export async function publicBattle(id) {
 }
 
 // Off-chain metadata the trophy NFT's uri points to (Metaplex JSON standard).
-export async function trophyMetadata(id, baseUrl) {
+// The winning seat behind a trophy, for its metadata and its art.
+async function trophyBattle(id) {
   const { rows: [b] } = await pool.query(
     `SELECT b.id, b.created_at, b.winner_seat, s.score, s.pops, s.sync, s.flair,
             (SELECT count(*)::int FROM battle_seats WHERE battle_id = b.id) AS dancers,
@@ -113,9 +115,21 @@ export async function trophyMetadata(id, baseUrl) {
       WHERE b.id = $1 AND b.trophy_status IS NOT NULL`,
     [id],
   );
+  return b;
+}
+
+// The trophy's one-of-a-kind SVG (see trophyArt.js).
+export async function trophyImage(id) {
+  const b = await trophyBattle(id);
+  return b && trophySvg(b);
+}
+
+export async function trophyMetadata(id, baseUrl) {
+  const b = await trophyBattle(id);
   if (!b) return undefined;
-  // The 3D aero character (Metaplex "vr": wallets that render 3D spin the GLB, others show the PNG).
-  const image = `${baseUrl}/trophy.png`;
+  const t = trophyTraits(b);
+  // Unique 2D art as the image; the 3D aero character for wallets that render models (Metaplex "vr").
+  const image = `${baseUrl}/nft/${b.id}.svg`;
   const model = `${baseUrl}/models/trophy.glb`;
   return {
     name: `aerodance trophy #${b.id}`,
@@ -125,6 +139,11 @@ export async function trophyMetadata(id, baseUrl) {
     animation_url: model,
     external_url: baseUrl,
     attributes: [
+      { trait_type: 'stage', value: t.stage.name },
+      { trait_type: 'glass', value: t.glass },
+      { trait_type: 'finish', value: t.finish },
+      { trait_type: 'pose', value: t.pose },
+      { trait_type: 'halo', value: t.halo ? 'Golden' : 'None' },
       { trait_type: 'battle', value: b.id },
       { trait_type: 'dancers', value: b.dancers },
       { trait_type: 'score', value: b.score ?? 0 },
@@ -136,7 +155,7 @@ export async function trophyMetadata(id, baseUrl) {
     ],
     properties: {
       category: 'vr',
-      files: [{ uri: image, type: 'image/png' }, { uri: model, type: 'model/gltf-binary' }],
+      files: [{ uri: image, type: 'image/svg+xml' }, { uri: model, type: 'model/gltf-binary' }],
     },
   };
 }

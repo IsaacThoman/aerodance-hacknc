@@ -5,7 +5,7 @@ import path from 'node:path';
 import express from 'express';
 import { Server } from 'socket.io';
 import { listen, migrate, pool, recordSpin, spinHistory, spinsSince } from './db.js';
-import { publicBattle, startSweeper, stickerMetadata, trophyMetadata } from './battles.js';
+import { publicBattle, startSweeper, stickerMetadata, trophyImage, trophyMetadata } from './battles.js';
 import { changes } from './events.js';
 import { profileByDevice } from './profiles.js';
 import { attachRemote } from './remote.js';
@@ -50,6 +50,11 @@ app.get('/nft/hype/:id/:stickerId.json', async (req, res) => {
   const meta = await stickerMetadata(req.params.id, req.params.stickerId, requestBaseUrl(req));
   if (!meta) return res.status(404).json({ error: 'no such sticker' });
   res.json(meta);
+});
+app.get('/nft/:id.svg', async (req, res) => {
+  const svg = await trophyImage(req.params.id);
+  if (!svg) return res.status(404).json({ error: 'no trophy for that battle' });
+  res.type('image/svg+xml').set('Cache-Control', 'public, max-age=86400').send(svg);
 });
 app.get('/nft/:id.json', async (req, res) => {
   const meta = await trophyMetadata(req.params.id, requestBaseUrl(req));
