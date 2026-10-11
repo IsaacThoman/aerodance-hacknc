@@ -16,8 +16,10 @@ import motionUrl from '../../../packages/character/assets/dance.json?url';
  *
  * On Song Select the stage rises to the middle of the screen (`raised`, nothing sits above
  * it there), and in one-player mode a single dancer stands in the middle of it (`solo`).
+ * The flock camera stands behind them while an Android client is connected, or always with
+ * the Show flock setting (`showFlock`).
  *
- * <MenuDancers visible raised solo />
+ * <MenuDancers visible raised solo androidConnected showFlock />
  */
 
 const DANCERS = [
@@ -114,7 +116,7 @@ class Quiet extends Component {
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export default function MenuDancers({ visible = true, raised = false, solo = false, androidConnected = false }) {
+export default function MenuDancers({ visible = true, raised = false, solo = false, androidConnected = false, showFlock = false }) {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
   const [motion, setMotion] = useState(null);
@@ -201,7 +203,7 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
       <directionalLight position={[-6, 12, 8]} intensity={2.5} />
       <pointLight position={[0, 1.3, 3]} color="#65f7ff" intensity={8} distance={9} />
       <group ref={rig} position={[STAGE.x + SLIDE, STAGE.y, STAGE.z]}>
-        {androidConnected && (
+        {(androidConnected || showFlock) && (
           <Quiet>
             <Suspense fallback={null}>
               <FlockCamera />

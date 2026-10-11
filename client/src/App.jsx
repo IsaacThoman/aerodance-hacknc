@@ -5,6 +5,7 @@ import MainMenu from './menu/MainMenu.jsx';
 import MenuDancers from './menu/MenuDancers.jsx';
 import { loadSound, saveSound } from './menu/soundSettings.js';
 import { loadWiiCursor, saveWiiCursor } from './menu/cursorSetting.js';
+import { loadShowFlock, saveShowFlock } from './menu/flockSetting.js';
 import { useLoopingMusic } from './audio/loopingMusic.js';
 import { applySound, duckMenuMusic } from './audio/mixer.js';
 import BattleScreen from './battle/BattleScreen.jsx';
@@ -120,6 +121,7 @@ function DisplayApp() {
   const resultsShow = useRef(null);
   const [sound, setSound] = useState(loadSound);
   const [wiiCursor, setWiiCursor] = useState(loadWiiCursor);
+  const [showFlock, setShowFlock] = useState(loadShowFlock);
   const [battleId, setBattleId] = useState(battleRoute);
   // A battle on this display: 'lobby', 'songs' (Start pressed: pick the song), 'game' (the
   // song). Results stay on the song's stage until Continue returns to the main menu.
@@ -258,6 +260,7 @@ function DisplayApp() {
 
   useEffect(() => { saveSound(sound); applySound(sound); }, [sound]);
   useEffect(() => { saveWiiCursor(wiiCursor); }, [wiiCursor]);
+  useEffect(() => { saveShowFlock(showFlock); }, [showFlock]);
   // "Pod Lounge" loops under the aero background as the menu music (Settings: Master,
   // Music, Menu music, Mute all).
   useLoopingMusic('/music/pod-lounge.mp3', 'menuMusic');
@@ -314,6 +317,7 @@ function DisplayApp() {
           raised={songsOpen}
           solo={songsOpen && playerCount === 1}
           androidConnected={!replay && connection.sourceKind === 'android' && connection.status === 'connected'}
+          showFlock={showFlock}
         />
         <MainMenu
           visible={menuOpen && !battleId}
@@ -326,6 +330,8 @@ function DisplayApp() {
           onSoundChange={setSound}
           wiiCursor={wiiCursor}
           onWiiCursorChange={setWiiCursor}
+          showFlock={showFlock}
+          onShowFlockChange={setShowFlock}
         />
         <SongSelect
           visible={songsOpen}

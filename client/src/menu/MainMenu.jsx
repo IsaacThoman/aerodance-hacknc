@@ -12,8 +12,9 @@ import { BACK, BATTLE, ONE_PLAYER, SETTINGS, START, TITLE, TWO_PLAYERS } from '.
  *
  * Screens: main (Start, Battle, Settings), players (one / two players, then Song Select:
  * game/SongSelect.jsx), settings (sound: Master / Music / Effects volume, Menu music and Mute
- * all, which audio/mixer.js applies; and Wii cursor, the Wii hand in place of the mouse
- * pointer). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
+ * all, which audio/mixer.js applies; Wii cursor, the Wii hand in place of the mouse
+ * pointer; and Show flock, the flock camera behind the menu dancers even with no Android
+ * client connected). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
  * The main screen also shows the remote and fullscreen bubbles in the corner.
  *
  * Input comes from the mouse/touch on the canvas, the keyboard (arrows, Enter, Escape) or a
@@ -23,7 +24,7 @@ import { BACK, BATTLE, ONE_PLAYER, SETTINGS, START, TITLE, TWO_PLAYERS } from '.
  *
  * <MainMenu visible initialScreen="main" onStart={(playerCount) => ...} onBattle={() => ...}
  *   onScreenChange={setShown} sound={sound} onSoundChange={setSound} wiiCursor={wiiCursor}
- *   onWiiCursorChange={setWiiCursor} />
+ *   onWiiCursorChange={setWiiCursor} showFlock={showFlock} onShowFlockChange={setShowFlock} />
  */
 
 // Design space is 1600x900 (16:9); the layout is in ./layout.js.
@@ -39,9 +40,11 @@ const TOGGLES = [
   { key: 'menuMusic', label: 'Menu music', audio: true, on: (p) => p.sound.menuMusic !== false },
   { key: 'muted', label: 'Mute all', on: (p) => !!p.sound.muted },
   { key: 'wiiCursor', label: 'Wii cursor', on: (p) => p.wiiCursor !== false },
+  { key: 'showFlock', label: 'Show flock', on: (p) => !!p.showFlock },
 ];
-const ROW_Y = (i) => PANEL.y + 46 + i * 50;
-const SWITCH = { w: 84, h: 42, x: PANEL.x + PANEL.w - 40 - 84 };
+const ROW_H = 44;
+const ROW_Y = (i) => PANEL.y + 40 + i * ROW_H;
+const SWITCH = { w: 76, h: 38, x: PANEL.x + PANEL.w - 40 - 76 };
 const TRACK = { x0: PANEL.x + 190, x1: PANEL.x + PANEL.w - 110 };
 
 const WIDGETS = {
@@ -57,8 +60,8 @@ const WIDGETS = {
   ],
   settings: [
     { id: 'back', circle: BACK },
-    ...SLIDERS.map((sl, i) => ({ id: sl.key, drag: true, rect: { x: TRACK.x0 - 24, y: ROW_Y(i) - 25, w: TRACK.x1 - TRACK.x0 + 48, h: 50 } })),
-    ...TOGGLES.map((tg, i) => ({ id: tg.key, toggle: tg, sound: false, rect: { x: PANEL.x + 16, y: ROW_Y(SLIDERS.length + i) - 24, w: PANEL.w - 32, h: 48 } })),
+    ...SLIDERS.map((sl, i) => ({ id: sl.key, drag: true, rect: { x: TRACK.x0 - 24, y: ROW_Y(i) - ROW_H / 2, w: TRACK.x1 - TRACK.x0 + 48, h: ROW_H } })),
+    ...TOGGLES.map((tg, i) => ({ id: tg.key, toggle: tg, sound: false, rect: { x: PANEL.x + 16, y: ROW_Y(SLIDERS.length + i) - ROW_H / 2, w: PANEL.w - 32, h: ROW_H } })),
   ],
 };
 // Where back / Escape leads from each submenu.
@@ -144,12 +147,12 @@ function drawSettingsPanel(g, p, hover) {
 
 export default function MainMenu({
   visible = true, blocked = false, initialScreen = 'main', onStart, onBattle, onSettingsOpen, onScreenChange, sound, onSoundChange,
-  wiiCursor = true, onWiiCursorChange,
+  wiiCursor = true, onWiiCursorChange, showFlock = false, onShowFlockChange,
 }) {
   const gl = useThree((state) => state.gl);
-  const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null, drawnWii: null });
+  const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null, drawnWii: null, drawnFlock: null });
   const props = useRef({});
-  props.current = { visible, blocked, onStart, onBattle, onSettingsOpen, onScreenChange, sound, onSoundChange, wiiCursor, onWiiCursorChange };
+  props.current = { visible, blocked, onStart, onBattle, onSettingsOpen, onScreenChange, sound, onSoundChange, wiiCursor, onWiiCursorChange, showFlock, onShowFlockChange };
 
   const m = menu.current;
   const go = (screen) => {
@@ -181,6 +184,7 @@ export default function MainMenu({
         const on = !wdg.toggle.on(props.current);
         playUISound(on ? 'toggleOn' : 'toggleOff');
         if (wdg.id === 'wiiCursor') props.current.onWiiCursorChange?.(on);
+        else if (wdg.id === 'showFlock') props.current.onShowFlockChange?.(on);
         else setSound({ [wdg.id]: on });
         s.invalidate();
         return;
@@ -218,7 +222,8 @@ export default function MainMenu({
       }
       m.alpha = s.ease(m.alpha, shown ? 1 : 0, shown ? 3 : 6);
       m.gearAngle = s.ease(m.gearAngle, m.spin + (s.hover.settings ?? 0) * 0.35, 8);
-      if (props.current.sound !== m.drawnSound || props.current.wiiCursor !== m.drawnWii) s.invalidate();
+      const p = props.current;
+      if (p.sound !== m.drawnSound || p.wiiCursor !== m.drawnWii || p.showFlock !== m.drawnFlock) s.invalidate();
       if (m.screen !== m.reported) { m.reported = m.screen; props.current.onScreenChange?.(m.screen); }
       const { dataset } = gl.domElement;
       dataset.menuScreen = m.screen;
@@ -228,6 +233,7 @@ export default function MainMenu({
     draw: (g, s) => {
       m.drawnSound = props.current.sound;
       m.drawnWii = props.current.wiiCursor;
+      m.drawnFlock = props.current.showFlock;
       drawTitle(g, TITLE);
 
       const t = m.swap;
