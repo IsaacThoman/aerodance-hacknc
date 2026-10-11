@@ -1,4 +1,4 @@
-import { Vector3 } from "three";
+import { Matrix4, Vector3 } from "three";
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const median = (values) =>
@@ -98,11 +98,14 @@ export function createRetargeter(model, data, person) {
   const pose = Array.from({ length: 33 }, () => [0, 0, 0, 0]);
   const target = new Vector3(),
     offset = new Vector3();
+  const parentInverse = new Matrix4();
   // Meshes have rigid weights. Place their centers, compensating for bone pivots.
   function center(bone, x, y, z, ox, oy, oz) {
     target.set(x, y, z);
-    model.localToWorld(target);
-    bone.parent.worldToLocal(target);
+    // The rig and its ancestors are current for this pose. Avoid walking and
+    // recomposing that same chain twice for every hand and foot.
+    target.applyMatrix4(model.matrixWorld);
+    target.applyMatrix4(parentInverse.copy(bone.parent.matrixWorld).invert());
     offset.set(ox, oy, oz).applyQuaternion(bone.quaternion);
     bone.position.copy(target.sub(offset));
     bone.updateMatrixWorld(true);
@@ -137,7 +140,7 @@ export function createRetargeter(model, data, person) {
       0.45,
     );
     bones.Head.rotation.set(0, headYaw - yaw * 0.45, headRoll - roll);
-    model.updateMatrixWorld(true);
+    model.updateWorldMatrix(true, true);
     // Anatomical right is screen-left in a frontal capture; the asset L/R are screen-side names.
     for (const [side, wrist, ankle, sign] of [
       ["L", 16, 28, -1],

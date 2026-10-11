@@ -98,6 +98,7 @@ npm run dev
 - Vite dev server: http://localhost:5173 (proxies `/api` and `/socket.io` to Express on `:3000`)
 - Battles also need the agent: run `npm install && npm run dev` in `agent/` in a second terminal (it reads the same `.env`).
 - `npm run build` builds the client into `dist/`; `npm start` serves it from Express.
+- `npm run bench:performance` reproduces the CPU comparisons in the [performance audit](docs/performance-audit.md).
 
 ## Database
 

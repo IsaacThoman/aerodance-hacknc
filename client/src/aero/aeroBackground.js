@@ -21,6 +21,8 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Water } from 'three/addons/objects/Water.js';
+import { createMountainGeometry } from './mountainGeometry.js';
+import { createLakeNormalPixels } from './lakeNormals.js';
 
 const TAU = Math.PI * 2;
 
@@ -219,10 +221,8 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     const sm = new THREE.MeshLambertMaterial({ color: col('#ffffff'), flatShading: true });
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * TAU + R(-0.1, 0.1), r = R(3500, 3950), h = R(380, 720), rad = R(380, 620);
-      const c = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 7), mm);
+      const c = new THREE.Mesh(createMountainGeometry(rad, h), [mm, sm]);
       c.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r); c.rotation.y = R(0, TAU); root.add(c);
-      const s = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.3, h * 0.3, 7), sm);
-      s.position.set(c.position.x, h - h * 0.15 + 0.5, c.position.z); s.rotation.y = c.rotation.y; root.add(s);
     }
   }
   function roadCanvas() {
@@ -691,18 +691,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
       const k = 2 + Math.floor(R(0, 1) ** 2 * 40), a = R(0, TAU);
       return [Math.round(Math.cos(a) * k), Math.round(Math.sin(a) * k), R(0, TAU), 1 / (k ** 1.1)];
     }));
-    const hx = new Float32Array(S * S), hy = new Float32Array(S * S);
-    for (const [kx, ky, ph, amp] of waves) {
-      const fx = (kx * TAU) / S, fy = (ky * TAU) / S;
-      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-        const cs = Math.cos(fx * x + fy * y + ph) * amp;
-        hx[y * S + x] += cs * kx; hy[y * S + x] += cs * ky;
-      }
-    }
-    for (let i = 0; i < S * S; i++) {
-      const nx = -hx[i] * 0.09, ny = -hy[i] * 0.09, l = Math.hypot(nx, ny, 1);
-      im.data[i * 4] = (nx / l * 0.5 + 0.5) * 255; im.data[i * 4 + 1] = (ny / l * 0.5 + 0.5) * 255; im.data[i * 4 + 2] = (1 / l * 0.5 + 0.5) * 255; im.data[i * 4 + 3] = 255;
-    }
+    createLakeNormalPixels(S, waves, im.data);
     g.putImageData(im, 0, 0);
     return tex(c, true, false);
   }
