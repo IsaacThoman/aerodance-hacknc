@@ -1,25 +1,29 @@
 import { useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
-import { FONT, drawCaps, drawGlassCircle, drawGlassPanel, drawQR, drawShadowText, ellipsize, roundRect } from '../ui/draw.js';
+import { FONT, ICONS, drawCaps, drawGlassCircle, drawGlassPanel, drawQR, drawShadowText, ellipsize, roundRect } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
+import useFullscreen from '../menu/useFullscreen.js';
 import { useRemoteStatus } from './remoteLink.js';
 
 /**
  * The display's phone-remote corner, drawn in-engine over everything (priority 3.5):
  *   card    QR to /join?remote=<code>, with an X that whooshes it into the button
  *   button  a Wii remote in the bottom-right corner that brings the card out
+ *   fullscreen  a matching bubble above the remote button
  *   cursor  the remote's pointer, on top of every other overlay
  * The card starts tucked into the button and hides while a remote is connected. When the
  * remote drops it comes back for 15 seconds, then whooshes away on its own; opened by hand
- * it stays until closed.
+ * it stays until closed. Corner controls only appear on the main menu; the remote
+ * cursor stays available on other screens for navigation.
  *
- * <RemoteDock />
+ * <RemoteDock visible={() => isMainScreen} />
  */
 
 const ICON = { x: 1516, y: 836, r: 42 };
-const CARD = { x: 1262, y: 416, w: 300, h: 364 };
-const QR_BOX = { x: 1282, y: 448, w: 260, h: 260 };
-const CLOSE = { x: 1550, y: 428, r: 22 };
+const FULLSCREEN = { x: ICON.x, y: 730, r: ICON.r };
+const CARD = { x: 1262, y: 304, w: 300, h: 364 };
+const QR_BOX = { x: 1282, y: 336, w: 260, h: 260 };
+const CLOSE = { x: 1550, y: 316, r: 22 };
 const REOPEN_MS = 15000;
 
 const smooth = (k) => k * k * (3 - 2 * k);
@@ -101,12 +105,13 @@ function drawClose(g, c, hover) {
   g.stroke();
 }
 
-export default function RemoteDock() {
+export default function RemoteDock({ visible = () => true }) {
   const status = useRemoteStatus();
-  const props = useRef(status);
-  props.current = status;
+  const fullscreen = useFullscreen();
+  const props = useRef({});
+  props.current = { status, fullscreen, visible };
   // open: where the card is heading; k: how far out it is (0 tucked into the button, 1 out).
-  const st = useRef({ open: false, k: 0, hideAt: null, holder: null, drawn: null }).current;
+  const st = useRef({ open: false, k: 0, hideAt: null, holder: null, drawn: null, visible: null, drawnFullscreen: null }).current;
 
   const qr = useMemo(() => (status.joinUrl ? QRCode.create(status.joinUrl, { errorCorrectionLevel: 'M' }).modules : null), [status.joinUrl]);
   const qrRef = useRef(qr);
@@ -114,19 +119,31 @@ export default function RemoteDock() {
 
   useCanvasUI({
     priority: 3.5,
-    widgets: () => (st.k > 0.9 && st.open ? [{ id: 'close', circle: CLOSE }, { id: 'icon', circle: ICON }] : [{ id: 'icon', circle: ICON }]),
+    active: () => props.current.visible(),
+    widgets: () => {
+      const widgets = st.k > 0.9 && st.open ? [{ id: 'close', circle: CLOSE }, { id: 'icon', circle: ICON }] : [{ id: 'icon', circle: ICON }];
+      if (props.current.fullscreen.supported) widgets.push({ id: 'fullscreen', circle: FULLSCREEN });
+      return widgets;
+    },
     onActivate: (wdg, s) => {
+      if (wdg.id === 'fullscreen') { props.current.fullscreen.toggle(); s.invalidate(); return; }
       if (wdg.id === 'close') st.open = false;
       else st.open = !st.open;
       st.hideAt = null;
       s.invalidate();
     },
     update: (_dt, s) => {
-      const { holder } = props.current;
+      const { holder } = props.current.status;
+      const shown = props.current.visible();
+      if (shown !== st.visible) {
+        st.visible = shown;
+        if (!shown) { st.open = false; st.hideAt = null; st.k = 0; }
+        s.invalidate();
+      }
       // Connected: tuck the card away. Dropped: show it again for a while.
       if (holder !== st.holder) {
         if (holder) { st.open = false; st.hideAt = null; }
-        else if (st.holder) { st.open = true; st.hideAt = s.time + REOPEN_MS / 1000; }
+        else if (st.holder && shown) { st.open = true; st.hideAt = s.time + REOPEN_MS / 1000; }
         st.holder = holder;
         s.invalidate();
       }
@@ -135,9 +152,16 @@ export default function RemoteDock() {
       // The cursor is drawn here, so redraw whenever it moves.
       const at = s.remote ? `${s.remote.x},${s.remote.y},${!!s.pressed}` : null;
       if (at !== st.drawn) { st.drawn = at; s.invalidate(); }
+      if (props.current.fullscreen !== st.drawnFullscreen) s.invalidate();
     },
     draw: (g, s) => {
-      const { holder, error } = props.current;
+      const { holder, error } = props.current.status;
+      const fs = props.current.fullscreen;
+      st.drawnFullscreen = fs;
+      if (!props.current.visible()) {
+        if (s.remote) drawRemoteCursor(g, s.remote, s.pressed || s.drag ? 1 : 0);
+        return;
+      }
       const h = s.hover;
       const k = smooth(st.k);
 
@@ -163,6 +187,18 @@ export default function RemoteDock() {
 
       drawGlassCircle(g, ICON, h.icon ?? 0);
       drawRemoteIcon(g, ICON, { lit: !!holder, dim: !!error && !holder });
+      g.save();
+      if (!fs.supported) g.globalAlpha *= 0.5;
+      drawGlassCircle(g, FULLSCREEN, h.fullscreen ?? 0);
+      g.lineWidth = 4;
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      g.strokeStyle = '#ffffff';
+      ICONS.fullscreen(g, FULLSCREEN.x, FULLSCREEN.y, FULLSCREEN.r, fs.active);
+      g.restore();
+      if (fs.error) {
+        drawShadowText(g, fs.error, FULLSCREEN.x - FULLSCREEN.r - 18, FULLSCREEN.y, { size: 24, align: 'right' });
+      }
       if (holder && k < 0.5) {
         drawCaps(g, 'REMOTE', ICON.x - ICON.r - 18, ICON.y - 14, { size: 18, align: 'right' });
         g.font = `700 26px ${FONT}`;

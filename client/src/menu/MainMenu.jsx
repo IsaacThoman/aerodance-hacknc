@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawTitle, pill } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
+import RemoteDock from '../remote/RemoteDock.jsx';
 
 /**
  * Title menu drawn in-engine (see ui/useCanvasUI.js), laid out in 16:9 design units and
@@ -8,6 +9,7 @@ import useCanvasUI from '../ui/useCanvasUI.js';
  *
  * Screens: main (Start, Battle, Settings), start (random / select song), songs (song list),
  * settings (sound). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
+ * The main screen also shows the remote and fullscreen bubbles in the corner.
  *
  * Input comes from the mouse/touch on the canvas or from a paired phone remote
  * (remote/remoteLink.js; B goes back).
@@ -231,5 +233,5 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
     ui.invalidate();
   }, [visible, m, ui]);
 
-  return null;
+  return <RemoteDock visible={() => props.current.visible && m.screen === 'main' && m.next === 'main'} />;
 }
