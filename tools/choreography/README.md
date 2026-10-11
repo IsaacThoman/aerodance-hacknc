@@ -69,10 +69,18 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    the source take. Drag the selection start/end handles on the waveform to select a timeline
    range (arrow keys adjust a focused handle) to swap tracks, mirror, smooth, repair
    a short gap, approve references, or exclude reference scoring.
-5. Adjust take offset in seconds for audio alignment. Selecting a take does not
-   automatically overwrite current clips. **Replace selected phrase** uses the
-   selected take's full source range on the selected player, splitting existing
-   clips around the destination. It reports the need to review speed/joins.
+5. Select a take to open **Take view**, a read-only preview immediately before
+   **Live view**. Scrub, step, and play the take without changing the routine.
+   Take playback also works without music. A completed recording opens its new
+   take automatically. Imports and recordings remain in the library until assigned.
+   Open its **⋯** menu and choose **Overwrite P1 track**, **Overwrite P2 track**, or
+   **Overwrite both tracks**. Each action copies the corresponding source player
+   into independent track storage and uses the take's original audio alignment;
+   it replaces the entire destination track, including its edits.
+   Adjust each track's **Offset (seconds)** independently in Playback. Positive
+   offsets delay poses; negative offsets advance them. Poses before song time zero
+   are omitted from playback/export but retained for later realignment. Track
+   offsets, edits, overwrite, clear, and interpolation support undo/redo.
 6. Check music/pose alignment near both ends, set the playable range if needed,
    then confirm alignment in Song details. Review references and missing intervals
    in **Review**. Approvals require a reason; exclusions always override approvals.
@@ -91,10 +99,29 @@ The committed capture at
 editor. Its combined legacy confidence cannot be split into visibility/presence;
 review/approve its reference poses explicitly before publication. It has no music.
 
-**Repair short gap** reconstructs the selected player between two available
-endpoint poses within one second. Reconstructed confidence is null and scoring
-is disabled until explicitly approved. Longer gaps need another take or a score
-exclusion. The Frutiger rig is stylized 2.5D; elbows/knees remain editable in the
+**Interpolate P1/P2 missing intervals** fills every bounded gap on that player
+track, including gaps longer than one second. It preserves available poses and
+linearly interpolates missing XYZ coordinates at 30 Hz. Missing beginnings and
+endings remain unchanged because they lack two endpoints. Generated poses have
+unknown confidence and scoring remains disabled until explicitly approved.
+The existing **Repair short gap** action still repairs a selected range within
+one second. Interpolation does not modify the library take.
+
+All deletion actions ask for confirmation. **Delete P1/P2 track** clears only that
+track and resets its offset; it is undoable. **Delete** in a take's menu removes
+that take and its raw capture while preserving assigned track poses and their
+source provenance. **Delete project/song** permanently removes the whole routine,
+including audio, tracks, takes, capture files, and revisions. It opens another
+project, or a blank project when the library is empty. Deleting a project or a take
+cannot be undone; use **Backup** before deleting material you want to retain.
+
+Projects now use schema v2 with independent immutable track snapshots in
+`tracks/`. Backups include snapshots required by current tracks and edit history,
+so they still restore after source takes are deleted. Existing schema-v1 projects
+are migrated when opened, and old backups are migrated on restore. Migration
+preserves the current routine, review masks, original comparison poses, and
+pre-zero data; it starts a fresh edit history. Runtime song bundle schemas remain
+unchanged. The Frutiger rig is stylized 2.5D; elbows/knees remain editable in the
 skeleton even though the character has no articulated elbow/knee bones.
 
 ## Install a song in the game
@@ -153,9 +180,9 @@ batches, backup restore, deterministic bundle checksums, and unsafe archives.
 - The editor imports JSON/NDJSON and its own project backups. Uploading video and
   running the optional Python tracker inside the website are future work. The
   existing offline tracker can produce a take for import.
-- Replacement takes must have matching inference dimensions. Automatic normalization
-  of different camera placements, articulated IK, and curve/clip transition controls
-  are future work; inspect replacement joins visually.
+- Automatic normalization of different camera placements, articulated IK, and
+  curve/clip transition controls are future work; review poses after overwriting
+  a track. Each independent player track retains its own inference dimensions.
 - Audio decode/write validation uses the local browser's measured duration. Server
   transcoding and format-independent audio inspection are not implemented.
 - Publication requires some eligible poses on both tracks and explicit gap review.

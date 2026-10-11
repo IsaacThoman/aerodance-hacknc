@@ -38,7 +38,10 @@ function Actor({ pose, calibration, id, mirrored }) {
     [id],
   );
   return (
-    <group position={[(id === 0 ? -1.8 : 1.8) * (mirrored ? -1 : 1), 0, 0]} scale={[mirrored ? -1 : 1, 1, 1]}>
+    <group
+      position={[(id === 0 ? -1.8 : 1.8) * (mirrored ? -1 : 1), 0, 0]}
+      scale={[mirrored ? -1 : 1, 1, 1]}
+    >
       <Character
         poseRef={poseRef}
         calibration={calibration}
@@ -74,6 +77,7 @@ export default function Preview({
   onSelect,
   onEdit,
   readOnly = false,
+  readOnlyLabel = "Live pose skeleton",
   mirrored = false,
   emptyMessage = "No pose at this time",
   emptyHint = "Import a take or connect Android to start capturing.",
@@ -81,7 +85,7 @@ export default function Preview({
   const svg = useRef(null);
   // Reflect the whole camera frame. The same involution converts pointer
   // coordinates back to source coordinates when editing the flipped preview.
-  const viewX = (x) => mirrored ? 1 - x : x;
+  const viewX = (x) => (mirrored ? 1 - x : x);
   function drag(event, index, pose) {
     event.preventDefault();
     event.stopPropagation();
@@ -162,7 +166,7 @@ export default function Preview({
           className="skeleton"
           viewBox="0 0 1000 750"
           preserveAspectRatio="none"
-          aria-label={readOnly ? "Live pose skeleton" : "Editable pose skeleton"}
+          aria-label={readOnly ? readOnlyLabel : "Editable pose skeleton"}
         >
           <defs>
             <pattern
@@ -227,7 +231,11 @@ export default function Preview({
                   key={i}
                   cx={viewX(v.x) * 1000}
                   cy={v.y * 750}
-                  r={playerId === p.playerId && selectedJoints.includes(i) ? 10 : 6}
+                  r={
+                    playerId === p.playerId && selectedJoints.includes(i)
+                      ? 10
+                      : 6
+                  }
                   fill={
                     playerId === p.playerId && selectedJoints.includes(i)
                       ? "#fff"
@@ -249,7 +257,10 @@ export default function Preview({
           ))}
         </svg>
       )}
-      <div className="stage-label" style={{ flexDirection: mirrored ? "row-reverse" : "row" }}>
+      <div
+        className="stage-label"
+        style={{ flexDirection: mirrored ? "row-reverse" : "row" }}
+      >
         <span>
           <i className="dot cyan" />
           PLAYER 1
