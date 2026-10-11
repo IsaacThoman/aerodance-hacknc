@@ -5,7 +5,7 @@ import { beat, useDisposable } from '../shared/hooks.js';
 import { makeRandom } from '../shared/random.js';
 import { SUN_AZIMUTH, WATER_Y, world } from './palette.js';
 import { makeLitMaterial } from './shaders.js';
-import { dolphinGeometry, gullGeometry, jetSkiGeometry } from './props.js';
+import { dolphinGeometry, gullGeometry } from './props.js';
 
 // Gulls: circling over the cove, gliding high, and crossing near the lens.
 const GULLS = (() => {
@@ -161,136 +161,6 @@ function Dolphins() {
   );
 }
 
-// Jet skis carving figure-eights in the cove mouth, trailing foam wakes.
-const SKIS = [
-  { cx: -4, cz: -44, a: 20, b: 6, w: 0.32, ph: 0 },
-  { cx: 12, cz: -78, a: 26, b: 8, w: 0.27, ph: 2.2 },
-];
-const WAKE_N = 40;
-const WAKE_DT = 0.075;
-const SPRAY = 18;
-// Rooster-tail droplets: [phase, side, lift].
-const SPRAY_SEEDS = (() => {
-  const r = makeRandom(61);
-  return Array.from({ length: SPRAY }, () => [r.next(), r.range(-1, 1), r.range(0.7, 1.3)]);
-})();
-
-function skiPos(s, t, out) {
-  const p = s.w * t + s.ph;
-  return out.set(s.cx + s.a * Math.sin(p), world.uWaterY.value + 0.05, s.cz + s.b * Math.sin(2 * p));
-}
-
-function JetSkis() {
-  const mesh = useRef();
-  const geometry = useDisposable(() => jetSkiGeometry());
-  const material = useDisposable(() => makeLitMaterial({ shininess: 80, specular: 0.6, rim: 0.6 }));
-  const wake = useDisposable(() => {
-    const g = new THREE.BufferGeometry();
-    const verts = SKIS.length * (WAKE_N + 1) * 2;
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts * 3), 3));
-    const uv = new Float32Array(verts * 2);
-    const idx = [];
-    for (let s = 0; s < SKIS.length; s++) {
-      for (let k = 0; k <= WAKE_N; k++) {
-        const v = (s * (WAKE_N + 1) + k) * 2;
-        uv.set([k / WAKE_N, -1, k / WAKE_N, 1], v * 2);
-        if (k < WAKE_N) idx.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
-      }
-    }
-    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    g.setIndex(idx);
-    return g;
-  });
-  const wakeMat = useDisposable(
-    () =>
-      new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        vertexShader: /* glsl */ `
-          varying vec2 vUv;
-          void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-        `,
-        fragmentShader: /* glsl */ `
-          varying vec2 vUv;
-          void main() {
-            // Interpolation can push age a hair past 1, and pow() of a negative
-            // base is NaN on some GPUs (Apple/Metal); bloom then spreads it over the frame.
-            float age = clamp(vUv.x, 0.0, 1.0);
-            float side = abs(vUv.y);
-            // Bright churned center and two spreading V arms, fading with age.
-            float center = exp(-side * side * 30.0) * (1.0 - smoothstep(0.0, 0.5, age));
-            float arm = (side - 0.85) * 7.0;
-            float arms = exp(-arm * arm);
-            float a = max(center, arms * 0.8) * pow(1.0 - age, 1.6) * smoothstep(0.0, 0.03, age);
-            gl_FragColor = vec4(vec3(1.0, 0.97, 0.94), a * 0.85);
-          }
-        `,
-      }),
-  );
-  const sprayGeo = useDisposable(() => dropGeometry(SKIS.length * SPRAY));
-  const sprayMat = useDisposable(makeDropMaterial);
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-  const p = useMemo(() => new THREE.Vector3(), []);
-  const q = useMemo(() => new THREE.Vector3(), []);
-  useFrame(() => {
-    const t = world.uTime.value;
-    const pos = wake.attributes.position;
-    const spos = sprayGeo.attributes.position;
-    const sfade = sprayGeo.attributes.aFade;
-    SKIS.forEach((s, i) => {
-      skiPos(s, t, dummy.position);
-      skiPos(s, t + 0.1, q);
-      const yaw = Math.atan2(q.x - dummy.position.x, q.z - dummy.position.z);
-      skiPos(s, t + 0.3, p);
-      const yaw2 = Math.atan2(p.x - q.x, p.z - q.z);
-      const turn = Math.atan2(Math.sin(yaw2 - yaw), Math.cos(yaw2 - yaw));
-      dummy.rotation.set(-0.08 + Math.sin(t * 7 + i) * 0.02, yaw, -turn * 2.2, 'YXZ');
-      dummy.position.y += Math.sin(t * 6 + i) * 0.04;
-      dummy.scale.setScalar(1.3);
-      dummy.updateMatrix();
-      mesh.current.setMatrixAt(i, dummy.matrix);
-      for (let k = 0; k <= WAKE_N; k++) {
-        const tk = t - k * WAKE_DT - 0.12;
-        skiPos(s, tk, p);
-        skiPos(s, tk + 0.05, q);
-        const dx = q.x - p.x;
-        const dz = q.z - p.z;
-        const len = Math.hypot(dx, dz) || 1;
-        const w = 0.4 + (k / WAKE_N) * 4.5;
-        const v = (i * (WAKE_N + 1) + k) * 2;
-        pos.setXYZ(v, p.x - (dz / len) * w, p.y + 0.03, p.z + (dx / len) * w);
-        pos.setXYZ(v + 1, p.x + (dz / len) * w, p.y + 0.03, p.z - (dx / len) * w);
-      }
-    });
-    // Spray kicked up behind each ski, launched from where it was a moment ago.
-    SKIS.forEach((s, i) => {
-      SPRAY_SEEDS.forEach(([ph, side, lift], j) => {
-        const age = ((t * 1.7 + ph) % 1) * 0.6;
-        skiPos(s, t - age - 0.08, p);
-        skiPos(s, t - age - 0.03, q);
-        const dx = q.x - p.x;
-        const dz = q.z - p.z;
-        const len = Math.hypot(dx, dz) || 1;
-        const idx = i * SPRAY + j;
-        spos.setXYZ(idx, p.x - (dz / len) * side * age * 2.2, p.y + lift * 3.4 * age - 4.9 * age * age, p.z + (dx / len) * side * age * 2.2);
-        sfade.setX(idx, 1 - age / 0.6);
-      });
-    });
-    pos.needsUpdate = true;
-    spos.needsUpdate = true;
-    sfade.needsUpdate = true;
-    mesh.current.instanceMatrix.needsUpdate = true;
-  });
-  return (
-    <>
-      <mesh geometry={wake} material={wakeMat} frustumCulled={false} renderOrder={-8} />
-      <points geometry={sprayGeo} material={sprayMat} frustumCulled={false} renderOrder={8} />
-      <instancedMesh ref={mesh} args={[geometry, material, SKIS.length]} frustumCulled={false} />
-    </>
-  );
-}
-
 /** Glossy soap-bubble orbs drifting up from the shallows on both sides of the dancers. */
 function Bubbles({ count = 26 }) {
   const geometry = useDisposable(() => {
@@ -421,7 +291,6 @@ export function Life() {
     <>
       <Gulls />
       <Dolphins />
-      <JetSkis />
       <Bubbles />
       <Sparkles />
     </>

@@ -388,24 +388,6 @@ export function dolphinGeometry() {
   return merge(parts);
 }
 
-/** Jet ski with a rider; bow at +z. */
-export function jetSkiGeometry({ hull = '#ffffff', accent = '#ff5f7a', vest = '#ffd23a' } = {}) {
-  const parts = [];
-  const h = new THREE.SphereGeometry(1, 14, 8);
-  place(h, { scale: [0.45, 0.28, 1.25], position: [0, 0.12, 0] });
-  parts.push(finalize(h, { paint: (p, n, out) => out.set(p.y > 0.2 ? accent : hull) }));
-  const seat = new THREE.BoxGeometry(0.32, 0.18, 0.9);
-  place(seat, { position: [0, 0.42, -0.25] });
-  parts.push(finalize(seat, { paint: '#24324a' }));
-  const torso = new THREE.CapsuleGeometry(0.17, 0.45, 3, 8);
-  place(torso, { position: [0, 0.95, -0.1], rotation: [0.35, 0, 0] });
-  parts.push(finalize(torso, { paint: vest }));
-  const head = new THREE.SphereGeometry(0.13, 8, 6);
-  place(head, { position: [0, 1.45, 0.08] });
-  parts.push(finalize(head, { paint: '#8a5a3a' }));
-  return merge(parts);
-}
-
 /** White cruise liner (~90 long, bow at +x). Returns { body, windows }. */
 export function cruiseShipGeometry() {
   const outline = (len, wid, bow) => {

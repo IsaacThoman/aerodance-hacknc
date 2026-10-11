@@ -40,7 +40,7 @@ The dancers perform on five stages inspired by Frutiger Aero (Frutiger Eco, Helv
 | 2 | `#reef` | Coral Dome (water) | Glass dome on a sunlit reef: caustics, light shafts, coral gardens, eight fish species in schools, dolphins, sea turtle, manta, jellyfish, bubble columns, glass tunnel |
 | 3 | `#falls` | Emerald Falls (landscape) | Clifftop meadow over a turquoise lake: eight waterfalls with mist and a rainbow, floating islands, wind-swept grass and wildflowers, solar-flower sculptures, turbines, observatory cable car, balloons, butterflies, birds |
 | 4 | `#club` | Club Aquarium (dance club) | Beat-driven LED floor, aquarium walls, curved video wall, mirror ball, moving heads and lasers, DJ blob, speaker stacks, bar, a crowd of bobbing gel blobs, confetti |
-| 5 | `#beach` | Sugarsand Sunset (beach) | Golden-hour cove: sun path on the waves, palms, tiki torches, lighthouse, volcano, cruise ship, jet skis, leaping dolphins, gulls |
+| 5 | `#beach` | Sugarsand Sunset (beach) | Golden-hour cove: sun path on the waves, palms, tiki torches, lighthouse, volcano, cruise ship, leaping dolphins, gulls |
 
 Everything is procedural (geometry, shaders, canvas textures); there are no asset files beyond the character GLB and capture. Code lives in `client/src/`:
 
