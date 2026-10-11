@@ -32,37 +32,14 @@ Every in-game button (menus, battle screens, the phone view, the debug strip) ma
 
 ## Main UI flow
 
-**Start → One Player / Two Players → Song Select** is now wired into the main app.
-Back from Song Select returns to player selection. The bottom-right **Connect Client**
-opens an Android IP field defaulting to `192.168.43.1`, with Ok, Cancel, connection
-status, and Disconnect. Successfully connected addresses are remembered. The server
-HUD describes the separate backend connection. Choose **Webcam (dummy)** in
-Connect Client to test both player modes without Android. It skips device pairing
-and does not request camera access or provide tracking.
+**Start → One Player / Two Players → Song Select → song preview**, all drawn in-engine. Back (or Escape, or the phone remote's B) from Song Select returns to the player count, and every screen works with the mouse, touch, the keyboard (arrows and Enter) and the phone remote.
 
-The game consumes Android protocol v2 directly, applies player count at the stream's
-sequence boundary, and clears missing/stale tracking. Set the Android allowed origin
-to the exact origin shown in the connection panel. Real-device pairing from deployed
-HTTPS still needs validation.
+- **Connect Client** (`client/src/connect/`): the status pill in the top-right corner opens a card for the pose input. **Android Client** takes the board's IP on an on-screen keypad (or the keyboard), defaulting to `192.168.43.1` and remembering the last address that connected; the card shows the origin to set as Android's allowed origin and every connection message, and connects, cancels or disconnects. **Webcam (dummy)** lets both player modes be tested without Android: it skips pairing and doesn't use the camera or tracking yet. The server HUD (top left) is the separate backend connection.
+- **Android:** the game reads Android protocol v2 directly (`client/src/pose/`), applies the player count at the stream's sequence boundary and clears missing or stale tracking. Connecting starts the board's camera and pose tracker; Song Select shows **Camera starting…** until the first pose, allowing up to 90 seconds on each connection or reconnect, then each player's slot turns **Detected**. Disconnecting releases the camera to save battery. Browsers block the board's plain-http stream from an https page, so pair from a local http deploy for now.
+- **Song Select** (`client/src/game/SongSelect.jsx`) lists the published songs four to a page with each player's readiness. Extract Dance Studio's song ZIPs into `client/public/songs/`: Song Select finds the exported folders without manifest edits (`server/songCatalog.js`), and builds generate the catalog for static hosting, so rebuild or redeploy to publish changes. The repo ships Austin's “Rockefeller Street Bad Test” routine. Bundles are fully verified before they play ([game song bundles](docs/game-song-bundles.md)).
+- **Preview:** a song's music plays through the mixer (the menu music ducks) with its reference dancers on the song's **dance stage**, rendered inside the game canvas (`client/src/stage/StageView.jsx`, stages from `packages/stages`). Each song picks its stage in Dance Studio and defaults to Open Reef; the stage card on the preview tries any of the six. Countdown, live player characters, calibrated timing, scoring and results are still to come ([integration plan](docs/android-game-integration-plan.md)).
 
-Connecting opens the stream and starts the Android camera and pose tracker.
-The game shows **Camera starting…** until the first pose result, allowing up to
-90 seconds on each connection/reconnect. Disconnect releases capture to save
-battery, so reconnecting includes initialization again. The authoring tool uses
-the same startup state and keeps recording disabled while it waits.
-
-Extract Studio song ZIPs into `client/public/songs/`; Song Select discovers the
-exported folders automatically, with no manual manifest edits. Builds generate
-the catalog for static hosting. Rebuild/redeploy to publish source folder changes.
-The local catalog includes the exported “Rockefeller Street Bad Test” routine.
-Song Select loads
-validated song bundles and offers
-a finite music/reference-character preview in either player mode. Countdown, live
-characters, calibrated timing, scoring, and results remain future integration work.
-See [game song bundles and pose migration](docs/game-song-bundles.md) for installation,
-loader behavior, and the migrated Android-shaped silent capture.
-
-Containerized build and protocol/adapter checks (use `podman` in place of `docker`
+Containerized build, unit and browser-flow checks (use `podman` in place of `docker`
 when using Podman):
 
 ```sh
@@ -71,8 +48,7 @@ docker build --target ui-test -t aerodance-ui-browser-test .
 docker run --rm aerodance-ui-browser-test
 ```
 
-Browser flow checks skip GPU rasterization in software-only containers. Set
-`UI_RENDER=1` for a full rendered check on a capable GPU.
+The browser flow (`client/tests/ui-flow.browser.mjs`) clicks the canvas in design units and reads the state each overlay reports on its `data-*` attributes. It skips GPU rasterization in software-only containers; set `UI_RENDER=1` for a full rendered check on a capable GPU.
 
 ## Captured dance demo
 
@@ -109,7 +85,7 @@ To make a devnet treasury for funding wallets and signing receipts, run `npm run
 
 ### In-engine UI
 
-All menus and battle screens are drawn on 2D canvases that share the render buffer, so they get the same pixels and stretch as the world. `client/src/ui/useCanvasUI.js` handles the overlay (canvas texture, design-unit layout, hit testing, press/hover/drag, scrolling) and `client/src/ui/draw.js` holds the aero drawing kit (bubble pills, glass panels, headers, the title, icons, a pixel-snapped QR code).
+All menus, Song Select, Connect Client and battle screens are drawn on 2D canvases that share the render buffer, so they get the same pixels and stretch as the world. `client/src/ui/useCanvasUI.js` handles the overlay (canvas texture, design-unit layout, hit testing, press/hover/drag, scrolling, opt-in arrow-key navigation) and `client/src/ui/draw.js` holds the aero drawing kit (bubble pills, glass panels, headers, the title, icons, text fields, chips, links, status lights, progress bars, a pixel-snapped QR code).
 
 - **Corner controls:** The main menu shows a fullscreen bubble above the Wii remote bubble; both controls and the remote pairing card hide on submenus and battle screens. A paired remote's cursor still works there. Click the fullscreen bubble on the display itself (phone remote input cannot activate browser fullscreen), or press Esc to exit. Safari on macOS is supported, and the existing 16:9 letterboxing and fixed render resolution are preserved.
 - **Display:** Battle on the main menu opens the lobby (`client/src/battle/BattleScreen.jsx`): a QR code to `/join/<id>`, seat tags over the dancers, the crowd count, and hype rising as bubbles from the dancer it was sent to. Start hands off to the dance; the results screen shows the winner, scores, hype, the on-chain receipt and the winner's trophy NFT. `/battle/<id>?p=<token>`, the link the bot texts, opens the same lobby with that seat's token.
@@ -126,7 +102,7 @@ To rebuild and deploy the main app locally in the background:
 ```
 
 The script runs from any working directory, uses Podman when available (otherwise
-Docker), and checks app/database health after startup. Create `.env` from
+Docker), starts the database and agent, and checks app/database health after startup. Create `.env` from
 `.env.example` before the first run. Set `CONTAINER_ENGINE=docker` or
 `CONTAINER_ENGINE=podman` to choose the runtime explicitly. Existing database
 data is retained. Each deployment rebuilds the app image and replaces the app

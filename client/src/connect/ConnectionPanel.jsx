@@ -16,7 +16,7 @@ import { CARD, CLOSE, COLUMN, FIELD, KEYS, MODES, PILL, PRIMARY, STATUS } from '
  * pose/AndroidPoseSource.js; it remembers the last address that connected.
  *
  * While the card is open the rest of the menus are held (App passes them `blocked`).
- * The canvas reports data-connect-open / -status / -mode / -message for tests.
+ * The canvas reports data-connect-open / -status / -mode / -message / -address for tests.
  *
  * <ConnectionPanel visible open onOpenChange={setOpen} source={source} connection={view}
  *   inputMode="android" onInputModeChange={setMode} />
@@ -161,7 +161,7 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
         st.drawn = key;
         s.invalidate();
         Object.assign(gl.domElement.dataset, {
-          connectOpen: String(p.open), connectStatus: status, connectMode: p.inputMode, connectMessage: message(),
+          connectOpen: String(p.open), connectStatus: status, connectMode: p.inputMode, connectMessage: message(), connectAddress: st.address,
         });
       }
     },

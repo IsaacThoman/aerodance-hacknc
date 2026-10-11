@@ -20,7 +20,7 @@ real-board and deployed HTTPS acceptance remain outstanding.
 
 ## Intended experience
 
-1. The main screen has **Connect Client** in the bottom right. Clicking it reveals an IP input, initially **192.168.43.1**, and **Ok** / Cancel. Ok connects to the Android app on port **1337**. Remember a successfully used address for subsequent visits. Show connecting, connected, reconnecting, and actionable error states, plus Disconnect once connected.
+1. The main screen has **Connect Client** in the top right (the bottom right holds the remote and fullscreen bubbles). Clicking it reveals an IP input, initially **192.168.43.1**, and **Ok** / Cancel. Ok connects to the Android app on port **1337**. Remember a successfully used address for subsequent visits. Show connecting, connected, reconnecting, and actionable error states, plus Disconnect once connected.
 2. Keep the current **Start** label. Start opens **One Player / Two Players**, then song selection. Both modes use the same song catalog. Single-player mode uses only choreography track 0 from the two-player song.
 3. Choosing a song loads its audio and choreography, verifies input readiness, then displays **3, 2, 1** over three seconds. At zero, music and reference dancers start together. Readiness/loading happens before the countdown.
 4. Show one or two large Frutiger reference characters in the central dance area, playing the recorded choreography. Show a smaller Frutiger character displaying player one's live pose in the top left; show player two's in the top right only in two-player mode. Label the live panels and show each player's score and tracking status.
@@ -32,7 +32,7 @@ Default decisions: one Android device captures both people; two-player participa
 
 | Area | Current evidence | Required change |
 | --- | --- | --- |
-| Game flow | Start opens player selection, then Song Select with discovered song bundles and finite music/reference preview. Webcam dummy bypasses device pairing for menu testing. | Countdown, live player panels, calibrated timing, scoring, and results. |
+| Game flow | Start opens player selection, then Song Select with discovered song bundles and a finite music/reference preview on the song's dance stage, all in-engine. Webcam dummy bypasses device pairing for menu testing. | Countdown, live player panels, calibrated timing, scoring, and results. |
 | Android connection | The game adapter consumes protocol v2 status/config/NDJSON with bounded startup, freshness, and reconnect handling. | Validate real-board pairing from deployed HTTPS and integrate the shared pose model. |
 | Player slots | Android emits explicit `playerId: 0/1`; two-player IDs represent fixed camera halves. | Map IDs to player panels and tracks; never use pose-array position as identity. |
 | Recorded characters | `packages/character/Character.jsx` and `motion.js` animate the GLB from recorded `dance.json`; the stages live in `packages/stages`. | Add live pose support. |
@@ -92,7 +92,7 @@ Run gameplay and scoring locally in the browser. The existing Socket.IO backend 
 - Preserve bounded reconnect behavior: delay capped at 8 seconds, stop after five consecutive failed attempts, and require another click after initial permission/connection failure. Disconnect cancels fetches, readers, timers, and pending configuration work.
 - Connection status must distinguish a reachable device, a running stream, and players actually detected. Show missing-player status per slot and a simple camera-half placement cue for two players.
 
-Keep the visual controls inside the current letterboxed frame. A real HTML input overlay is appropriate for IP entry and keyboard accessibility; align it with the existing in-canvas menu and prevent overlapping hit handlers.
+Keep the visual controls inside the current letterboxed frame and drawn in-engine like the rest of the menus. IP entry uses an on-screen keypad, so the phone remote (which can only point and press) and touch screens can enter it, plus the physical keyboard.
 
 Android currently requires an exact allowed Origin configured on the device. Show the game's origin in connection help, including local-development and preview origins. Verify production HTTPS permissions, CORS, preflights, and site policy before declaring pairing complete. Chrome documents permission-gated HTTP access to private IP literals from secure pages; this does not establish support in every browser. [Chrome Local Network Access guidance](https://developer.chrome.com/blog/local-network-access).
 

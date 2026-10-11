@@ -2,11 +2,12 @@
 
 The game now reads the directory bundle contract in
 [song-dance-authoring-workflow.md](song-dance-authoring-workflow.md).
-The first integration is a music/reference-character preview in Song Select.
-Countdown, live character panels, calibrated audible timing, scoring, and results
-are still pending. Preview follows the media element's current song time, pauses
-when the tab is hidden, and stops at the playable endpoint. It does not use the
-silent demo's loop or seam blend.
+The first integration is a music/reference-character preview in Song Select, on
+the song's dance stage. Countdown, live character panels, calibrated audible
+timing, scoring, and results are still pending. The preview plays the audio
+through the mixer's music bus and samples the dancers at the audio clock's song
+time (less output latency), pauses when the tab is hidden, and stops at the
+playable endpoint. It does not use the silent demo's loop or seam blend.
 
 ## Install an exported bundle
 
@@ -43,13 +44,15 @@ preview selects IDs 0 and 1. The shared finite sampler preserves absence and
 refuses interpolation over gaps longer than the authored limit (at most 200 ms).
 Authored exclusions clear score eligibility without changing the visual pose.
 Coach reflection is visual only; stored anatomy and player IDs remain unchanged.
-Audio uses a verified in-memory Blob, released when preview closes.
+Audio is decoded from the verified in-memory Blob and released when preview closes.
 
 Code:
 
 - `packages/pose/song.js`: catalog/song validation, bundle cross-checks, finite sampling.
 - `client/src/songs/loadBundle.js`: bounded HTTP loading and file integrity.
-- `client/src/game/SongPreview.jsx`: finite music and independent Frutiger actors.
+- `client/src/game/SongSelect.jsx`: the in-engine list and preview.
+- `client/src/audio/songPlayer.js`: finite music on the mixer, clamped to the playable range.
+- `client/src/stage/StageView.jsx` and `packages/stages/shared/Dancers.jsx`: the stage and its independent Frutiger dancers.
 
 ## Migrated silent capture
 
