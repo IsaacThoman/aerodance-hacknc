@@ -283,14 +283,102 @@ export const ICONS = {
     g.stroke();
     g.restore();
   },
+  close(g, cx, cy, r) {
+    const a = r * 0.36;
+    g.beginPath();
+    g.moveTo(cx - a, cy - a);
+    g.lineTo(cx + a, cy + a);
+    g.moveTo(cx + a, cy - a);
+    g.lineTo(cx - a, cy + a);
+    g.stroke();
+  },
+  pause(g, cx, cy, r) {
+    const a = r * 0.4;
+    g.beginPath();
+    g.moveTo(cx - a * 0.45, cy - a);
+    g.lineTo(cx - a * 0.45, cy + a);
+    g.moveTo(cx + a * 0.45, cy - a);
+    g.lineTo(cx + a * 0.45, cy + a);
+    g.stroke();
+  },
+  // Chevrons: up / down page a list, left / right step through choices.
+  up(g, cx, cy, r) { chevron(g, cx, cy, r, -Math.PI / 2); },
+  down(g, cx, cy, r) { chevron(g, cx, cy, r, Math.PI / 2); },
+  left(g, cx, cy, r) { chevron(g, cx, cy, r, Math.PI); },
+  right(g, cx, cy, r) { chevron(g, cx, cy, r, 0); },
+  // Delete-left key: a tag pointing left with an x in it.
+  backspace(g, cx, cy, r) {
+    const a = r * 0.5;
+    const b = r * 0.32;
+    g.beginPath();
+    g.moveTo(cx - a, cy);
+    g.lineTo(cx - a * 0.4, cy - b);
+    g.lineTo(cx + a, cy - b);
+    g.lineTo(cx + a, cy + b);
+    g.lineTo(cx - a * 0.4, cy + b);
+    g.closePath();
+    const x = cx + a * 0.3;
+    const k = b * 0.45;
+    g.moveTo(x - k, cy - k);
+    g.lineTo(x + k, cy + k);
+    g.moveTo(x + k, cy - k);
+    g.lineTo(x - k, cy + k);
+    g.stroke();
+  },
+  // A phone-shaped camera: the Android client.
+  camera(g, cx, cy, r) {
+    const w = r * 0.5;
+    const h = r * 0.82;
+    g.beginPath();
+    g.roundRect(cx - w / 2, cy - h / 2, w, h, r * 0.1);
+    g.stroke();
+    g.beginPath();
+    g.arc(cx, cy - h * 0.22, r * 0.09, 0, TAU);
+    g.stroke();
+  },
+  // Box with an arrow leaving it: opens somewhere else.
+  link(g, cx, cy, r) {
+    const a = r * 0.4;
+    g.beginPath();
+    g.moveTo(cx - a * 0.1, cy - a);
+    g.lineTo(cx - a, cy - a);
+    g.lineTo(cx - a, cy + a);
+    g.lineTo(cx + a, cy + a);
+    g.lineTo(cx + a, cy + a * 0.1);
+    g.moveTo(cx - a * 0.05, cy + a * 0.05);
+    g.lineTo(cx + a, cy - a);
+    g.moveTo(cx + a * 0.25, cy - a);
+    g.lineTo(cx + a, cy - a);
+    g.lineTo(cx + a, cy - a * 0.25);
+    g.stroke();
+  },
 };
 
-// Glossy aqua bubble button with an icon disc on the left.
-export function drawPill(g, rect, { label, sub, icon, hover, press, angle }) {
+function chevron(g, cx, cy, r, angle) {
+  const a = r * 0.3;
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(angle);
+  g.beginPath();
+  g.moveTo(-a * 0.6, -a);
+  g.lineTo(a * 0.6, 0);
+  g.lineTo(-a * 0.6, a);
+  g.stroke();
+  g.restore();
+}
+
+// Glossy aqua bubble button with an icon disc on the left. Disabled buttons fade and stay put.
+export function drawPill(g, rect, { label, sub, icon, hover = 0, press = 0, angle, disabled = false }) {
+  if (disabled) {
+    hover = 0;
+    press = 0;
+  }
   const lift = hover * 3 - press * 3;
   const { x, w, h } = rect;
   const y = rect.y - lift;
 
+  g.save();
+  if (disabled) g.globalAlpha *= 0.5;
   g.save();
   g.shadowColor = `rgba(0, 50, 110, ${0.4 + hover * 0.1})`;
   g.shadowBlur = 24 + hover * 10;
@@ -343,6 +431,7 @@ export function drawPill(g, rect, { label, sub, icon, hover, press, angle }) {
     g.font = `600 ${Math.round(h * 0.22)}px ${FONT}`;
     g.fillText(sub, x + h + 15, cy + h * 0.2);
   }
+  g.restore();
 }
 
 export function drawGlassCircle(g, c, hover) {
@@ -523,6 +612,141 @@ export function wrapText(g, text, maxW) {
   }
   if (line) lines.push(line);
   return lines;
+}
+
+// Plain text, vertically centred on y.
+export function text(g, str, x, y, { size = 28, weight = 600, color = '#ffffff', align = 'left' } = {}) {
+  g.font = `${weight} ${size}px ${FONT}`;
+  g.fillStyle = color;
+  g.textAlign = align;
+  g.textBaseline = 'middle';
+  g.fillText(str, x, y);
+}
+
+// Wrapped text from y down; returns the height it took.
+export function paragraph(g, str, x, y, maxW, { size = 26, weight = 600, color = 'rgba(255,255,255,0.88)', align = 'left', lineH = size * 1.35 } = {}) {
+  g.font = `${weight} ${size}px ${FONT}`;
+  const lines = wrapText(g, str, maxW);
+  lines.forEach((line, i) => text(g, line, x, y + i * lineH, { size, weight, color, align }));
+  return lines.length * lineH;
+}
+
+// White text field with its value (or placeholder) and a blinking caret while focused.
+export function drawField(g, rect, { value, placeholder, focused, blink, disabled = false }) {
+  g.save();
+  if (disabled) g.globalAlpha *= 0.6;
+  roundRect(g, rect.x, rect.y, rect.w, rect.h, 22);
+  g.fillStyle = 'rgba(255,255,255,0.94)';
+  g.fill();
+  g.lineWidth = focused ? 5 : 3;
+  g.strokeStyle = focused ? '#4fd8e8' : 'rgba(255,255,255,0.9)';
+  g.stroke();
+  roundRect(g, rect.x + 4, rect.y, rect.w - 8, rect.h, 20);
+  g.clip();
+  g.font = `600 32px ${FONT}`;
+  const tw = g.measureText(value).width;
+  // Keep the end of long input in view.
+  const tx = rect.x + 26 - Math.max(0, tw - (rect.w - 60));
+  text(g, value || placeholder, tx, rect.y + rect.h / 2 + 1, { size: 32, color: value ? NAVY : 'rgba(12,47,82,0.42)' });
+  if (focused && blink) {
+    g.fillStyle = NAVY;
+    g.fillRect(tx + (value ? tw : 0) + 2, rect.y + rect.h / 2 - 20, 3, 40);
+  }
+  g.restore();
+}
+
+// Small outlined status chip; returns its width.
+export function drawChip(g, x, y, label, color) {
+  g.font = `700 22px ${FONT}`;
+  const w = g.measureText(label).width + 40;
+  roundRect(g, x, y, w, 44, 22);
+  g.fillStyle = 'rgba(0, 30, 70, 0.4)';
+  g.fill();
+  g.lineWidth = 2;
+  g.strokeStyle = color;
+  g.stroke();
+  text(g, label, x + 20, y + 23, { size: 22, weight: 700, color });
+  return w;
+}
+
+// Underlined text link; returns its (padded) hit rect.
+export function drawLink(g, label, x, y, hover, { align = 'left', size = 26 } = {}) {
+  text(g, label, x, y, { size, weight: 700, color: hover ? '#ffffff' : '#bff4ff', align });
+  g.font = `700 ${size}px ${FONT}`;
+  const w = g.measureText(label).width;
+  const x0 = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
+  g.fillStyle = hover ? '#ffffff' : 'rgba(191,244,255,0.7)';
+  g.fillRect(x0, y + size * 0.62, w, 2);
+  return { x: x0 - 12, y: y - size, w: w + 24, h: size * 2 };
+}
+
+// Connection status colours (the Android client): green when live, amber while connecting.
+export const STATUS_COLORS = {
+  connected: '#3ad68a',
+  connecting: '#ffc44d',
+  initializing: '#ffc44d',
+  reconnecting: '#ffc44d',
+  error: '#ff6b70',
+  dummy: '#8fa3ff',
+  disconnected: '#9db4bf',
+};
+
+// Glossy status light.
+export function drawStatusDot(g, x, y, status, r = 10) {
+  const color = STATUS_COLORS[status] ?? STATUS_COLORS.disconnected;
+  g.save();
+  g.shadowColor = color;
+  g.shadowBlur = status === 'disconnected' ? 0 : r;
+  g.beginPath();
+  g.arc(x, y, r, 0, TAU);
+  g.fillStyle = color;
+  g.fill();
+  g.restore();
+  g.beginPath();
+  g.arc(x, y, r, 0, TAU);
+  g.lineWidth = 2;
+  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.stroke();
+  g.beginPath();
+  g.ellipse(x, y - r * 0.4, r * 0.55, r * 0.3, 0, 0, TAU);
+  g.fillStyle = 'rgba(255,255,255,0.55)';
+  g.fill();
+}
+
+// Glossy track filling to t (0..1), with a knob while hovered or dragged (scrubbing).
+export function drawProgress(g, rect, t, { hover = 0, knob = false } = {}) {
+  const k = Math.min(1, Math.max(0, t));
+  const { x, y, w, h } = rect;
+  roundRect(g, x, y, w, h, h / 2);
+  g.fillStyle = 'rgba(0, 30, 70, 0.4)';
+  g.fill();
+  if (k > 0) {
+    roundRect(g, x, y, Math.max(h, w * k), h, h / 2);
+    const fill = g.createLinearGradient(0, y, 0, y + h);
+    fill.addColorStop(0, '#b9fff0');
+    fill.addColorStop(1, '#2fc7d8');
+    g.fillStyle = fill;
+    g.fill();
+  }
+  roundRect(g, x, y, w, h, h / 2);
+  g.lineWidth = 2;
+  g.strokeStyle = 'rgba(255,255,255,0.6)';
+  g.stroke();
+  if (!knob) return;
+  const kx = x + w * k;
+  const cy = y + h / 2;
+  g.save();
+  g.shadowColor = 'rgba(0, 30, 70, 0.5)';
+  g.shadowBlur = 8;
+  g.shadowOffsetY = 3;
+  g.beginPath();
+  g.arc(kx, cy, h * 0.75 + hover * 3, 0, TAU);
+  const body = g.createLinearGradient(0, cy - h, 0, cy + h);
+  body.addColorStop(0, '#ffffff');
+  body.addColorStop(1, '#bfeff8');
+  g.fillStyle = body;
+  g.fill();
+  g.restore();
 }
 
 // ---------- Frutiger Aero celebration ----------
