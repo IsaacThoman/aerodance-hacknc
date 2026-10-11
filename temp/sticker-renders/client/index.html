@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aerodance — Sticker renders</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+      /* A checkerboard shows the transparent background while previewing. */
+      body { background: repeating-conic-gradient(#d9e6ee 0 25%, #f4f9fc 0 50%) 0 0 / 32px 32px; }
+      #root { display: grid; place-items: center; }
+      .frame { width: 1024px; height: 1024px; flex: none; }
+      .frame canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

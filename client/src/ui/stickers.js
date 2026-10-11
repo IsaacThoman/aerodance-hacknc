@@ -1,4 +1,5 @@
-// Hype sticker NFTs. The images are the NFTs' art (client/public/stickers), drawn in-engine too.
+// Hype sticker NFTs. The images are the NFTs' art (client/public/stickers, rendered in 3D by
+// temp/sticker-renders), drawn in-engine too.
 export const STICKERS = [
   { id: 'bubble', label: 'Bubble Hype' },
   { id: 'koi', label: 'Koi Hype' },
@@ -20,11 +21,7 @@ export function drawSticker(g, id, cx, cy, size, onLoad) {
     if (onLoad) img.addEventListener('load', onLoad, { once: true });
     return;
   }
-  // The art is a glossy disc on an opaque white square: keep just the disc.
-  g.save();
-  g.beginPath();
-  g.arc(cx, cy, size * 0.452, 0, Math.PI * 2);
-  g.clip();
+  // The art (temp/sticker-renders) is transparent around the badge, and the koi's tail and
+  // bubbles pop out past its rim, so it's drawn whole.
   g.drawImage(img, cx - size / 2, cy - size / 2, size, size);
-  g.restore();
 }
