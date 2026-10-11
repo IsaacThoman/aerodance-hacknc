@@ -291,7 +291,7 @@ function JetSkis() {
   );
 }
 
-/** Glossy soap-bubble orbs drifting up from the shallows on both sides of the deck. */
+/** Glossy soap-bubble orbs drifting up from the shallows on both sides of the dancers. */
 function Bubbles({ count = 26 }) {
   const geometry = useDisposable(() => {
     const rand = makeRandom(12);

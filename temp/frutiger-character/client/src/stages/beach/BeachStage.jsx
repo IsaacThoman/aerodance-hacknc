@@ -6,7 +6,7 @@ import { SUN_DIR, WATER_Y, world } from './palette.js';
 import { SunFlare, SunsetClouds, SunsetSky } from './Sky.jsx';
 import { Sea } from './Sea.jsx';
 import { Beach } from './Beach.jsx';
-import { Deck } from './Deck.jsx';
+import { Torches } from './Torches.jsx';
 import { Vista } from './Vista.jsx';
 import { Life } from './Life.jsx';
 import meta from './meta.js';
@@ -43,7 +43,7 @@ export default function BeachStage() {
   return (
     <>
       <Clock />
-      <StageCamera position={[0, 2.3, 15]} target={[0, 1.75, 0]} fov={35} near={0.3} far={3000} orbit={[0.04, 0.012]} sway={[0.12, 0.05, 0]} />
+      <StageCamera position={[0, 1.79, 16]} target={[0, 1.24, 1]} fov={35} near={0.3} far={3000} orbit={[0.04, 0.012]} sway={[0.12, 0.05, 0]} />
       <StageEnvironment top="#7286d8" horizon="#ffb48c" bottom="#d8b083" lights={ENV_LIGHTS} intensity={1} />
       <hemisphereLight args={['#b8a0f0', '#c98a5f', 0.36]} />
       <directionalLight
@@ -68,7 +68,7 @@ export default function BeachStage() {
       <Sea />
       <Vista />
       <Beach />
-      <Deck />
+      <Torches />
       <Life />
       <SunFlare />
     </>

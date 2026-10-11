@@ -19,9 +19,8 @@ const e = THREE.MathUtils.degToRad(SUN_ELEVATION);
 const a = THREE.MathUtils.degToRad(SUN_AZIMUTH);
 export const SUN_DIR = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)).normalize();
 
-// The dance deck's top sits at y = 0; the sea rests a little below it.
+// Mean sea level; the dancers stand on the sand just above it.
 export const WATER_Y = -0.7;
-export const DECK_R = 5.2;
 
 // Cove shoreline: z = z0 - k * x^2 on each side; land ends past the headlands.
 export const SHORE = { z0: -1.4, left: 0.1, right: 0.1, endLeft: -46, endRight: -50 };

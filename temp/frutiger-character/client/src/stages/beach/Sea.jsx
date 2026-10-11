@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useDisposable } from '../shared/hooks.js';
 import { hash, simplex } from '../shared/glsl.js';
-import { DECK_R, WATER_Y, world } from './palette.js';
+import { WATER_Y, world } from './palette.js';
 import { skyGLSL, skyUniforms } from './shaders.js';
 import { terrainGLSL } from './terrain.js';
 
@@ -87,8 +87,7 @@ void main() {
   float glint = step(0.985, hash12(cell + tw * 0.37));
   col += uSunCol * glint * smoothstep(0.02, 0.4, spec) * (5.0 + 3.0 * uBeat) * (1.0 - smoothstep(0.4, 3.0, foot));
 
-  // Foam: breakers rolling in over the shallows, the swash edge, and lapping
-  // rings around the deck's base.
+  // Foam: breakers rolling in over the shallows and the swash edge.
   // Breakers: a sharp leading edge with a trailing wash of foam behind it.
   float wf = fract((depth0 * 8.0 + t * 1.1 + snoise(p * 0.09) * 1.4) / 6.2831853);
   float crest = smoothstep(0.0, 0.05, wf) * (1.0 - smoothstep(0.05, 0.3, wf));
@@ -99,9 +98,6 @@ void main() {
   float edge = 1.0 - smoothstep(0.0, 0.11, depth);
   float edgeLace = smoothstep(-0.3, 0.5, snoise(p * 1.3 + vec2(0.0, t * 0.4)));
   foam = max(foam, edge * (0.55 + 0.45 * edgeLace));
-  float dd = length(p) - ${(DECK_R - 0.15).toFixed(2)};
-  float ring = exp(-max(dd, 0.0) * 3.5) * (0.55 + 0.45 * sin(dd * 9.0 - t * 2.4)) * (0.6 + 0.4 * lace);
-  foam = max(foam, ring * 0.75 * step(0.0, depth));
   foam *= 1.0 - smoothstep(0.6, 4.0, foot);
   col = mix(col, uFoam, clamp(foam, 0.0, 1.0) * 0.9);
 

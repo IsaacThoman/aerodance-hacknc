@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { useDisposable } from '../shared/hooks.js';
 import { hash, simplex } from '../shared/glsl.js';
 import { makeRandom } from '../shared/random.js';
-import { DECK_R, WATER_Y, world } from './palette.js';
+import { WATER_Y, world } from './palette.js';
 import { patchMaterial } from './shaders.js';
 import { sandHeight } from './terrain.js';
 import { blob, color, finalize, merge, place } from './geometry.js';
@@ -22,6 +22,7 @@ import {
   umbrellaGeometry,
 } from './props.js';
 import { LIFEGUARD, LOUNGERS, PALMS, SURF_RACK, UMBRELLAS, ground, onArm } from './layout.js';
+import meta from './meta.js';
 
 const sandFragment = {
   uniforms: {
@@ -65,7 +66,7 @@ const sandFragment = {
       sandWet = 1.0 - smoothstep(0.08, 0.3, above + (n2 - 0.5) * 0.06);
       float fresh = 1.0 - smoothstep(0.0, 0.06, vHazeWorld.y - uWaterY);
       diffuseColor.rgb = mix(dry, uSandWet, sandWet * 0.75 + fresh * 0.25);
-      // Two trails of footprints wandering up to the deck and over to the towel.
+      // Two trails of footprints wandering up to the dancers and over to the towel.
       float fp = max(footprints(sp, vec2(-2.0, 14.5), vec2(-1.1, 6.0), 0.22), footprints(sp, vec2(7.4, 13.0), vec2(4.6, 6.0), 0.28));
       diffuseColor.rgb *= 1.0 - 0.3 * fp * (1.0 - sandWet);
     }
@@ -211,18 +212,19 @@ function BeachProps() {
     for (let i = 0; i < 34; i++) {
       const x = rand.range(-11, 11);
       const z = rand.range(-1, 13);
-      if (Math.hypot(x, z) < DECK_R + 0.6) continue;
+      // Keep the dancers' patch of sand clear.
+      if (Math.hypot(x - meta.dancers.position[0], z - meta.dancers.position[2]) < 4.2) continue;
       const y = sandHeight(x, z);
       if (i % 7 === 0) parts.push(place(starfish(), { position: [x, y + 0.02, z], rotation: [-Math.PI / 2, 0, rand.range(0, 6)], scale: rand.range(0.14, 0.2) }));
       else parts.push(place(scallop(rand), { position: [x, y + 0.01, z], rotation: [-Math.PI / 2 + 0.1, 0, rand.range(0, 6)], scale: rand.range(0.1, 0.17) }));
     }
-    // A few more along the strip of sand just in front of the deck.
+    // A few more along the strip of sand in front of the dancers.
     for (let i = 0; i < 14; i++) {
       const x = rand.range(-5.5, 5.5);
       const z = rand.range(6.0, 9.5);
       parts.push(place(scallop(rand), { position: [x, sandHeight(x, z) + 0.01, z], rotation: [-Math.PI / 2 + 0.15, 0, rand.range(0, 6)], scale: rand.range(0.1, 0.15) }));
     }
-    // Towel and flip-flops beside the deck; a sandcastle and bucket on the other side.
+    // Towel and flip-flops beside the dancers; a sandcastle and bucket on the other side.
     for (const [g, x, z, rot] of [
       [towelGeometry(), 4.3, 5.5, 0.9],
       [flipFlopGeometry('#ff7fa8'), 5.15, 6.5, 0.4],

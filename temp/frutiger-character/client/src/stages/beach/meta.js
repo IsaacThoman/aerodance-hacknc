@@ -4,7 +4,8 @@ const meta = {
   name: 'Sugarsand Sunset',
   subtitle: 'Tropical island beach',
   accent: ['#ffd27a', '#ff8a2a'],
-  dancers: { position: [0, 0, 0], rotationY: 0, spacing: 4 },
+  // On the sand just up from the waterline (sandHeight is -0.49 / -0.54 under the two dancers).
+  dancers: { position: [0, -0.51, 1], rotationY: 0, spacing: 4 },
   post: {
     bloomStrength: 0.3,
     bloomRadius: 0.42,

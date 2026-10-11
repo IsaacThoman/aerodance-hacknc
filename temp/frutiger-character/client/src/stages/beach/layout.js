@@ -35,7 +35,7 @@ export const LOUNGERS = [
 export const LIFEGUARD = { side: -1, z: -10.5, inland: 2.2, heading: 2.3 };
 export const SURF_RACK = { at: [7.4, 0.8], heading: -0.4 };
 
-// Tiki torches flanking the front of the deck.
+// Tiki torches flanking the dancers.
 export const TORCHES = [
   [-5.8, 3.3],
   [5.9, 3.1],
