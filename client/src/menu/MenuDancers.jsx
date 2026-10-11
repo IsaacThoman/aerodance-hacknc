@@ -1,7 +1,9 @@
 import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal, useFrame, useThree } from '@react-three/fiber';
+import { createPortal, useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import flockCameraUrl from '../aero/flock/flock-camera-world.glb?url';
 import Character from '../../../packages/character/Character.jsx';
 import { validateMotion } from '../../../packages/character/motion.js';
 import motionUrl from '../../../packages/character/assets/dance.json?url';
@@ -25,9 +27,15 @@ const DANCERS = [
 const PUCK = { r: 3.1, h: 0.26 };
 // Stage placement in front of the fixed camera (looking down -Z), then turned to face it.
 const STAGE = { x: 4.3, y: -2.6, z: -19, tilt: 0.2, turn: -0.22 };
+const FLOCK_SCALE = 4;
+const FLOCK_LOWER_SCALE = 1.495;
 // How far the stage rises when it's raised.
 const RAISE = 1.5;
 const SLIDE = 12;
+// Easing approaches its target forever; snap once the remaining step is imperceptible.
+const SPOT_EPSILON = 0.01;
+const SOLO_HIDE_PROGRESS = 0.95;
+const SOLO_FADE_SECONDS = 0.05;
 
 function Environment({ scene }) {
   const gl = useThree((state) => state.gl);
@@ -74,6 +82,31 @@ function Puck() {
   );
 }
 
+function FlockCamera() {
+  const { scene } = useLoader(GLTFLoader, flockCameraUrl);
+  const model = useMemo(() => {
+    const copy = scene.clone(true);
+    const assembly = copy.getObjectByName('Flock_Falcon_World');
+    const pole = copy.getObjectByName('Pole_|_simplified_12-foot_pole');
+    const top = new THREE.Box3().setFromObject(copy, true).max.y;
+    const poleHeight = new THREE.Box3().setFromObject(pole, true).max.y;
+    // Enlarge the hardware uniformly and shorten the shaft to the original top height.
+    const drop = top * (1 - 1 / FLOCK_SCALE);
+    const upperParts = assembly.children.filter((part) => part !== pole);
+    const lowerEnd = Math.min(...upperParts.map((part) => new THREE.Box3().setFromObject(part, true).min.y));
+    // Extend the exposed lower shaft, raising the hardware with it.
+    const extension = (lowerEnd - drop) * (FLOCK_LOWER_SCALE - 1);
+    for (const part of upperParts) part.position.y += extension - drop;
+    pole.scale.y = (poleHeight - drop + extension) / poleHeight;
+    pole.position.y *= pole.scale.y;
+    return copy;
+  }, [scene]);
+  return (
+    // The model faces +Z. Cancel the platform's turn to aim 30° toward screen left.
+    <primitive object={model} position={[0, 0, -2.2]} rotation={[0, -Math.PI / 6 - STAGE.turn, 0]} scale={FLOCK_SCALE} dispose={null} />
+  );
+}
+
 class Quiet extends Component {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -81,7 +114,7 @@ class Quiet extends Component {
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export default function MenuDancers({ visible = true, raised = false, solo = false }) {
+export default function MenuDancers({ visible = true, raised = false, solo = false, androidConnected = false }) {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
   const [motion, setMotion] = useState(null);
@@ -92,6 +125,7 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
   const shown = useRef(0);
   const lift = useRef(0);
   const spots = useRef([]);
+  const purpleOpacity = useRef(1);
   const still = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
 
   useEffect(() => {
@@ -114,12 +148,27 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
 
     const t = state.clock.elapsedTime;
     const away = 1 - shown.current;
-    // Rise and the solo dancer's step to the middle ease in, unless the stage is off screen.
+    // Rise and both dancers' steps to the middle ease in, unless the stage is off screen.
     const k = shown.current < 0.05 ? 1 : Math.min(1, dt * 4);
     lift.current += ((raised ? RAISE : 0) - lift.current) * k;
+    // Converge twice as quickly while keeping the return split's existing timing.
+    const move = solo ? Math.min(1, k * 2) : k;
     DANCERS.forEach((d, i) => {
       const spot = spots.current[i];
-      if (spot) spot.position.x += ((solo ? 0 : d.x) - spot.position.x) * k;
+      if (!spot) return;
+      const target = solo ? 0 : d.x;
+      spot.position.x += (target - spot.position.x) * move;
+      if (Math.abs(target - spot.position.x) < SPOT_EPSILON) spot.position.x = target;
+      if (i === 1) {
+        // Fade purple after convergence, and fade it back in as the dancers split out.
+        const show = !solo || Math.abs(spot.position.x) > Math.abs(d.x) * (1 - SOLO_HIDE_PROGRESS);
+        const targetOpacity = show ? 1 : 0;
+        const fadeStep = dt / SOLO_FADE_SECONDS;
+        purpleOpacity.current = Math.abs(targetOpacity - purpleOpacity.current) <= fadeStep + Number.EPSILON
+          ? targetOpacity
+          : purpleOpacity.current + (show ? fadeStep : -fadeStep);
+        spot.visible = purpleOpacity.current > 0;
+      }
     });
     rig.current.position.set(
       STAGE.x + away * away * SLIDE,
@@ -127,7 +176,10 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
       STAGE.z,
     );
     rig.current.rotation.set(STAGE.tilt, STAGE.turn, still ? 0 : Math.sin(t * 0.7) * 0.012);
+  }, 0.5);
 
+  useFrame(() => {
+    if (!motion || !rig.current || shown.current < 0.005) return;
     // Match the world camera's aspect so the stretch to 16:9 is shared.
     if (cam.aspect !== camera.aspect) { cam.aspect = camera.aspect; cam.updateProjectionMatrix(); }
     const ac = gl.autoClear;
@@ -149,6 +201,13 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
       <directionalLight position={[-6, 12, 8]} intensity={2.5} />
       <pointLight position={[0, 1.3, 3]} color="#65f7ff" intensity={8} distance={9} />
       <group ref={rig} position={[STAGE.x + SLIDE, STAGE.y, STAGE.z]}>
+        {androidConnected && (
+          <Quiet>
+            <Suspense fallback={null}>
+              <FlockCamera />
+            </Suspense>
+          </Quiet>
+        )}
         <Quiet>
           <Suspense fallback={null}>
             <Puck />
@@ -158,13 +217,13 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
                 ref={(g) => { spots.current[person] = g; }}
                 position={[d.x, 0, 0]}
                 scale={[-1, 1, 1]}
-                visible={!solo || person === 0}
               >
                 <Character
                   motion={motion}
                   person={person}
                   playback={playback}
                   appearance={d.appearance}
+                  opacityRef={person === 1 ? purpleOpacity : undefined}
                 />
               </group>
             ))}

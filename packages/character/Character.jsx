@@ -16,6 +16,7 @@ import modelUrl from "./assets/aero-character.glb?url";
 
 export default function Character({
   appearance,
+  opacityRef,
   animation = "Idle",
   motion,
   person = 0,
@@ -35,7 +36,9 @@ export default function Character({
   const poseFilter=useMemo(()=>new LivePoseFilter(),[model,calibration,live]);
   const invalidate=useThree(state=>state.invalidate);
   const mixer = useMemo(() => new AnimationMixer(model), [model]);
-  const ink = useMemo(() => new MeshBasicMaterial({ color: "#020611" }), []);
+  const ink = useMemo(() => new MeshBasicMaterial({
+    color: "#020611", transparent: !!opacityRef, depthWrite: !opacityRef,
+  }), [opacityRef]);
   const gel = useMemo(() => {
     const material = new MeshPhysicalMaterial({
       name: "AquaGel",
@@ -129,12 +132,16 @@ export default function Character({
     };
   }, [animation, gltf, mixer, retarget, applyPose]);
   useFrame((_, delta) => {
+    if (opacityRef) {
+      gel.opacity = (appearance.opacity ?? 0.72) * opacityRef.current;
+      ink.opacity = opacityRef.current;
+    }
     if (applyPose) {
       applyPose(live ? poseFilter.update(poseRef.current,delta) : poseRef.current,delta);
       if(live && (poseFilter.settling || applyPose.settling)) invalidate();
     }
     else if (retarget) retarget(playback.current);
     else mixer.update(Math.min(delta, 0.05));
-  });
+  }, opacityRef ? 1 : 0);
   return <primitive object={model} dispose={null} />;
 }

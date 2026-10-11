@@ -136,8 +136,17 @@ export class GameSession {
   }
   resumeFromMs() { return this.pausedAtMs ?? this.bundle.song.playableStartMs; }
 
+  /** Entrance time relative to the first audible beat; held while paused or resuming. */
+  entranceTimeMs() {
+    if (this.phase === 'paused') return this.pausedEntranceMs;
+    if (this.phase === 'countdown') return this.pausedEntranceMs >= 0 ? this.pausedEntranceMs : -this.countdownMs();
+    if (this.phase === 'playing' || this.phase === 'finishing') return this.player.timeMs() - this.bundle.song.playableStartMs;
+    return -Infinity;
+  }
+
   pause() {
     if (!['countdown', 'playing'].includes(this.phase)) return;
+    this.pausedEntranceMs = this.entranceTimeMs();
     const at = this.phase === 'countdown' ? this.resumeFromMs() : this.player.timeMs();
     this.player.pause();
     this.player.seek(at);
@@ -186,6 +195,7 @@ export class GameSession {
       playerCount: this.playerCount,
       timeMs: () => this.player?.timeMs() ?? this.bundle.song.playableStartMs,
       playing: () => this.player?.state === 'playing',
+      entranceTimeMs: () => this.entranceTimeMs(),
     };
   }
 

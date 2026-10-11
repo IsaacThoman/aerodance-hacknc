@@ -92,8 +92,7 @@ function drawPlayerHud(g, id, result, readiness, popups, now) {
   const cx = livePanelCenterX(id) * 1600;
   const top = (LIVE_PANEL.top + LIVE_PANEL.height) * 900 + 14;
   const p = PLAYERS[id];
-  drawPlayerLeds(g, cx - 92, top + 18, { player: id + 1, glow: readiness === 'missing' ? 0.3 : 1, scale: 0.36 });
-  drawCaps(g, `PLAYER ${id + 1}`, cx - 58, top + 19, { size: 18 });
+  drawCaps(g, `PLAYER ${id + 1}`, cx, top + 19, { size: 18, align: 'center' });
   headline(g, (result?.score ?? 0).toLocaleString('en-US'), cx, top + 76, 46, ['#ffffff', p.light, p.color], 300);
   if (result?.combo > 1) drawShadowText(g, `${result.combo} combo`, cx, top + 108, { size: 22, weight: 800, align: 'center', color: '#bff4ff' });
   if (readiness === 'missing') drawShadowText(g, 'Step back into view', cx, top + 138, { size: 20, weight: 700, align: 'center', color: '#ffe27a' });
@@ -330,7 +329,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
           const hold = session.readySince === null ? 0 : clamp01((performance.now() - session.readySince) / READY_HOLD_MS);
           const allReady = readiness.every((r) => r === 'ready');
           drawPill(g, GAME_READY_START, {
-            label: allReady ? 'Starting…' : 'Start now', sub: allReady ? '' : 'without waiting for tracking',
+            label: allReady ? 'Starting…' : 'Start now', sub: allReady ? '' : 'no tracking :(',
             icon: 'play', hover: h.start ?? 0, press: press('start'),
           });
           if (hold > 0) drawProgress(g, { x: GAME_READY_START.x + 40, y: GAME_READY_START.y + GAME_READY_START.h + 18, w: GAME_READY_START.w - 80, h: 12 }, hold);
