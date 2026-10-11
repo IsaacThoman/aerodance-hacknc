@@ -3,6 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { loadFonts } from './draw.js';
 import { remote as sharedRemote } from '../remote/remoteLink.js';
+import { getMixer } from '../audio/mixer.js';
+import { playUISound } from '../audio/uiSounds.js';
 
 /**
  * An in-engine 2D overlay: a canvas the size of the render buffer, laid out in design
@@ -12,7 +14,7 @@ import { remote as sharedRemote } from '../remote/remoteLink.js';
  * const ui = useCanvasUI({
  *   priority: 2,                          // useFrame priority (the world renders at 1)
  *   design: (cssW, cssH) => ({ w, h }),   // design units for the displayed size (default 1600x900)
- *   widgets: (ui) => [{ id, rect | circle, drag? }],  // current hit areas, in content units
+ *   widgets: (ui) => [{ id, rect | circle, drag?, sound? }],  // current hit areas, in content units
  *   active: (ui) => bool,                 // input and hover go to widgets only while true
  *   onActivate: (wdg, ui) => {},          // press and release on the same widget
  *   onDrag: (wdg, point, ui) => {},       // widgets with drag: true (sliders)
@@ -24,6 +26,11 @@ import { remote as sharedRemote } from '../remote/remoteLink.js';
  *   draw: (g, ui) => {},                  // redraw in design units, only when dirty
  *   opacity: (ui) => 1,                   // the overlay isn't drawn below 0.005
  * });
+ *
+ * Buttons click with the Wii-style UI sounds (audio/uiSounds.js): a tick when a mouse or remote
+ * cursor moves onto one, a pop when pressed ('back' widgets pop downwards), a tick when a slider
+ * is grabbed. A widget's sound (a name, a function of the widget returning one, or false)
+ * overrides the press sound.
  *
  * Content taller than the design height scrolls by drag or wheel: draw sets ui.contentHeight.
  * Works with <Canvas frameloop="demand">: input, ui.invalidate() and running animations
@@ -61,6 +68,9 @@ function createState() {
     hover: {},
     press: 0,
     pressed: null,
+    lastHover: null,
+    pointerKind: null,
+    pointerMoved: false,
     drag: null,
     scroll: 0,
     contentHeight: 0,
@@ -122,6 +132,8 @@ export default function useCanvasUI(options) {
 
     const onMove = (e) => {
       s.pointer = toDesign(e);
+      s.pointerKind = e.pointerType;
+      s.pointerMoved = true;
       if (s.drag) opts.current.onDrag?.(s.drag, s.pointer, s);
       if (down && s.maxScroll > 0) {
         const dy = s.pointer.y - s.scroll - down.y;
@@ -143,6 +155,7 @@ export default function useCanvasUI(options) {
       if (!wdg) return undefined;
       if (wdg.drag) {
         s.drag = wdg;
+        playUISound('tick');
         opts.current.onDrag?.(wdg, p, s);
       } else {
         s.pressed = wdg.id;
@@ -157,6 +170,8 @@ export default function useCanvasUI(options) {
       const wdg = widgetAt(p);
       if (wdg?.id === id) {
         s.press = 1;
+        const sound = typeof wdg.sound === 'function' ? wdg.sound(wdg) : wdg.sound;
+        if (sound !== false) playUISound(sound ?? (id === 'back' ? 'back' : 'select'));
         opts.current.onActivate?.(wdg, s);
       }
     };
@@ -198,11 +213,17 @@ export default function useCanvasUI(options) {
       // Hover easing redraws when the hovered widget changes; RemoteDock draws the cursor.
       move: (e) => {
         s.remote = s.pointer = fromRemote(e);
+        s.pointerKind = 'remote';
+        s.pointerMoved = true;
         if (s.drag) opts.current.onDrag?.(s.drag, s.pointer, s);
       },
       down: (e) => { s.remote = fromRemote(e); pressAt(s.remote); s.dirty = true; },
       up: (e) => { releaseAt(fromRemote(e)); s.dirty = true; },
-      back: () => { if (active()) opts.current.onBack?.(s); },
+      back: () => {
+        if (!active() || !opts.current.onBack) return;
+        playUISound('back');
+        opts.current.onBack(s);
+      },
       leave: () => { s.remote = s.pointer = s.drag = s.pressed = null; s.dirty = true; },
     };
     const remote = opts.current.remote === undefined ? sharedRemote : opts.current.remote;
@@ -219,6 +240,9 @@ export default function useCanvasUI(options) {
       [window, 'keydown', framed(onKey)],
     ];
     for (const [target, type, fn, o] of handlers) target.addEventListener(type, fn, o);
+
+    // Create the audio context now so it unlocks on the first gesture, before any button sound.
+    getMixer();
 
     let cancelled = false;
     loadFonts().then(() => { if (!cancelled) s.invalidate(); });
@@ -262,6 +286,11 @@ export default function useCanvasUI(options) {
     const live = o.active?.(s) ?? true;
     const widgets = o.widgets?.(s) ?? [];
     const hovered = live && (s.drag?.id ?? widgets.find((wdg) => hit(s.pointer, wdg))?.id);
+    // Tick when a moving mouse or remote cursor reaches a new button (not on touch, and not
+    // when a screen change puts a button under a cursor that is standing still).
+    if (hovered && hovered !== s.lastHover && s.pointerMoved && s.pointerKind !== 'touch' && !s.drag) playUISound('hover');
+    s.lastHover = hovered || null;
+    s.pointerMoved = false;
     for (const id of new Set([...Object.keys(s.hover), ...widgets.map((wdg) => wdg.id)])) {
       s.hover[id] = s.ease(s.hover[id] ?? 0, id === hovered ? 1 : 0, 12);
     }

@@ -1,6 +1,7 @@
 const KEY = 'aerodance.sound';
 
-export const DEFAULT_SOUND = { master: 0.8, music: 0.8, sfx: 0.8, muted: false };
+// muted silences everything; menuMusic: false turns off just the background music.
+export const DEFAULT_SOUND = { master: 0.8, music: 0.8, sfx: 0.8, menuMusic: true, muted: false };
 
 export function loadSound() {
   try {

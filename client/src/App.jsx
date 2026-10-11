@@ -4,6 +4,8 @@ import Scene from './Scene.jsx';
 import MainMenu from './menu/MainMenu.jsx';
 import MenuDancers from './menu/MenuDancers.jsx';
 import { loadSound, saveSound } from './menu/soundSettings.js';
+import { useLoopingMusic } from './audio/loopingMusic.js';
+import { applySound } from './audio/mixer.js';
 import BattleScreen from './battle/BattleScreen.jsx';
 import DebugPanel from './battle/DebugPanel.jsx';
 import { FAKE_DANCE_MS, fakeDance } from './battle/fakeDance.js';
@@ -96,7 +98,10 @@ function DisplayApp() {
     return () => clearTimeout(t);
   }, [playing, battleId]);
 
-  useEffect(() => { saveSound(sound); }, [sound]);
+  useEffect(() => { saveSound(sound); applySound(sound); }, [sound]);
+  // "Pod Lounge" loops under the aero background as the menu music (Settings: Master,
+  // Music, Menu music, Mute all).
+  useLoopingMusic('/music/pod-lounge.mp3', 'menuMusic');
 
   useEffect(() => {
     const onConnect = () => setConnected(true);
