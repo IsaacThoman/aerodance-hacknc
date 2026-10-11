@@ -4,6 +4,7 @@ import Scene from './Scene.jsx';
 import MainMenu from './menu/MainMenu.jsx';
 import MenuDancers from './menu/MenuDancers.jsx';
 import { loadSound, saveSound } from './menu/soundSettings.js';
+import { loadWiiCursor, saveWiiCursor } from './menu/cursorSetting.js';
 import { useLoopingMusic } from './audio/loopingMusic.js';
 import { applySound } from './audio/mixer.js';
 import BattleScreen from './battle/BattleScreen.jsx';
@@ -75,6 +76,7 @@ function DisplayApp() {
     ? { status: 'dummy', snapshot: null, message: 'Webcam dummy selected. Continue through the menus to test the flow.' }
     : connection;
   const [sound, setSound] = useState(loadSound);
+  const [wiiCursor, setWiiCursor] = useState(loadWiiCursor);
   const [battleId, setBattleId] = useState(battleRoute);
   // Start pressed in the lobby; the dance itself hooks in here and reports with seatTokens.
   const [playing, setPlaying] = useState(false);
@@ -151,6 +153,7 @@ function DisplayApp() {
   }, []);
 
   useEffect(() => { saveSound(sound); applySound(sound); }, [sound]);
+  useEffect(() => { saveWiiCursor(wiiCursor); }, [wiiCursor]);
   // "Pod Lounge" loops under the aero background as the menu music (Settings: Master,
   // Music, Menu music, Mute all).
   useLoopingMusic('/music/pod-lounge.mp3', 'menuMusic');
@@ -171,7 +174,7 @@ function DisplayApp() {
   }, []);
 
   return (
-    <div className="canvas-frame display">
+    <div className={`canvas-frame display${wiiCursor ? ' wii-cursor' : ''}`}>
       <Canvas dpr={1} flat camera={{ fov: 66, near: 0.3, far: 6500 }}>
         <FixedRenderResolution />
         <Scene paused={stage.showing} />
@@ -186,6 +189,8 @@ function DisplayApp() {
           onScreenChange={setMenuShown}
           sound={sound}
           onSoundChange={setSound}
+          wiiCursor={wiiCursor}
+          onWiiCursorChange={setWiiCursor}
         />
         <SongSelect
           visible={screen === 'songs' && !battleId}
