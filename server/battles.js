@@ -128,22 +128,19 @@ export async function trophyMetadata(id, baseUrl) {
   const b = await trophyBattle(id);
   if (!b) return undefined;
   const t = trophyTraits(b);
-  // Unique 2D art as the image; the 3D aero character for wallets that render models (Metaplex "vr").
   const image = `${baseUrl}/nft/${b.id}.svg`;
-  const model = `${baseUrl}/models/trophy.glb`;
   return {
     name: `aerodance trophy #${b.id}`,
     symbol: 'AERO',
     description: `Won dance battle ${b.id} on aerodance 🫧 Frutiger Aero dance battles, scored live.`,
     image,
-    animation_url: model,
     external_url: baseUrl,
     attributes: [
       { trait_type: 'stage', value: t.stage.name },
       { trait_type: 'glass', value: t.glass },
       { trait_type: 'finish', value: t.finish },
-      { trait_type: 'pose', value: t.pose },
-      { trait_type: 'halo', value: t.halo ? 'Golden' : 'None' },
+      { trait_type: 'cup', value: t.cup },
+      { trait_type: 'aura', value: t.aura ? 'Golden' : 'None' },
       { trait_type: 'battle', value: b.id },
       { trait_type: 'dancers', value: b.dancers },
       { trait_type: 'score', value: b.score ?? 0 },
@@ -153,10 +150,7 @@ export async function trophyMetadata(id, baseUrl) {
       { trait_type: 'hype', value: b.hype },
       { trait_type: 'date', value: b.created_at.toISOString().slice(0, 10) },
     ],
-    properties: {
-      category: 'vr',
-      files: [{ uri: image, type: 'image/svg+xml' }, { uri: model, type: 'model/gltf-binary' }],
-    },
+    properties: { category: 'image', files: [{ uri: image, type: 'image/svg+xml' }] },
   };
 }
 
