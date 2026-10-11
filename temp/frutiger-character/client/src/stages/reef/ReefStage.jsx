@@ -5,7 +5,7 @@ import { StageEnvironment } from '../shared/Environment.jsx';
 import { post } from '../shared/post.jsx';
 import meta from './meta.js';
 import { makeShared } from './shaders.js';
-import { CAMERA, SUN_TRAVEL, SURFACE_Y } from './constants.js';
+import { CAMERA, OPEN_CAMERA, SUN_TRAVEL, SURFACE_Y } from './constants.js';
 import { Reef, VENTS, makeFloorHeight } from './Reef.jsx';
 import { DOME_BUBBLES, Dome, domeSparklePoints } from './Dome.jsx';
 import { Life } from './Life.jsx';
@@ -27,12 +27,13 @@ const ENV_LIGHTS = [
 
 /**
  * "Coral Dome": a glass dance hall resting on a sunlit tropical reef ~10 m down.
+ * With dome={false} ("Open Reef") the dancers stand on the open sand instead.
  */
-export default function ReefStage() {
+export default function ReefStage({ dome = true }) {
   const shared = useMemo(() => makeShared(), []);
   const floorHeight = useMemo(() => makeFloorHeight(), []);
-  const sparkles = useMemo(() => domeSparklePoints(), []);
-  const bubbleSources = useMemo(() => [...VENTS, ...DOME_BUBBLES].map((s) => ({ top: SURFACE_Y - 0.1, ...s })), []);
+  const sparkles = useMemo(() => (dome ? domeSparklePoints() : null), [dome]);
+  const bubbleSources = useMemo(() => [...VENTS, ...(dome ? DOME_BUBBLES : [])].map((s) => ({ top: SURFACE_Y - 0.1, ...s })), [dome]);
 
   useFrame((state) => {
     shared.uTime.value = state.clock.elapsedTime;
@@ -43,7 +44,7 @@ export default function ReefStage() {
 
   return (
     <>
-      <StageCamera {...CAMERA} far={600} orbit={[0.1, 0.025]} sway={[0.12, 0.06, 0]} />
+      <StageCamera {...(dome ? CAMERA : OPEN_CAMERA)} far={600} orbit={[0.1, 0.025]} sway={[0.12, 0.06, 0]} />
       <color attach="background" args={['#0f8cc8']} />
       <StageEnvironment top="#e6ffff" horizon="#34b2e6" bottom="#2a86bc" lights={ENV_LIGHTS} intensity={1.05} />
       <hemisphereLight args={['#b0f4ff', '#1e6f9e', 0.45]} />
@@ -63,13 +64,13 @@ export default function ReefStage() {
         shadow-normalBias={0.02}
       />
       <WaterBackground shared={shared} />
-      <Reef shared={shared} floorHeight={floorHeight} />
-      <Dome shared={shared} floorHeight={floorHeight} />
+      <Reef shared={shared} floorHeight={floorHeight} dome={dome} />
+      {dome && <Dome shared={shared} floorHeight={floorHeight} />}
       <Life shared={shared} />
       <GodRays shared={shared} />
       <Bubbles shared={shared} sources={bubbleSources} />
       <MarineSnow shared={shared} />
-      <Sparkles shared={shared} points={sparkles} />
+      {sparkles && <Sparkles shared={shared} points={sparkles} />}
     </>
   );
 }

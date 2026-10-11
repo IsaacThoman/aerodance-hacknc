@@ -38,7 +38,7 @@ const FADE_IN = 0.6;
 
 /**
  * The two captured dancers on one of several stages. Switch stages with
- * ← / →, 1–5, the name card's orbs, or a hash such as #club.
+ * ← / →, 1–6, the name card's orbs, or a hash such as #club.
  * Space pauses the dancers; ?t=6 holds them at six seconds.
  */
 export default function Scene({ motion }) {
