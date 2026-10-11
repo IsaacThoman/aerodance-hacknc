@@ -362,5 +362,5 @@ export function Sparkles({ shared, points, size = 1 }) {
       }),
   );
   if (!points.length) return null;
-  return <points geometry={geometry} material={material} frustumCulled={false} renderOrder={45} />;
+  return <points name="sparkles" geometry={geometry} material={material} frustumCulled={false} renderOrder={45} />;
 }

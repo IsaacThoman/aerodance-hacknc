@@ -267,10 +267,11 @@ export const SHOTS = [
  *     the last frame keep their last color, so the water's faint shimmer costs almost
  *     nothing in the GIF (the dancers are never held)
  *   beat: false keeps the stage's lights steady instead of pulsing on the beat
+ *   hide: names of stage objects to leave out (e.g. 'sparkles', the reef's flashing glints)
  *   maxBytes: fail if the GIF comes out larger
  */
 export const CLIPS = [
   // Well under 5 MB (Devpost's limit): 720x480, 2 s of the hands-up at 10 fps, held water,
-  // steady lights.
-  { id: 'reef-inside', shot: 'reef-inside', from: 6.1, to: 8.1, fps: 10, buffer: [720, 480], hold: 10, beat: false, maxBytes: 5e6 },
+  // steady lights, no flashing glints.
+  { id: 'reef-inside', shot: 'reef-inside', from: 6.1, to: 8.1, fps: 10, buffer: [720, 480], hold: 10, beat: false, hide: ['sparkles'], maxBytes: 5e6 },
 ];

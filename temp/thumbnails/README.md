@@ -27,7 +27,7 @@ The dancers hold four moments of the capture: 3.1 s (purple's lunge), 5 s (blue'
 
 - **Size:** a 2160×1440 GIF can't get under 5 MB: it came to 33–37 MB however it was tuned. So the GIF is rendered in-engine at 720×480 with square pixels, roughly the size it's shown at. Every GIF pixel is a rendered pixel, with no resampling. The clip shares one 256-color palette with a light ordered dither.
 - **Hold:** most of a GIF's bytes go to the water's faint shimmer. Background pixels that changed by no more than 10/255 since the last frame keep their color, which GIF stores almost for free. The dancers are never held: each frame also renders a mask of them, because the reef moving behind their translucent gel would otherwise leave faint ghosts.
-- **Steady lights:** the dome's lamps, floor and port lights and the bloom normally pulse on the stage's 118 bpm beat. The GIF holds the beat clock still, so they glow steadily.
+- **Steady lights:** the dome's lamps, floor and port lights and the bloom normally pulse on the stage's 118 bpm beat. The GIF holds the beat clock still, so they glow steadily. It also leaves out the reef's sparkle glints, the white four-point stars that flash on the dome glass and chrome.
 - **Loop:** the clip covers 6.1–8.1 s of the dance (the hands-up). Over the last 0.6 s the dancers ease into the start, so they loop seamlessly. The background can't loop, so the turtle and fish jump back at the seam.
 
 ## Render
@@ -46,7 +46,7 @@ It needs Google Chrome (driven headless by `playwright-core`, with GPU WebGL) an
 
 ## Code
 
-- `client/src/shots.js`: the shot list. Each shot has a stage, how long the stage plays before the capture (`time`), the dance-capture moment the dancers hold (`pose`), a camera, optional dancer placement and gel opacity (`reef-inside` uses 0.92 instead of 0.85 so the dancers read against the bright water), and the wordmark's position and size. Add or tweak a shot here and re-render it with `--only`. `CLIPS` lists the GIFs: a shot, a stretch of the dance, a frame rate, and optionally a render size, background hold, steady lights and a size limit.
+- `client/src/shots.js`: the shot list. Each shot has a stage, how long the stage plays before the capture (`time`), the dance-capture moment the dancers hold (`pose`), a camera, optional dancer placement and gel opacity (`reef-inside` uses 0.92 instead of 0.85 so the dancers read against the bright water), and the wordmark's position and size. Add or tweak a shot here and re-render it with `--only`. `CLIPS` lists the GIFs: a shot, a stretch of the dance, a frame rate, and optionally a render size, background hold, steady lights, hidden stage objects and a size limit.
 - `client/src/App.jsx`: the capture page. It mounts one stage with the dancers, swaps in the shot's 3:2 camera for the stage's orbiting 16:9 one, steps the clock by hand at 60 fps to the shot's time (`frameloop="never"`), and reads back the frame with and without the wordmark. For GIFs it captures a run of frames with the dancers dancing in step with the stage. `?shot=<id>` opens a shot in the browser (`npx vite --config temp/thumbnails/vite.config.js`, port 5179).
 - `scripts/render.mjs`: builds the page, drives Chrome, upscales each frame into exact 4×3 blocks and writes the PNGs with its own encoder. It holds the background of each GIF frame and pipes the frames to ffmpeg.
 

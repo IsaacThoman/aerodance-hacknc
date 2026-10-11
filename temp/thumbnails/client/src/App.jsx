@@ -27,7 +27,8 @@ import { BUFFER as THUMBNAIL_BUFFER, DESIGN, SHOTS } from './shots.js';
  *
  * URL: ?shot=<id> (shots.js), or ?spec=<JSON> for a one-off shot. For GIFs: &loop=<from>,<to>
  * makes that stretch of the dance loop seamlessly, &buffer=<w>x<h> renders at another 3:2
- * size, and &beat=0 keeps the lights steady instead of pulsing on the beat.
+ * size, &beat=0 keeps the lights steady instead of pulsing on the beat, and
+ * &hide=<name>,<name> hides the stage's objects with those names (e.g. sparkles).
  */
 
 const STEP = 1 / 60;
@@ -91,6 +92,17 @@ function SteadyBeat() {
   useFrame(() => {
     beat.pulse = 0;
     beat.phase = 1;
+  }, -1);
+  return null;
+}
+
+// Hides the stage's objects with these names (they mount as the stage loads).
+function Hide({ names }) {
+  const scene = useThree((s) => s.scene);
+  useFrame(() => {
+    scene.traverse((o) => {
+      if (names.includes(o.name)) o.visible = false;
+    });
   }, -1);
   return null;
 }
@@ -258,6 +270,7 @@ function Thumbnail({ shot, motion }) {
       <RenderPipeline hudScene={hud.scene} hudCamera={hud.camera} width={BUFFER.width} height={BUFFER.height} aspect={BUFFER.aspect} />
       <ShotCamera {...shot.camera} />
       {new URLSearchParams(window.location.search).get('beat') === '0' && <SteadyBeat />}
+      {new URLSearchParams(window.location.search).has('hide') && <Hide names={new URLSearchParams(window.location.search).get('hide').split(',')} />}
       <Suspense fallback={null}>
         <Stage motion={motion} playback={playback} />
         <Ready onReady={onReady} />
