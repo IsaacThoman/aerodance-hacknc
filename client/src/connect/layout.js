@@ -1,6 +1,6 @@
 // Connect Client layout in 1600x900 design units, shared with the browser flow test.
 
-// Status pill, top right (the bottom-right corner belongs to the remote and fullscreen bubbles).
+// Status pill, top right of Settings (the bottom-right corner belongs to the remote and fullscreen bubbles).
 export const PILL = { x: 1168, y: 36, w: 396, h: 68 };
 
 // The card under it: client type across the top, then the address and messages on the

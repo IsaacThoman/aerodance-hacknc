@@ -19,7 +19,7 @@ python3 -m http.server 8080 --directory dist
 
 Open http://localhost:8080/dance/. The normal production/PR preview also serves `/dance/`.
 
-The character (`Character.jsx`, `motion.js` and the GLB) lives in [`packages/character`](../../packages/character) and the stages in [`packages/stages`](../../packages/stages), shared with the main app and `/win-screens/`. The main app's title menu still loads `dance.json` from this folder, so move it before deleting `temp/`.
+The character (`Character.jsx`, `motion.js` and the GLB) lives in [`packages/character`](../../packages/character) and the stages in [`packages/stages`](../../packages/stages), shared with the main app and `/win-screens/`. The captured choreography (`dance.json`) lives there too, in `packages/character/assets/`.
 
 For standalone development:
 
@@ -73,7 +73,7 @@ temp/frutiger-character/scripts/track-dance.sh \
 
 The wrapper works from any working directory and preserves relative input paths. Defaults are:
 
-- Output: `client/public/motion/dance.json` (replaces the current choreography).
+- Output: `packages/character/assets/dance.json` (replaces the current choreography used here, in the title menu and on `/win-screens/`).
 - Review files: ignored `tracking-output/` with `overlay.mp4`, `raw.npz`, and `report.json`.
 - Sampling: at most 30 FPS, image width 960, landmark confidence 0.5, Gaussian sigma 0.045 seconds.
 - Model: Google's versioned [MediaPipe Pose Landmarker Full float16 v1](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task), downloaded once into ignored `scripts/pose/.cache/`. Its SHA-256 is verified on every run. `--model /path/to/model.task` supports a pre-downloaded copy, with the same checksum requirement.

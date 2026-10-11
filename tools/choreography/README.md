@@ -116,7 +116,7 @@ tabs and lost pose connections interrupt recording; acknowledged source data
 stays on disk. Failed uploads retain a recoverable capture prefix under `capture/`.
 
 The committed capture at
-`temp/frutiger-character/client/public/motion/dance.json` is useful for trying the
+`packages/character/assets/dance.json` is useful for trying the
 editor. Its combined legacy confidence cannot be split into visibility/presence;
 review/approve its reference poses explicitly before publication. It has no music.
 

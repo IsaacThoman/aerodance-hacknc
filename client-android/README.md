@@ -112,12 +112,13 @@ On first use, enter the exact website origin (for example `https://game.example.
 
 ```bash
 curl http://192.168.43.1:1337/v1/status
+curl http://192.168.43.1:1337/v1/time
 curl -N http://192.168.43.1:1337/v1/stream
 ```
 
 For local rendering, follow [pose-test-site/README.md](pose-test-site/README.md): serve on port 8081, set the Android origin to `http://localhost:8081`, and connect the browser. The debug APK also accepts `--es testOrigin http://localhost:8081` on its MainActivity launch. Normal launches use the saved origin. Allow CAMERA when requested; ADB `pm grant` remains available for unattended tests.
 
-The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. To save battery, camera capture and pose inference run only while `/v1/stream` has a client. Disconnect detection releases the camera and GPU task; reconnect recreates them automatically, preserving the session and selected player count. Status/config requests leave capture off. While idle, `running` indicates server readiness; opening a live stream changes it to `starting` until the first successful inference. Startup heartbeats keep the stream alive, and config snapshots are withheld until inference is ready. The game, authoring tool and test viewer show camera initialization and allow 90 seconds after opening each stream for its first pose result. Leaving the activity stops the server; returning starts a new session automatically using the saved origin.
+The server has four request workers with no request queue, one latest result, one streaming client, an 8 KiB/2-second request-header limit, and a 250 ms write deadline checked every 25 ms. It flushes each NDJSON record with compression disabled. To save battery, camera capture and pose inference run only while `/v1/stream` has a client. Disconnect detection releases the camera and GPU task; reconnect recreates them automatically, preserving the session and selected player count. Status/config/time requests leave capture off and remain available while a stream is open. While idle, `running` indicates server readiness; opening a live stream changes it to `starting` until the first successful inference. Startup heartbeats keep the stream alive, and config snapshots are withheld until inference is ready. The game, authoring tool and test viewer show camera initialization and allow 90 seconds after opening each stream for its first pose result. Leaving the activity stops the server; returning starts a new session automatically using the saved origin.
 
 With the live app running and no other stream consumer, verify idle shutdown and
 reconnect (including disconnect during GPU initialization):

@@ -13,7 +13,7 @@ import {
 
 const data = JSON.parse(
   await readFile(
-    new URL("../client/public/motion/dance.json", import.meta.url),
+    new URL("../../../packages/character/assets/dance.json", import.meta.url),
   ),
 );
 const buffer = await readFile(

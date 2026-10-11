@@ -12,6 +12,11 @@ export class Recorder {
   async start() {
     this.sourceKind = this.source.view.sourceKind || 'android';
     this.modelId = this.source.view.model;
+    // Freshness can clear the preview while the take request is in flight.
+    // Retain the capture identity observed when recording starts.
+    const snapshot = this.source.view.snapshot;
+    this.session = snapshot?.sessionId;
+    this.input = snapshot?.input;
     this.metadata = await this.request(
       `/api/projects/${this.projectId}/takes`,
       {
@@ -26,8 +31,6 @@ export class Recorder {
       },
     );
     this.running = true;
-    this.session = this.source.view.snapshot?.sessionId;
-    this.input = this.source.view.snapshot?.input;
     this.pending.push({
       ordinal: this.ordinal++,
       receivedBrowserTimeMs: performance.now(),

@@ -3,7 +3,7 @@ import { Canvas, createPortal, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { PCFShadowMap } from 'three';
 import { validateMotion } from '../../../../packages/character/motion.js';
-import motionUrl from '../../../frutiger-character/client/public/motion/dance.json?url';
+import motionUrl from '../../../../packages/character/assets/dance.json?url';
 import { STAGES } from '../../../../packages/stages/index.js';
 import { RenderPipeline, resetPost } from '../../../../packages/stages/shared/post.jsx';
 import { HUD_HEIGHT, HUD_WIDTH, useHudLayer } from '../../../../packages/stages/shared/hud.jsx';
@@ -13,7 +13,7 @@ import { MODES, tempResults, winnerOf } from './results.js';
 
 /*
  * Win / end screens for every dance stage (temp/frutiger-character's stages, used as-is):
- * the stage behind, the dancers rearranged for the result, and a results card in the
+ * the stage behind, the dancers rearranged for the result, and the results in the
  * stage's HUD style. Player 1 or Player 2 wins, a tie, or a solo end screen, all with
  * (placeholder) scores.
  *

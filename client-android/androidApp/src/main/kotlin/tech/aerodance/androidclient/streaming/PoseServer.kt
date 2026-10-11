@@ -10,9 +10,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
+/** The one Android monotonic clock for wire timestamps: pose records, heartbeats and `/v1/time`. */
+object ElapsedRealtimeClock : MonotonicClock {
+    override fun nowMs(): Long = SystemClock.elapsedRealtime()
+}
+
 /** Small HTTP/1.1 server: fixed workers, no request queue, one conflated result, one stream. */
 class PoseServer(private val deviceId: String, private val origins: Set<String>, private val synthetic: Boolean = true,
-    initialPlayerCount: Int = 1, private val onConnectionChanged: () -> Unit = {}) : AutoCloseable {
+    initialPlayerCount: Int = 1, private val clock: MonotonicClock = ElapsedRealtimeClock,
+    private val onConnectionChanged: () -> Unit = {}) : AutoCloseable {
     val sessionId: String = UUID.randomUUID().toString()
     private val listener = ServerSocket()
     private val running = AtomicBoolean(false)
@@ -36,7 +42,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
             running.set(true)
             if (synthetic) producer.scheduleAtFixedRate({
                 if (!connected) return@scheduleAtFixedRate
-                val now = SystemClock.elapsedRealtime()
+                val now = clock.nowMs()
                 synchronized(signal) {
                     val fixture = syntheticPose(sessionId, 1, now, output.playerCount)
                     publish(InferenceResult(now, now, fixture.width, fixture.height, fixture.poses))
@@ -44,7 +50,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
             }, 0, 33, TimeUnit.MILLISECONDS)
             if (synthetic) state = PipelineState.running
             watchdog.scheduleAtFixedRate({
-                val now = SystemClock.elapsedRealtime()
+                val now = clock.nowMs()
                 clients.forEach { (socket, deadline) ->
                     val expires = deadline.get()
                     if (expires != 0L && now >= expires) runCatching { socket.close() }
@@ -69,7 +75,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
             socket.sendBufferSize = 4096
             socket.soTimeout = 2000
             // Bound total header time as well as size; do not accept indefinite trickle requests.
-            deadline.set(SystemClock.elapsedRealtime() + 2000)
+            deadline.set(clock.nowMs() + 2000)
             val input = socket.getInputStream().buffered(8192)
             val bytes = java.io.ByteArrayOutputStream()
             var tail = 0
@@ -79,6 +85,8 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
                 bytes.write(b)
                 tail = (tail shl 8) or b
             }
+            // Request fully received: the `/v1/time` a1 sample. One clock read, no allocation.
+            val receivedTimeMs = clock.nowMs()
             val lines = bytes.toString("US-ASCII").split("\r\n")
             val request = lines.first().split(' ')
             if (request.size != 3 || request[2] != "HTTP/1.1") return
@@ -95,7 +103,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
                 write(socket, deadline, "HTTP/1.1 $code\r\n${cors}Connection: close\r\nCache-Control: no-store\r\nContent-Type: application/json\r\n${extra}Content-Length: ${data.size}\r\n\r\n".toByteArray() + data)
             }
             if (!allowed) { respond("403 Forbidden", "{\"error\":\"Origin not allowed\"}"); return }
-            if (request[1] !in setOf("/v1/status", "/v1/stream", "/v1/config")) { respond("404 Not Found", "{}"); return }
+            if (request[1] !in setOf("/v1/status", "/v1/stream", "/v1/config", "/v1/time")) { respond("404 Not Found", "{}"); return }
             val control = request[1] == "/v1/config"
             val method = if (control) "POST" else "GET"
             if (control && origin == null) { respond("403 Forbidden", "{\"error\":\"Configured Origin required\"}"); return }
@@ -129,7 +137,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
                     if (n < 0) { respond("400 Bad Request", "{}"); return }
                     offset += n
                 }
-                if (socket.isClosed || SystemClock.elapsedRealtime() >= deadline.get()) return
+                if (socket.isClosed || clock.nowMs() >= deadline.get()) return
                 val count = try {
                     val decoder = Charsets.UTF_8.newDecoder()
                         .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
@@ -138,8 +146,8 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
                 } catch (_: Exception) { respond("400 Bad Request", "{}"); return }
                 // The lock holds only mapping/publication, never GPU work or socket writes.
                 val applied = synchronized(signal) {
-                    if (!running.get() || socket.isClosed || SystemClock.elapsedRealtime() >= deadline.get()) return@synchronized null
-                    output.configure(count, SystemClock.elapsedRealtime()).also {
+                    if (!running.get() || socket.isClosed || clock.nowMs() >= deadline.get()) return@synchronized null
+                    output.configure(count, clock.nowMs()).also {
                         latest.set(output.latest)
                         signal.notifyAll()
                     }
@@ -149,6 +157,10 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
                 return
             }
             deadline.set(0)
+            if (request[1] == "/v1/time") {
+                // Independent of the stream slot and pipeline: never 409, never starts capture.
+                respond("200 OK", timeSyncResponse(sessionId, receivedTimeMs, clock).json()); return
+            }
             if (request[1] == "/v1/status") {
                 respond("200 OK", status(deviceId, sessionId, state, synthetic, playerCount)); return
             }
@@ -160,7 +172,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
             var lastSeq = 0L
             var lastWrite = 0L
             while (running.get() && !socket.isClosed) {
-                val now = SystemClock.elapsedRealtime()
+                val now = clock.nowMs()
                 // Read readiness before the snapshot: publish stores its first real
                 // result before marking inference ready, hiding startup config clears.
                 val pipelineState = state
@@ -199,7 +211,7 @@ class PoseServer(private val deviceId: String, private val origins: Set<String>,
     }
 
     private fun write(socket: Socket, deadline: AtomicLong, bytes: ByteArray) {
-        deadline.set(SystemClock.elapsedRealtime() + 250)
+        deadline.set(clock.nowMs() + 250)
         try {
             socket.getOutputStream().write(bytes)
             socket.getOutputStream().flush()

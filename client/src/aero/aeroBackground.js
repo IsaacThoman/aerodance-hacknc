@@ -21,8 +21,11 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Water } from 'three/addons/objects/Water.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createMountainGeometry } from './mountainGeometry.js';
 import { createLakeNormalPixels } from './lakeNormals.js';
+import { createFlockInstances } from './flock/world-instances.js';
+import flockCameraUrl from './flock/flock-camera-world.glb?url';
 
 const TAU = Math.PI * 2;
 
@@ -749,6 +752,7 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
 
   /* ------------------------------------------------------------ street lamps */
   const STREETS = [-175, -105, -35, 35, 105, 175];
+  const LAMPS = []; // [x, z, ry]
   {
     const parts = [];
     const paint = (g, hex) => { const c = col(hex), n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); g.deleteAttribute('uv'); return g.index ? g.toNonIndexed() : g; };
@@ -757,24 +761,23 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     g = new THREE.BoxGeometry(0.5, 0.18, 0.9); g.translate(0, 6.8, 2.0); parts.push(paint(g, '#ffffff'));
     g = new THREE.CylinderGeometry(0.22, 0.26, 0.4, 8); g.translate(0, 0.2, 0); parts.push(paint(g, '#8a99a8'));
     const lampGeo = mergeGeometries(parts); parts.forEach((p) => p.dispose());
-    const pts = [];
     for (const c of STREETS) for (let s = -238; s <= 238; s += 30) {
       if (STREETS.some((o) => Math.abs(o - s) < 14)) continue;
-      pts.push([c + 9.5, s, -Math.PI / 2], [c - 9.5, s, Math.PI / 2], [s, c + 9.5, Math.PI], [s, c - 9.5, 0]);
+      LAMPS.push([c + 9.5, s, -Math.PI / 2], [c - 9.5, s, Math.PI / 2], [s, c + 9.5, Math.PI], [s, c - 9.5, 0]);
     }
     // lamps along the district streets
     const nearCross = (v) => { const m = (((v - 35) % 70) + 70) % 70; return m < 13 || m > 57; };
     for (let c = -665; c <= 665; c += 70) for (let s = -735; s <= 245; s += 35) {
       if (nearCross(s)) continue;
-      for (const [x, z, ry] of [[c + 9.5, s, -Math.PI / 2], [c - 9.5, s, Math.PI / 2]]) if (inDistrict(x, z)) pts.push([x, z, ry]);
+      for (const [x, z, ry] of [[c + 9.5, s, -Math.PI / 2], [c - 9.5, s, Math.PI / 2]]) if (inDistrict(x, z)) LAMPS.push([x, z, ry]);
     }
     for (let c = -735; c <= 245; c += 70) for (let s = -665; s <= 665; s += 35) {
       if (nearCross(s)) continue;
-      for (const [x, z, ry] of [[s, c + 9.5, Math.PI], [s, c - 9.5, 0]]) if (inDistrict(x, z)) pts.push([x, z, ry]);
+      for (const [x, z, ry] of [[s, c + 9.5, Math.PI], [s, c - 9.5, 0]]) if (inDistrict(x, z)) LAMPS.push([x, z, ry]);
     }
-    const lamps = new THREE.InstancedMesh(lampGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length);
+    const lamps = new THREE.InstancedMesh(lampGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), LAMPS.length);
     const d = new THREE.Object3D();
-    pts.forEach(([x, z, ry], i) => { d.position.set(x, 0, z); d.rotation.set(0, ry, 0); d.updateMatrix(); lamps.setMatrixAt(i, d.matrix); });
+    LAMPS.forEach(([x, z, ry], i) => { d.position.set(x, 0, z); d.rotation.set(0, ry, 0); d.updateMatrix(); lamps.setMatrixAt(i, d.matrix); });
     lamps.castShadow = true; root.add(lamps);
   }
 
@@ -1033,6 +1036,60 @@ export function createAeroWorld({ renderer, scene, camera, speed = 1, quality = 
     }
   });
   dcars.frustumCulled = false; root.add(dcars);
+
+  /* ------------------------------------------------------- Flock cameras */
+  // Licence-plate camera poles (the World LOD in ./flock) on the kerb a little before
+  // about half the intersections, aimed down the nearside lane at traffic heading into the junction.
+  {
+    const KERB = 12.2; // street centre to the kerb band (the road surface ends at 11.35 m)
+    const LANES = [[-245, 245], [-735, -525]]; // z extent of the driven streets, south of and across the lake
+    const spots = [], trees = TREES.concat(DTREES).filter((t) => !t.y && !t.hidden && t.z < 260);
+    const clear = (x, z) => {
+      if (Math.abs(x - 70) < 24.5 && Math.abs(z + 70) < 24.5) return false; // spire tower podium
+      if (Math.abs(x - 200) < 10 && z < -250 && z > -500) return false; // under the bridge
+      for (const t of trees) if (Math.hypot(t.x - x, t.z - z) < t.s * 2.4 + 1.2) return false;
+      for (const [lx, lz] of LAMPS) if (Math.hypot(lx - x, lz - z) < 3.5) return false;
+      return spots.every((p) => Math.hypot(p.x - x, p.z - z) > 6);
+    };
+    withRng(717171, () => {
+      for (let X = -595; X <= 595; X += 70) for (const Z of [-245, -175, -105, -35, 35, 105, 175, -525, -595, -665]) {
+        const downtown = Math.abs(X) < 250 && Z > -250;
+        if (rnd() > (downtown ? 0.6 : 0.4)) continue;
+        const [z0, z1] = LANES[Z > -250 ? 0 : 1];
+        let n = rnd() < (downtown ? 0.3 : 0.12) ? 2 : 1;
+        // Approaches: street axis (true = N-S) and the side the traffic comes from.
+        const approaches = [[true, 1], [true, -1], [false, 1], [false, -1]];
+        for (let i = 3; i > 0; i--) { const j = RI(0, i); [approaches[i], approaches[j]] = [approaches[j], approaches[i]]; }
+        for (const [ns, a] of approaches) {
+          if (ns && (Z + a * 30 < z0 || Z + a * 30 > z1)) continue; // dead-end stubs down to the quays
+          for (let k = 0; k < 4; k++) {
+            // Traffic on the kerb-side lane drives toward the junction (-a along the street).
+            const d = R(16, 30), along = (ns ? Z : X) + a * d, across = (ns ? X : Z) - a * KERB;
+            const [x, z] = ns ? [across, along] : [along, across];
+            if (!clear(x, z)) continue;
+            const turn = R(0.12, 0.22), fAlong = -a * Math.cos(turn), fAcross = a * Math.sin(turn);
+            spots.push({ x, z, ry: ns ? Math.atan2(fAcross, fAlong) : Math.atan2(fAlong, fAcross), region: downtown ? 'downtown' : Z < -250 ? 'north' : X < 0 ? 'west' : 'east' });
+            n--;
+            break;
+          }
+          if (!n) break;
+        }
+      }
+    });
+    // Only the low pass over downtown is close enough to see them, so phones skip the districts.
+    const keep = spots.filter((p) => !small || p.region === 'downtown');
+    new GLTFLoader().load(flockCameraUrl, ({ scene: model }) => {
+      if (disposed) return;
+      // One batch per district so off-screen districts are culled.
+      const regions = {}, q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+      for (const p of keep) (regions[p.region] || (regions[p.region] = [])).push(p);
+      for (const list of Object.values(regions)) {
+        const group = createFlockInstances(model, list.map((p) => new THREE.Matrix4().compose(new THREE.Vector3(p.x, 0, p.z), q.setFromAxisAngle(up, p.ry), one)));
+        for (const m of group.children) m.receiveShadow = true;
+        root.add(group);
+      }
+    }, undefined, (err) => console.warn('Flock cameras failed to load', err));
+  }
 
   /* ------------------------------------------------------- meadow grass */
   {

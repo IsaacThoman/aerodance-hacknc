@@ -14,7 +14,7 @@ const baseline = process.argv[2] ?? 'f766e1f';
 const source = execFileSync('git', ['show', `${baseline}:temp/frutiger-character/client/src/motion.js`], { encoding: 'utf8' });
 const reference = await import(`data:text/javascript;base64,${Buffer.from(source.replace('from "three"', `from ${JSON.stringify(import.meta.resolve('three'))}`)).toString('base64')}`);
 // The capture moved to the aerodance.take format after the baseline; each retargeter reads its own.
-const motionPath = 'temp/frutiger-character/client/public/motion/dance.json';
+const motionPath = 'packages/character/assets/dance.json';
 const baselineData = JSON.parse(execFileSync('git', ['show', `${baseline}:${motionPath}`], { encoding: 'utf8', maxBuffer: 64 << 20 }));
 const data = JSON.parse(await readFile(new URL(`../${motionPath}`, import.meta.url)));
 const dataFor = (factory) => (factory === createRetargeter ? data : baselineData);

@@ -1,3 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { GameSession } from '../src/game/GameSession.js';
+import { parseRecording } from '../src/pose/ReplayPoseSource.js';
+import { PoseSourceController } from '../src/pose/PoseSourceController.js';
+import { sampleSong } from '../../packages/pose/song.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WebcamPoseSource } from '../../packages/pose/browser/WebcamPoseSource.js';
@@ -79,4 +84,38 @@ test('changing a running model resets the session and records the explicit selec
   assert.equal(f.source.view.snapshot, null);
   assert.equal(f.messages.filter(m => m.type === 'initialize').at(-1).modelUrl, 'https://test.invalid/pose-assets/pose_landmarker_full.task');
   assert.equal(f.stopped, 1);
+});
+
+
+test('webcam capture times drive scored gameplay and recordings through the controller, and shutdown is safe', async t => {
+  const f = fixture(t);
+  const source = new PoseSourceController({ webcam: f.source });
+  source.setMode('webcam');
+  await source.connect(); f.deliver({ type: 'ready', delegate: 'CPU' });
+  const dir = new URL('../public/songs/song-70c63c8e/', import.meta.url);
+  const bundle = {
+    song: JSON.parse(readFileSync(new URL('song.json', dir))),
+    choreography: JSON.parse(readFileSync(new URL('choreography.json', dir))),
+  };
+  const player = { state: 'paused', play() { this.state = 'playing'; },
+    songTimeAt: perf => perf - 1000, dispose() {} };
+  const session = new GameSession({ bundle, playerCount: 1, source,
+    createPlayer: async () => player, now: () => 0, record: true, autoStart: false });
+  t.after(() => session.dispose());
+  await session.load(); session.start();
+  let seq = 0;
+  for (let ms = bundle.song.playableStartMs; ms < bundle.song.playableEndMs; ms += 100) {
+    await f.frame((ms + 1000) / 1000, ms + 1000);
+    f.setTime(ms + 1300);
+    f.deliver({ type: 'result', seq: ++seq,
+      landmarks: sampleSong(bundle, ms, 1).poses.map(p => p.landmarks), inferenceMs: 300 });
+  }
+  session.scorer.finish();
+  assert.ok(session.scorer.result(0).score > 950000, `webcam score ${session.scorer.result(0).score}`);
+  assert.doesNotThrow(() => source.disconnect(), 'camera shutdown reaches game and recorder safely');
+  const { entries } = parseRecording(session.recording.stop());
+  session.recording = null;
+  assert.equal(entries.length, seq);
+  assert.equal(entries[0].songTimeMs, bundle.song.playableStartMs, 'recorded at capture, not arrival');
+  assert.equal(entries[0].timing, 'browser-frame-observation');
 });

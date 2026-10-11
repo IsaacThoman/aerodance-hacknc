@@ -11,10 +11,10 @@ import { MODELS } from '../../../packages/pose/browser/models.js';
 import { drawWebcamPreview } from '../../../packages/pose/browser/preview.js';
 
 /**
- * Connect Client, drawn in-engine: a status pill in the top-right corner and, when it's
- * pressed, a card for choosing the pose input. Android needs its IP address, typed on the
- * card's keypad (so the phone remote and touch screens can enter it) or the keyboard.
- * Webcam runs the chosen MediaPipe model locally and previews placement in the card.
+ * Connect Client, drawn in-engine: a status pill in the top-right corner of Settings
+ * opens a card for choosing the pose input. Android needs its IP address, typed on the
+ * card keypad or keyboard. Webcam runs the chosen MediaPipe model locally and previews
+ * player placement in the card.
  *
  * While the card is open the rest of the menus are held (App passes them `blocked`).
  * The canvas reports data-connect-open / -ready / -status / -mode / -message / -address for tests.
@@ -155,7 +155,7 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
     onKey: (e, s) => {
       const p = props.current;
       if (!p.visible || !p.open || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === 'Escape') { playUISound('back'); close(); }
+      if (e.key === 'Escape') { if (!e.repeat) { playUISound('back'); close(); } }
       else if (/^[0-9.]$/.test(e.key) || e.key === 'Backspace') edit(e.key);
       // With the keyboard cursor on a widget, Enter presses that widget instead (keyNav).
       else if (e.key === 'Enter' && s.pointerKind !== 'key') { playUISound('select'); submit(); }
@@ -163,7 +163,11 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
       e.preventDefault();
       s.invalidate();
     },
-    onBack: () => { if (props.current.open) close(); },
+    onBack: () => {
+      if (!props.current.open) return false;
+      close();
+      return true;
+    },
     update: (_dt, s) => {
       const p = props.current;
       st.alpha = s.ease(st.alpha, p.visible ? 1 : 0, p.visible ? 3 : 6);

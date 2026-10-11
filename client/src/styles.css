@@ -32,29 +32,10 @@ body,
   image-rendering: pixelated;
 }
 
-.hud {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: rgba(20, 24, 33, 0.8);
-  font-size: 14px;
-  line-height: 1.5;
-  pointer-events: none;
-}
-
-.hud .status {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: #e5484d;
-}
-
-.hud .status.online {
-  background: #30a46c;
+/* The display draws the Wii hand in-engine as its cursor (remote/RemoteDock.jsx) unless
+   Settings turns it off. !important beats the pointer cursor useCanvasUI sets inline over buttons. */
+.canvas-frame.display.wii-cursor canvas {
+  cursor: none !important;
 }
 
 /* Phones (/join): a portrait frame filling the screen, capped to a column on desktops.

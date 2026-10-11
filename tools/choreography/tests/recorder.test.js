@@ -2,14 +2,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Recorder } from "../web/recorder.js";
 
-test('webcam recorder uses the frame audio anchor and excludes late countdown results', async t => {
+test('webcam recorder preserves its session across startup snapshot expiry and uses the frame audio anchor', async t => {
   let listener;
   const batches = [], input = { width: 640, height: 480, mirrored: false };
   const recorder = new Recorder({ source: {
     view: { sourceKind: 'webcam', model: 'lite', modelConfig: { modelId: 'lite' }, snapshot: { sessionId: 'webcam', input } },
     subscribeRecords(callback) { listener = callback; return () => {}; },
   }, transport: { active: true, rate: 1, positionMs: 0, current: () => 2500, atBrowserTime: time => time - 1000 },
-  request: async (url, options) => { if (url.endsWith('/batches')) batches.push(options.body); return { takeId: 'webcam' }; },
+  request: async (url, options) => {
+    if (url.endsWith('/takes')) recorder.source.view = { ...recorder.source.view, snapshot: null };
+    if (url.endsWith('/batches')) batches.push(options.body);
+    return { takeId: 'webcam' };
+  },
   projectId: 'project', onFailure: message => assert.fail(message) });
   await recorder.start(); t.after(() => clearInterval(recorder.timer));
   const record = { schema: 'aerodance.webcam-record', type: 'pose', sessionId: 'webcam', modelId: 'lite', playerCount: 2, input, frameBrowserTimeMs: 950 };

@@ -167,7 +167,8 @@ export class WebcamPoseSource {
         timingMethod: 'browser-frame-observation', poses: this.slots.map(data.landmarks, this.playerCount) });
       clearTimeout(this.startupTimeout);
       this.completed++;
-      this.emit({ record, receivedBrowserTimeMs });
+      this.emit({ record, receivedBrowserTimeMs, captureBrowserTimeMs: record.frameBrowserTimeMs,
+        timing: { method: record.timingMethod } });
       this.resultTimes.push(receivedBrowserTimeMs);
       this.resultTimes = this.resultTimes.filter(time => receivedBrowserTimeMs - time <= 2000);
       const poseHz = this.resultTimes.length > 1 ? (this.resultTimes.length - 1) * 1000 / Math.max(1, receivedBrowserTimeMs - this.resultTimes[0]) : 0;

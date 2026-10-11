@@ -27,7 +27,7 @@ FLOCK_LOD=low blender -b -t 8 -P temp/flock-camera/scripts/build-model.py
 
 ## World-use version
 
-`assets/flock-camera-world.blend` and `client/public/models/flock-camera-world.glb` are the smaller placement LOD: **991 triangles, 9 meshes, 4 untextured materials**, and a **48,844-byte GLB**. This is about **94% fewer triangles** than the 16,850-triangle version. It preserves the revised body/hood silhouette, six-light optical layout, logo, panel cells, pole, and basic mounts. Per the user's request, this version has **no external wire or under-panel battery packs**. Flat layered optical shapes replace detailed lenses/reflectors; mounting hardware is reduced to simple blocks and bands. It is intended for ordinary world placement rather than extreme close-ups.
+`assets/flock-camera-world.blend` and its GLB (which ships with the game, at [`client/src/aero/flock/flock-camera-world.glb`](../../client/src/aero/flock/flock-camera-world.glb)) are the smaller placement LOD: **991 triangles, 9 meshes, 4 untextured materials**, and a **48,844-byte GLB**. This is about **94% fewer triangles** than the 16,850-triangle version. It preserves the revised body/hood silhouette, six-light optical layout, logo, panel cells, pole, and basic mounts. Per the user's request, this version has **no external wire or under-panel battery packs**. Flat layered optical shapes replace detailed lenses/reflectors; mounting hardware is reduced to simple blocks and bands. It is intended for ordinary world placement rather than extreme close-ups.
 
 Choose **Model detail → World LOD**, or open <http://localhost:5176/?detail=world>. The viewer retains all three versions and downloads whichever is selected. Battery visibility is disabled for World LOD because it has no batteries. Its Blender file keeps component pivots and the existing studio, while its portable GLB excludes the studio. Renders are `assets/renders/assembly-world.png`, `optics-world.png`, and `side-world.png`.
 
@@ -39,14 +39,15 @@ blender -b -t 8 -P temp/flock-camera/scripts/build-world.py
 
 This builder uses the existing `assets/flock-camera-low.blend` only for the presentation studio. It constructs fresh simplified geometry and writes separate files. `FLOCK_RENDER=0` skips renders.
 
-For large Three.js populations, `client/world-instances.js` provides material-batched instancing:
+For large Three.js populations, [`client/src/aero/flock/world-instances.js`](../../client/src/aero/flock/world-instances.js) provides material-batched instancing:
 
 ```js
 import { Matrix4 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { createFlockInstances, disposeFlockInstances } from './world-instances.js';
+import { createFlockInstances, disposeFlockInstances } from './flock/world-instances.js';
+import flockCameraWorldUrl from './flock/flock-camera-world.glb?url';
 
-const { scene: source } = await new GLTFLoader().loadAsync('/models/flock-camera-world.glb');
+const { scene: source } = await new GLTFLoader().loadAsync(flockCameraWorldUrl);
 const transforms = positions.map(([x, y, z]) => new Matrix4().makeTranslation(x, y, z));
 const population = createFlockInstances(source, transforms);
 scene.add(population);
@@ -58,7 +59,9 @@ Transforms use glTF's **Y-up meters**. The helper bakes component transforms int
 
 The World LOD passes Khronos validation with zero errors/warnings. Checks confirm that material merging preserves the exact vertex bounds, 1,000 instance transforms are retained, four material batches are produced, and owned geometry is disposed. A thousand copies contain **991,000 triangles** before visibility/shadow passes. These are geometry and batching checks, not a target-device FPS guarantee.
 
-Blender uses **meters, Z up**, with the pole at the origin and the camera facing negative Y. GLB uses the glTF convention **meters, Y up**. The physical assembly is separate from the studio collection. No app gameplay or menus were changed.
+Blender uses **meters, Z up**, with the pole at the origin and the camera facing negative Y. GLB uses the glTF convention **meters, Y up**. The physical assembly is separate from the studio collection.
+
+The app's aero background (`client/src/aero/aeroBackground.js`) places the World LOD along the city streets with `createFlockInstances`; see the main README.
 
 Presentation PNGs in `assets/renders/` are generated locally and are not tracked. Rebuild the corresponding model to produce them; use `FLOCK_RENDER=0` to regenerate geometry only. Viewer build output, Blender backups, downloaded references, and browser verification screenshots are also excluded from version control.
 

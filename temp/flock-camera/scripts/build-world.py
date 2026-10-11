@@ -13,7 +13,8 @@ from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / 'assets'
-MODELS = ROOT / 'client/public/models'
+# The World LOD ships with the game: client/src/aero/flock/ (next to its instancing helper).
+WORLD_MODEL = ROOT.parents[1] / 'client/src/aero/flock/flock-camera-world.glb'
 bpy.ops.wm.open_mainfile(filepath=str(ASSETS / 'flock-camera-low.blend'))
 scene = bpy.context.scene
 bpy.context.preferences.filepaths.save_version = 0
@@ -238,7 +239,7 @@ scene['model_notes']='World LOD; simplified silhouette model. Metres. Use instan
 bpy.ops.object.select_all(action='DESELECT')
 bpy.ops.wm.save_as_mainfile(filepath=str(ASSETS/'flock-camera-world.blend'))
 for obj in objects: obj.select_set(True)
-bpy.ops.export_scene.gltf(filepath=str(MODELS/'flock-camera-world.glb'),export_format='GLB',
+bpy.ops.export_scene.gltf(filepath=str(WORLD_MODEL),export_format='GLB',
                          use_selection=True,export_apply=True,export_yup=True,export_extras=True,
                          export_animations=False,export_cameras=False,export_lights=False)
 if os.environ.get('FLOCK_RENDER','1')!='0':

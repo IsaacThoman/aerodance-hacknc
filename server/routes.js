@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import {
-  MAX_SEATS, claimSeat, createBattle, hypeDancer, isSticker, joinBattle, publicBattle, reportResult, seatForToken,
-  startBattle,
+  HYPE_SOL, MAX_SEATS, claimSeat, createBattle, hypeDancer, isSticker, joinBattle, liveSeatByName, publicBattle,
+  reportResult, seatForToken, startBattle,
 } from './battles.js';
 import {
   HttpError, cleanName, getProfile, normalizePhone, profileByDevice, profileForPhone, profileStats,
@@ -12,6 +12,7 @@ import {
 // Where battle links in texts point. Pages opened in a browser build their own links from location.
 export const publicUrl = (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 export const battleUrl = (id, token) => `${publicUrl}/battle/${id}?p=${encodeURIComponent(token)}`;
+export const watchUrl = (id) => `${publicUrl}/join/${id}`;
 // Base for NFT metadata and images: PUBLIC_URL, else the address this request came in on.
 export const requestBaseUrl = (req) => (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
 
@@ -68,11 +69,14 @@ export function publicRoutes() {
     res.json(await reportResult(req.params.id, playerToken, readResult(req.body)));
   });
 
-  // The display pressed Start: phones follow the dance from battle.startedAt.
+  // The display started the dance: phones follow it from battle.startedAt for danceMs.
   api.post('/battles/:id/start', async (req, res) => {
-    const { playerToken } = req.body ?? {};
+    const { playerToken, danceMs = null } = req.body ?? {};
     if (typeof playerToken !== 'string') throw new HttpError(400, 'playerToken required');
-    await startBattle(req.params.id, playerToken);
+    if (danceMs !== null && !(Number.isSafeInteger(danceMs) && danceMs > 0 && danceMs <= 3_600_000)) {
+      throw new HttpError(400, 'danceMs must be a whole number of milliseconds');
+    }
+    await startBattle(req.params.id, playerToken, danceMs);
     res.json({ ok: true });
   });
 
@@ -161,6 +165,18 @@ export function internalApp() {
       id: battle.id,
       players: battle.players.map(({ seat, token }) => ({ seat, token, url: battleUrl(battle.id, token) })),
     });
+  });
+
+  // "hype <name>" from iMessage: tip that player's live battle, then link the texter to watch it.
+  app.post('/internal/hype', async (req, res) => {
+    const name = cleanName(req.body?.name);
+    if (typeof req.body?.from !== 'string' || !name) throw new HttpError(400, 'from and name required');
+    const from = await getProfile(req.body.from);
+    if (!from) throw new HttpError(404, 'profile not found');
+    const hit = await liveSeatByName(name, from.id);
+    if (!hit) throw new HttpError(404, 'no live battle');
+    const landed = await hypeDancer(hit.battleId, from, hit.seat);
+    res.json({ battleId: hit.battleId, name: hit.name, sol: HYPE_SOL, url: watchUrl(hit.battleId), ...landed });
   });
 
   app.post('/internal/battles/:id/claim', async (req, res) => {

@@ -8,10 +8,12 @@ import { readFile } from 'node:fs/promises';
 import express from 'express';
 import { chromium } from 'playwright';
 import { bundleFixture } from './fixtures/songBundle.js';
-import { ONE_PLAYER, START, TWO_PLAYERS } from '../src/menu/layout.js';
+import { BACK as MENU_BACK, ONE_PLAYER, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
 import { KEYS, MODES, PILL, PRIMARY, MODEL_RECTS } from '../src/connect/layout.js';
-import { BACK, PLAY, STAGE_NEXT, rowRect } from '../src/game/layout.js';
-import { STAGE_LIST, resolveStage } from '../../packages/stages/catalog.js';
+import {
+  BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, RESULTS_RETRY, rowRect,
+} from '../src/game/layout.js';
+import { resolveStage } from '../../packages/stages/catalog.js';
 
 const app = express();
 app.use(express.static('dist'));
@@ -85,7 +87,9 @@ try {
   await page.waitForFunction(() => document.querySelector('canvas')?.style.opacity === '1', null, { timeout: 90000 });
   await menuOn('main');
 
-  // Connect Client: remembered address, keyboard validation, the keypad, Escape.
+  // Connect Client lives on Settings: remembered address, keyboard validation, the keypad, Escape.
+  await click(SETTINGS);
+  await menuOn('settings');
   await click(PILL);
   await until({ connectReady: 'true', connectAddress: '192.168.43.1', connectMessage: 'Ready to connect on port 1337.' });
   await page.keyboard.type('999');
@@ -98,8 +102,8 @@ try {
   await until({ connectAddress: '127.0.0.' });
   await page.keyboard.press('Escape');
   await until({ connectOpen: 'false' });
-  assert.equal((await data()).menuScreen, 'main', 'Escape closes only the card');
-  await shot('main-menu');
+  assert.equal((await data()).menuScreen, 'settings', 'Escape closes only the card');
+  await shot('settings');
 
   // Webcam selection/model controls do not request permission; Start handles denial.
   await click(PILL);
@@ -111,13 +115,16 @@ try {
   assert.equal(await page.evaluate(() => webcamRequests), 0);
   await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(300);
-  assert.equal((await data()).menuScreen, 'main');
+  assert.equal((await data()).menuScreen, 'settings');
   await page.mouse.move(frame.x + 10, frame.y + 10);
   await click(PRIMARY);
   await until({ connectStatus: 'error', connectMessage: /permission was denied/ });
   assert.equal(await page.evaluate(() => webcamRequests), 1);
   await page.keyboard.press('Escape');
   await until({ connectOpen: 'false' });
+  await click(MENU_BACK);
+  await menuOn('main');
+  await shot('main-menu');
 
   // Start -> One Player -> Song Select (empty catalog) -> Back keeps the player screen.
   await click(START);
@@ -164,9 +171,8 @@ try {
     for (const count of [1, 2]) {
       if (!song.supportedPlayerCounts.includes(count)) continue;
       await openSong(count, i);
-      await until({ songScreen: 'preview', songReady: 'true', previewState: 'paused', stage: resolveStage(song.stage), stageReady: 'true' });
-      await click(PLAY);
-      await until({ previewState: 'playing' });
+      // The preview plays by itself.
+      await until({ songScreen: 'preview', songReady: 'true', previewState: 'playing', stage: resolveStage(song.stage), stageReady: 'true' });
       await page.waitForFunction(() => Number(document.querySelector('canvas').dataset.previewTimeMs) > 150);
       await shot(`preview-${count}p`);
       await click(BACK);
@@ -191,26 +197,22 @@ try {
   await serveFixture();
   for (const count of [1, 2]) {
     await openSong(count, 0);
-    await until({ songScreen: 'preview', songReady: 'true', previewState: 'paused', previewTimeMs: '100', stage: 'openreef', stageReady: 'true' });
-    await click(PLAY);
+    await until({ songScreen: 'preview', songReady: 'true', previewState: 'playing', stage: 'openreef', stageReady: 'true' });
+    // It plays the playable range (100–900 ms) and loops back to its start.
+    await page.waitForFunction(() => Number(document.querySelector('canvas').dataset.previewTimeMs) > 700);
+    await page.waitForFunction(() => Number(document.querySelector('canvas').dataset.previewTimeMs) < 500);
     await until({ previewState: 'playing' });
-    // It stops at the end of the playable range.
-    await until({ previewState: 'paused', previewTimeMs: '900' });
     await click(BACK);
     await until({ songScreen: 'list', songReady: 'true', stage: '' });
   }
 
-  // A song's own stage, the picker through all six, and back to the song's stage.
+  // A song dances on its own stage (picked in Dance Studio); players can't change it.
   await serveFixture('club');
   await openSong(1, 0);
   await until({ songScreen: 'preview', songReady: 'true', stage: 'club', stageReady: 'true' });
-  const at = STAGE_LIST.findIndex((s) => s.id === 'club');
-  for (let step = 1; step <= STAGE_LIST.length; step++) {
-    await click(STAGE_NEXT);
-    await until({ stage: STAGE_LIST[(at + step) % STAGE_LIST.length].id, stageReady: 'true' });
-  }
-  await page.keyboard.press('ArrowLeft');
-  await until({ stage: STAGE_LIST[(at - 1 + STAGE_LIST.length) % STAGE_LIST.length].id, stageReady: 'true' });
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(500);
+  assert.equal((await data()).stage, 'club');
   await click(BACK);
   await until({ songScreen: 'list', songReady: 'true', stage: '' });
   await click(rowRect(0));
@@ -262,17 +264,37 @@ try {
   await until({ songScreen: 'preview', songReady: 'true' });
   await click(BACK);
   await until({ songScreen: 'list', songReady: 'true' });
-  await click(PILL);
-  await until({ connectReady: 'true' });
+  // Connect Client from Settings, with two players picked.
+  const openConnect = async () => {
+    await click(BACK);
+    await menuOn('players');
+    await click(MENU_BACK);
+    await menuOn('main');
+    await click(SETTINGS);
+    await menuOn('settings');
+    await click(PILL);
+    await until({ connectReady: 'true' });
+  };
+  await openConnect();
   await click(MODES[0]);
   await until({ connectMode: 'android', connectStatus: 'disconnected' });
   for (let i = 0; i < 16; i++) await page.keyboard.press('Backspace');
   await page.keyboard.type('127.0.0.1');
   await page.keyboard.press('Enter');
-  await until({ connectStatus: 'initializing', connectMessage: /90 seconds/, playerSlots: 'Camera starting…|Camera starting…' }, 10000);
+  await until({ connectStatus: 'initializing', connectMessage: /90 seconds/ }, 10000);
   ready = true;
-  await until({ connectStatus: 'connected', playerSlots: 'Detected|Detected' }, 10000);
+  await until({ connectStatus: 'connected' }, 10000);
+  // Both players are tracked once Song Select is back up.
+  await page.keyboard.press('Escape');
+  await until({ connectOpen: 'false' });
+  await click(MENU_BACK);
+  await menuOn('main');
+  await click(START);
+  await menuOn('players');
+  await click(TWO_PLAYERS);
+  await until({ songScreen: 'list', songReady: 'true', playerSlots: 'Detected|Detected' }, 10000);
   await shot('android-connected');
+  await openConnect();
   await click(PRIMARY); // Disconnect
   await closed;
   await until({ connectStatus: 'disconnected' }, 5000);
@@ -280,9 +302,50 @@ try {
   await until({ connectStatus: 'initializing' }, 10000);
   await click(PRIMARY); // Cancel connection
   await closed;
-  await until({ connectStatus: 'disconnected', playerSlots: 'Connect Client|Connect Client' }, 5000);
+  await until({ connectStatus: 'disconnected' }, 5000);
+
+  // A whole song with the autoplay ghost (?input=ghost): ready check, countdown, pause and
+  // resume, scoring, results, Play again and back to Song Select.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await page.goto('http://127.0.0.1:4173/?input=ghost');
+  await page.locator('canvas').waitFor();
+  await page.waitForFunction(() => document.querySelector('canvas')?.style.opacity === '1', null, { timeout: 90000 });
+  frame = await page.locator('.canvas-frame').boundingBox();
+  await menuOn('main');
+  await click(START);
+  await menuOn('players');
+  await click(TWO_PLAYERS);
+  await until({ songScreen: 'list', songReady: 'true', catalog: 'ready', playerSlots: 'Detected|Detected' }, 30000);
+  await click(rowRect(0));
+  await until({ songScreen: 'preview', songReady: 'true' }, 30000);
+  await click(DANCE);
+  // Both ghosts are tracked, so the countdown starts by itself.
+  await until({ gamePhase: 'countdown' }, 30000);
+  await until({ gamePhase: 'playing' }, 10000);
+  await page.waitForTimeout(2000);
+  await click(GAME_PAUSE);
+  await until({ gamePhase: 'paused' }, 5000);
+  const pausedAt = Number((await data()).gameTimeMs);
+  await page.waitForTimeout(1000);
+  assert.equal(Number((await data()).gameTimeMs), pausedAt, 'the song holds while paused');
+  await click(GAME_RESUME);
+  await until({ gamePhase: 'countdown' }, 5000);
+  await until({ gamePhase: 'playing' }, 10000);
+  await shot('game-playing');
+  await until({ gamePhase: 'results' }, 90000);
+  await shot('game-results');
+  const scores = (await data()).gameScores.split('|').map(Number);
+  assert.equal(scores.length, 2);
+  for (const score of scores) assert.ok(score > 850000, `the ghost copies the routine: ${score}`);
+  await click(RESULTS_RETRY);
+  await until({ gamePhase: 'countdown' }, 30000);
+  await click(GAME_PAUSE);
+  await until({ gamePhase: 'paused' }, 5000);
+  await click(GAME_QUIT);
+  await until({ songScreen: 'list', songReady: 'true' }, 10000);
+  assert.equal((await data()).gamePhase, undefined);
   assert.deepEqual(errors, []);
-  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam models and permission denial), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, song stages and the stage picker, Android startup, first-pose readiness, disconnect, startup cancellation and no runtime errors.');
+  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam models and permission denial), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, each song on its own stage, Android startup, first-pose readiness, disconnect, startup cancellation, a scored two-player song with the autoplay ghost (countdown, pause, resume, results, Play again, quit) and no runtime errors.');
 } catch (error) {
   console.error(error);
   if (testPage) console.error(await testPage.locator('canvas').evaluate((c) => JSON.stringify(c.dataset)).catch(() => ''));

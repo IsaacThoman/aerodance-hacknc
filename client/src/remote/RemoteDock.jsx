@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
 import { FONT, ICONS, drawCaps, drawGlassCircle, drawGlassPanel, drawQR, drawShadowText, ellipsize, roundRect } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
+import { drawWiiCursor } from '../ui/wiiCursor.js';
 import useFullscreen from '../menu/useFullscreen.js';
 import { useRemoteStatus } from './remoteLink.js';
 
@@ -10,13 +11,14 @@ import { useRemoteStatus } from './remoteLink.js';
  *   card    QR to /join?remote=<code>, with an X that whooshes it into the button
  *   button  a Wii remote in the bottom-right corner that brings the card out
  *   fullscreen  a matching bubble above the remote button
- *   cursor  the remote's pointer, on top of every other overlay
+ *   cursors the Wii hand (ui/wiiCursor.js) for the remote and (with wiiCursor) the mouse, over
+ *           every other overlay
  * The card starts tucked into the button and hides while a remote is connected. When the
  * remote drops it comes back for 15 seconds, then whooshes away on its own; opened by hand
- * it stays until closed. Corner controls slide off to the right outside the main menu; the remote
- * cursor stays available on other screens for navigation.
+ * it stays until closed. Corner controls slide off to the right outside the main menu; the
+ * cursors stay available on other screens for navigation.
  *
- * <RemoteDock visible={() => isMainScreen} />
+ * <RemoteDock visible={() => isMainScreen} wiiCursor />
  */
 
 const ICON = { x: 1516, y: 836, r: 42 };
@@ -29,34 +31,11 @@ const SLIDE_SECONDS = 0.3;
 
 const smooth = (k) => k * k * (3 - 2 * k);
 
-// The remote's pointer: a glossy aqua arrow with a soft glow, like a Wii cursor.
-function drawRemoteCursor(g, { x, y }, press) {
-  const s = 1 - press * 0.12;
-  g.save();
-  g.translate(x, y);
-  g.scale(s, s);
-  g.rotate(-0.42);
-  g.shadowColor = 'rgba(0, 40, 90, 0.55)';
-  g.shadowBlur = 12;
-  g.shadowOffsetY = 4;
-  g.beginPath();
-  g.moveTo(0, 0);
-  g.lineTo(22, 54);
-  g.lineTo(0, 44);
-  g.lineTo(-22, 54);
-  g.closePath();
-  const body = g.createLinearGradient(0, 0, 0, 54);
-  body.addColorStop(0, '#ffffff');
-  body.addColorStop(0.5, '#8fe3ff');
-  body.addColorStop(1, '#13a8e8');
-  g.fillStyle = body;
-  g.fill();
-  g.shadowColor = 'transparent';
-  g.lineWidth = 4;
-  g.lineJoin = 'round';
-  g.strokeStyle = '#0c2f52';
-  g.stroke();
-  g.restore();
+// The remote's pointer, and the mouse's while the mouse moved last (see useCanvasUI) unless
+// Settings keeps the system cursor for the mouse.
+function drawCursors(g, s, wiiCursor) {
+  if (s.mouse && wiiCursor) drawWiiCursor(g, s.mouse);
+  if (s.remote) drawWiiCursor(g, s.remote);
 }
 
 // A little white Wii remote, tilted, with its player LED lit while one is connected.
@@ -106,13 +85,13 @@ function drawClose(g, c, hover) {
   g.stroke();
 }
 
-export default function RemoteDock({ visible = () => true }) {
+export default function RemoteDock({ visible = () => true, wiiCursor = true }) {
   const status = useRemoteStatus();
   const fullscreen = useFullscreen();
   const props = useRef({});
-  props.current = { status, fullscreen, visible };
+  props.current = { status, fullscreen, visible, wiiCursor };
   // open: where the card is heading; k: how far out it is (0 tucked into the button, 1 out).
-  const st = useRef({ open: false, k: 0, slide: 0, hideAt: null, holder: null, drawn: null, visible: null, drawnFullscreen: null }).current;
+  const st = useRef({ open: false, k: 0, slide: 0, hideAt: null, holder: null, drawn: null, visible: null, drawnFullscreen: null, drawnWii: null }).current;
 
   const qr = useMemo(() => (status.joinUrl ? QRCode.create(status.joinUrl, { errorCorrectionLevel: 'M' }).modules : null), [status.joinUrl]);
   const qrRef = useRef(qr);
@@ -152,17 +131,19 @@ export default function RemoteDock({ visible = () => true }) {
       }
       if (st.hideAt !== null && s.time >= st.hideAt) { st.open = false; st.hideAt = null; }
       st.k = s.ease(st.k, st.open && qrRef.current ? 1 : 0, st.open ? 7 : 9);
-      // The cursor is drawn here, so redraw whenever it moves.
-      const at = s.remote ? `${s.remote.x},${s.remote.y},${!!s.pressed}` : null;
+      // The cursors are drawn here, so redraw whenever one moves.
+      const at = [s.remote, s.mouse].map((p) => (p ? `${p.x},${p.y}` : '')).join('|');
       if (at !== st.drawn) { st.drawn = at; s.invalidate(); }
       if (props.current.fullscreen !== st.drawnFullscreen) s.invalidate();
+      if (props.current.wiiCursor !== st.drawnWii) s.invalidate();
     },
     draw: (g, s) => {
       const { holder, error } = props.current.status;
       const fs = props.current.fullscreen;
       st.drawnFullscreen = fs;
+      st.drawnWii = props.current.wiiCursor;
       if (st.slide === 1) {
-        if (s.remote) drawRemoteCursor(g, s.remote, s.pressed || s.drag ? 1 : 0);
+        drawCursors(g, s, st.drawnWii);
         return;
       }
       const h = s.hover;
@@ -212,7 +193,7 @@ export default function RemoteDock({ visible = () => true }) {
       }
       g.restore();
 
-      if (s.remote) drawRemoteCursor(g, s.remote, s.pressed || s.drag ? 1 : 0);
+      drawCursors(g, s, st.drawnWii);
     },
   });
 

@@ -78,7 +78,7 @@ When the app settles a battle it queues a `battle_finished` job:
    Seated players are labelled with their devnet wallet address. Empty seats are labelled `p1`, `p2`, …. Names and phones never go on-chain.
 2. Every dancer with a linked phone gets a text with the result, their score, crowd hype and the Explorer link.
 
-3. The winner gets a trophy NFT ([Metaplex Core](https://developers.metaplex.com/core)) minted by the treasury into their devnet wallet, and a text when it lands. Ties and unclaimed seats get no trophy. The asset key is generated once and kept until the mint lands, so a retry finds the existing asset instead of minting a second one. The app serves the metadata at `/nft/<battleId>.json`, with `trophy.png` as the image.
+3. The winner gets a trophy NFT ([Metaplex Core](https://developers.metaplex.com/core)) minted by the treasury into their devnet wallet, and a text when it lands. Ties and unclaimed seats get no trophy. The asset key is generated once and kept until the mint lands, so a retry finds the existing asset instead of minting a second one. The app serves the metadata at `/nft/<battleId>.json` and the trophy's one-of-a-kind art at `/nft/<battleId>.svg` (`server/trophyArt.js`).
 
 If Solana is slow or down, players still get their result right away, with a note that the receipt is pending. A `receipt` job retries every 30 s and texts the link once it lands; a `trophy` job does the same for the NFT. Wallets that missed their starting SOL (say, while the treasury was empty) are retried every minute. Retries resend the same signed transaction until its blockhash expires, so a battle never gets two memos.
 
