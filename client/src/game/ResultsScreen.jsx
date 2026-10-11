@@ -111,7 +111,7 @@ export default function ResultsScreen({ visible = false, blocked = false, show, 
   const props = useRef({});
   props.current = { visible, blocked, show, song, battleMode, battle, onRetry, onQuit, onContinue, onRematch };
   const st = useRef({ alpha: 0 }).current;
-  const live = () => props.current.visible && !props.current.blocked && st.alpha > 0.3;
+  const live = () => props.current.visible && !props.current.blocked && !!props.current.show?.current;
 
   useCanvasUI({
     priority: 2.5,
@@ -146,7 +146,9 @@ export default function ResultsScreen({ visible = false, blocked = false, show, 
     },
     update: (_, s) => {
       const p = props.current;
-      st.alpha = s.ease(st.alpha, p.visible ? 1 : 0, p.visible ? 4 : 8);
+      // Gameplay already showed an opaque overlay: results and their controls must be
+      // ready together, including a Play again click on the very first results frame.
+      st.alpha = p.visible ? 1 : s.ease(st.alpha, 0, 8);
       if (p.visible) s.invalidate(); // reveal, score count, settlement and receipt updates
       if (p.visible && p.show?.current) {
         Object.assign(gl.domElement.dataset, {
