@@ -1,7 +1,9 @@
 import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal, useFrame, useThree } from '@react-three/fiber';
+import { createPortal, useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import flockCameraUrl from '../aero/flock/flock-camera-world.glb?url';
 import Character from '../../../packages/character/Character.jsx';
 import { validateMotion } from '../../../packages/character/motion.js';
 import motionUrl from '../../../packages/character/assets/dance.json?url';
@@ -25,6 +27,8 @@ const DANCERS = [
 const PUCK = { r: 3.1, h: 0.26 };
 // Stage placement in front of the fixed camera (looking down -Z), then turned to face it.
 const STAGE = { x: 4.3, y: -2.6, z: -19, tilt: 0.2, turn: -0.22 };
+const FLOCK_SCALE = 4;
+const FLOCK_LOWER_SCALE = 1.495;
 // How far the stage rises when it's raised.
 const RAISE = 1.5;
 const SLIDE = 12;
@@ -78,6 +82,31 @@ function Puck() {
   );
 }
 
+function FlockCamera() {
+  const { scene } = useLoader(GLTFLoader, flockCameraUrl);
+  const model = useMemo(() => {
+    const copy = scene.clone(true);
+    const assembly = copy.getObjectByName('Flock_Falcon_World');
+    const pole = copy.getObjectByName('Pole_|_simplified_12-foot_pole');
+    const top = new THREE.Box3().setFromObject(copy, true).max.y;
+    const poleHeight = new THREE.Box3().setFromObject(pole, true).max.y;
+    // Enlarge the hardware uniformly and shorten the shaft to the original top height.
+    const drop = top * (1 - 1 / FLOCK_SCALE);
+    const upperParts = assembly.children.filter((part) => part !== pole);
+    const lowerEnd = Math.min(...upperParts.map((part) => new THREE.Box3().setFromObject(part, true).min.y));
+    // Extend the exposed lower shaft, raising the hardware with it.
+    const extension = (lowerEnd - drop) * (FLOCK_LOWER_SCALE - 1);
+    for (const part of upperParts) part.position.y += extension - drop;
+    pole.scale.y = (poleHeight - drop + extension) / poleHeight;
+    pole.position.y *= pole.scale.y;
+    return copy;
+  }, [scene]);
+  return (
+    // The model faces +Z. Cancel the platform's turn to aim 30° toward screen left.
+    <primitive object={model} position={[0, 0, -2.2]} rotation={[0, -Math.PI / 6 - STAGE.turn, 0]} scale={FLOCK_SCALE} dispose={null} />
+  );
+}
+
 class Quiet extends Component {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -85,7 +114,7 @@ class Quiet extends Component {
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export default function MenuDancers({ visible = true, raised = false, solo = false }) {
+export default function MenuDancers({ visible = true, raised = false, solo = false, androidConnected = false }) {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
   const [motion, setMotion] = useState(null);
@@ -172,6 +201,13 @@ export default function MenuDancers({ visible = true, raised = false, solo = fal
       <directionalLight position={[-6, 12, 8]} intensity={2.5} />
       <pointLight position={[0, 1.3, 3]} color="#65f7ff" intensity={8} distance={9} />
       <group ref={rig} position={[STAGE.x + SLIDE, STAGE.y, STAGE.z]}>
+        {androidConnected && (
+          <Quiet>
+            <Suspense fallback={null}>
+              <FlockCamera />
+            </Suspense>
+          </Quiet>
+        )}
         <Quiet>
           <Suspense fallback={null}>
             <Puck />
