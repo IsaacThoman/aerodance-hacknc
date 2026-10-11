@@ -1,42 +1,29 @@
 import { useEffect, useRef } from 'react';
-import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawTitle, pill } from '../ui/draw.js';
+import { useThree } from '@react-three/fiber';
+import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawPlayerLeds, drawTitle, pill } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { playUISound } from '../audio/uiSounds.js';
 import RemoteDock from '../remote/RemoteDock.jsx';
+import { BACK, BATTLE, ONE_PLAYER, SETTINGS, START, TITLE, TWO_PLAYERS } from './layout.js';
 
 /**
  * Title menu drawn in-engine (see ui/useCanvasUI.js), laid out in 16:9 design units and
  * drawn after the world (useFrame priority 2).
  *
- * Screens: main (Start, Battle, Settings), start (random / select song), songs (song list),
- * settings (sound: Master / Music / Effects volume, Menu music and Mute all; audio/mixer.js
- * applies them). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
+ * Screens: main (Start, Battle, Settings), players (one / two players, then Song Select:
+ * game/SongSelect.jsx), settings (sound: Master / Music / Effects volume, Menu music and Mute
+ * all; audio/mixer.js applies them). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
  * The main screen also shows the remote and fullscreen bubbles in the corner.
  *
- * Input comes from the mouse/touch on the canvas or from a paired phone remote
- * (remote/remoteLink.js; B goes back).
+ * Input comes from the mouse/touch on the canvas, the keyboard (arrows, Enter, Escape) or a
+ * paired phone remote (remote/remoteLink.js; B goes back). `blocked` (the Connect Client card
+ * is open) holds input. The canvas reports data-menu-screen / data-menu-ready for tests.
  *
- * <MainMenu visible onStart={(mode, song) => ...} onBattle={() => ...} sound={sound} onSoundChange={setSound} />
+ * <MainMenu visible initialScreen="main" onStart={(playerCount) => ...} onBattle={() => ...}
+ *   sound={sound} onSoundChange={setSound} />
  */
 
-// Design space is 1600x900 (16:9); everything below is in these units.
-const TITLE = { x: 124, y: 418, size: 156 };
-
-// Main screen.
-const START = { x: 128, y: 482, w: 440, h: 104 };
-const BATTLE = { x: 128, y: 602, w: 440, h: 104 };
-const SETTINGS = { x: 128, y: 722, w: 440, h: 104 };
-
-// Submenus share a header row: back button + small caps heading.
-const BACK = { x: 166, y: 500, r: 30 };
-const RANDOM = { x: 128, y: 550, w: 470, h: 96 };
-const SELECT = { x: 128, y: 666, w: 470, h: 96 };
-// Placeholder track list until real songs exist.
-const SONGS = [
-  { id: 'song-1', title: 'Song Title One', artist: 'Artist Name' },
-  { id: 'song-2', title: 'Song Title Two', artist: 'Artist Name' },
-];
-const SONG_RECTS = SONGS.map((_, i) => ({ x: 128, y: 550 + i * 116, w: 520, h: 96 }));
+// Design space is 1600x900 (16:9); the layout is in ./layout.js.
 const PANEL = { x: 128, y: 548, w: 600, h: 324 };
 const SLIDERS = [
   { key: 'master', label: 'Master' },
@@ -58,14 +45,10 @@ const WIDGETS = {
     { id: 'battle', rect: BATTLE },
     { id: 'settings', rect: SETTINGS },
   ],
-  start: [
+  players: [
     { id: 'back', circle: BACK },
-    { id: 'random', rect: RANDOM },
-    { id: 'select', rect: SELECT },
-  ],
-  songs: [
-    { id: 'back', circle: BACK },
-    ...SONGS.map((song, i) => ({ id: song.id, song, rect: SONG_RECTS[i] })),
+    { id: 'one', rect: ONE_PLAYER },
+    { id: 'two', rect: TWO_PLAYERS },
   ],
   settings: [
     { id: 'back', circle: BACK },
@@ -74,7 +57,7 @@ const WIDGETS = {
   ],
 };
 // Where back / Escape leads from each submenu.
-const PARENT = { start: 'main', settings: 'main', songs: 'start' };
+const PARENT = { players: 'main', settings: 'main' };
 
 const sliderValue = (x) => Math.min(1, Math.max(0, (x - TRACK.x0) / (TRACK.x1 - TRACK.x0)));
 
@@ -153,13 +136,22 @@ function drawSoundPanel(g, sound, hover) {
   });
 }
 
-export default function MainMenu({ visible = true, onStart, onBattle, onSettingsOpen, sound, onSoundChange }) {
+export default function MainMenu({
+  visible = true, blocked = false, initialScreen = 'main', onStart, onBattle, onSettingsOpen, sound, onSoundChange,
+}) {
+  const gl = useThree((state) => state.gl);
   const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null });
   const props = useRef({});
-  props.current = { visible, onStart, onBattle, onSettingsOpen, sound, onSoundChange };
+  props.current = { visible, blocked, onStart, onBattle, onSettingsOpen, sound, onSoundChange };
 
   const m = menu.current;
-  const go = (screen) => { if (screen !== m.next) m.next = screen; };
+  const go = (screen) => {
+    if (screen === m.next) return;
+    m.next = screen;
+    // A keyboard cursor starts over on the next screen.
+    if (ui.pointerKind === 'key') ui.pointer = null;
+  };
+  const live = () => props.current.visible && !props.current.blocked && m.alpha > 0.3 && m.screen === m.next;
   const setSound = (patch) => {
     const { sound: cur, onSoundChange: cb } = props.current;
     cb?.({ ...cur, ...patch });
@@ -168,7 +160,8 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
   const ui = useCanvasUI({
     priority: 2,
     // Input goes to the visible screen as soon as it is fading in (never mid swap-out).
-    active: () => props.current.visible && m.alpha > 0.3 && m.screen === m.next,
+    active: live,
+    keyNav: true,
     widgets: () => WIDGETS[m.screen],
     onDrag: (wdg, p) => {
       const v = sliderValue(p.x);
@@ -184,23 +177,26 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
         s.invalidate();
         return;
       }
-      if (wdg.song) { props.current.onStart?.('select', wdg.song); return; }
       switch (wdg.id) {
-        case 'start': go('start'); break;
+        case 'start': go('players'); break;
         case 'battle': props.current.onBattle?.(); break;
         case 'settings': m.spin += Math.PI / 2; go('settings'); props.current.onSettingsOpen?.(); break;
         case 'back': go(PARENT[m.screen]); break;
-        case 'random': props.current.onStart?.('random'); break;
-        case 'select': go('songs'); break;
+        case 'one': props.current.onStart?.(1); break;
+        case 'two': props.current.onStart?.(2); break;
         default:
       }
       s.invalidate();
     },
     onKey: (e, s) => {
-      const active = props.current.visible && m.alpha > 0.3 && m.screen === m.next;
-      if (e.key === 'Escape' && active && PARENT[m.screen]) { playUISound('back'); go(PARENT[m.screen]); s.invalidate(); }
+      if (e.key === 'Escape' && !e.repeat && live() && PARENT[m.screen]) { playUISound('back'); go(PARENT[m.screen]); s.invalidate(); }
     },
-    onBack: (s) => { if (PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); } },
+    onBack: (s) => {
+      if (!PARENT[m.screen]) return false;
+      go(PARENT[m.screen]);
+      s.invalidate();
+      return true;
+    },
     update: (dt, s) => {
       const shown = props.current.visible;
       // Screen change: fade the current screen out, swap, fade the next one in.
@@ -215,6 +211,9 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
       m.alpha = s.ease(m.alpha, shown ? 1 : 0, shown ? 3 : 6);
       m.gearAngle = s.ease(m.gearAngle, m.spin + (s.hover.settings ?? 0) * 0.35, 8);
       if (props.current.sound !== m.drawnSound) s.invalidate();
+      const { dataset } = gl.domElement;
+      dataset.menuScreen = m.screen;
+      dataset.menuReady = String(shown && m.alpha > 0.5 && m.screen === m.next && m.swap > 0.95);
     },
     opacity: () => m.alpha,
     draw: (g, s) => {
@@ -232,14 +231,13 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
         drawPill(g, START, { label: 'Start', icon: 'play', hover: h.start ?? 0, press: press('start') });
         drawPill(g, BATTLE, { label: 'Battle', icon: 'duo', hover: h.battle ?? 0, press: press('battle') });
         drawPill(g, SETTINGS, { label: 'Settings', icon: 'gear', hover: h.settings ?? 0, press: press('settings'), angle: m.gearAngle });
-      } else if (m.screen === 'start') {
-        drawHeader(g, BACK, 'START', h.back ?? 0);
-        drawPill(g, RANDOM, { label: 'Random song', icon: 'shuffle', hover: h.random ?? 0, press: press('random') });
-        drawPill(g, SELECT, { label: 'Select song', icon: 'list', hover: h.select ?? 0, press: press('select') });
-      } else if (m.screen === 'songs') {
-        drawHeader(g, BACK, 'SELECT SONG', h.back ?? 0);
-        SONGS.forEach((song, i) => {
-          drawPill(g, SONG_RECTS[i], { label: song.title, sub: song.artist, icon: 'note', hover: h[song.id] ?? 0, press: press(song.id) });
+      } else if (m.screen === 'players') {
+        drawHeader(g, BACK, 'PLAYERS', h.back ?? 0);
+        // Each pill shows the Wii-remote LEDs the players will get.
+        [[ONE_PLAYER, 'one', 'One Player', [1]], [TWO_PLAYERS, 'two', 'Two Players', [1, 2]]].forEach(([rect, id, label, leds]) => {
+          const hv = h[id] ?? 0;
+          drawPill(g, rect, { label, icon: 'play', hover: hv, press: press(id) });
+          drawPlayerLeds(g, rect.x + rect.w - 92, rect.y + rect.h / 2 - hv * 3 + press(id) * 3, { player: leds, glow: 0.4 + hv * 0.6, scale: 0.55 });
         });
       } else {
         drawHeader(g, BACK, 'SOUND', h.back ?? 0);
@@ -249,13 +247,13 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
     },
   });
 
-  // Reopening the menu always lands on the main screen.
+  // Reopening the menu lands on initialScreen (Back from Song Select returns to players).
   useEffect(() => {
     if (!visible) return;
-    m.screen = m.next = 'main';
+    m.screen = m.next = initialScreen;
     m.swap = 1;
     ui.invalidate();
-  }, [visible, m, ui]);
+  }, [visible, initialScreen, m, ui]);
 
-  return <RemoteDock visible={() => props.current.visible && m.screen === 'main' && m.next === 'main'} />;
+  return <RemoteDock visible={() => props.current.visible && !props.current.blocked && m.screen === 'main' && m.next === 'main'} />;
 }

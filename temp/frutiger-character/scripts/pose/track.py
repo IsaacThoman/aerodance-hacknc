@@ -71,6 +71,29 @@ def clean(raw, times, threshold, sigma):
     return result
 
 
+def build_samples(raw, poses, times, threshold):
+    samples = []
+    for i, time in enumerate(times):
+        snapshot, quality = [], []
+        for person in range(2):
+            if not np.isfinite(raw[i,person,0,0]):
+                continue  # Whole-person absence stays explicit in new exports.
+            landmarks = []
+            for joint in range(33):
+                xyz = np.round(poses[i,person,joint,:3],5)
+                scores = raw[i,person,joint,4:6]
+                landmarks.append(dict(x=float(xyz[0]),y=float(xyz[1]),z=float(xyz[2]),
+                    visibility=float(scores[0]) if np.isfinite(scores[0]) else None,
+                    presence=float(scores[1]) if np.isfinite(scores[1]) else None))
+            snapshot.append(dict(playerId=person,landmarks=landmarks))
+            # Offline interpolation/smoothing requires author review before scoring.
+            quality.append(dict(playerId=person,landmarkOrigins=[
+                'resampled' if raw[i,person,j,3] >= threshold else 'gap-repaired'
+                for j in range(33)],scoreEligible=[False]*33,reviewed=False))
+        samples.append(dict(takeTimeMs=round(float(time)*1000,6),poses=snapshot,quality=quality))
+    return samples
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('video', type=Path)
@@ -129,13 +152,13 @@ def main():
             last_sample = sample
             image = cv2.resize(image, (args.width, round(args.width / aspect)))
             result = detector.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB)), round(timestamp * 1000))
-            candidates = [np.array([[p.x,p.y,p.z,min(p.visibility,p.presence)] for p in pose]) for pose in result.pose_landmarks]
+            candidates = [np.array([[p.x,p.y,p.z,min(p.visibility,p.presence),p.visibility,p.presence] for p in pose]) for pose in result.pose_landmarks]
             selected = assign(candidates, previous, aspect)
             if previous is None and any(p is None for p in selected):
                 raise ValueError('Both dancers must be visible in the first frame; trim the input first')
             if previous is None:
                 previous = selected.copy()
-            frame = np.full((2,33,4), np.nan)
+            frame = np.full((2,33,6), np.nan)
             for person, pose in enumerate(selected):
                 if pose is None:
                     missing[person] += 1
@@ -162,15 +185,20 @@ def main():
         reliableJointFraction=[float(np.mean(raw[:,p,:,3] >= args.confidence)) for p in range(2)])
     if max(gaps) > args.fps:
         raise ValueError(f'Tracking lost a dancer for >1 second: {report}')
-    data = dict(version=1, source=dict(sha256=sha(args.video), width=width, height=height),
-        model=dict(url=MODEL_URL, sha256=MODEL_SHA, mediapipe=mp.__version__),
-        settings=dict(start=args.start, end=args.end, fps=args.fps, width=args.width, confidence=args.confidence, smoothSeconds=args.smooth_seconds),
-        duration=round(duration,6), report=report,
-        times=np.round(times,6).tolist(), poses=np.round(poses,5).tolist())
+    samples = build_samples(raw, poses, times, args.confidence)
+    data = dict(schema='aerodance.take',schemaVersion=1,takeId='video-'+sha(args.video)[:16],
+        name='Imported video',source='video',
+        input=dict(width=args.width,height=round(args.width/aspect),mirrored=False),
+        durationMs=round(duration*1000,6),offsetMs=0,timeScale=1,samples=samples,
+        provenance=dict(source=dict(sha256=sha(args.video),width=width,height=height),
+            model=dict(url=MODEL_URL,sha256=MODEL_SHA,mediapipe=mp.__version__),
+            settings=dict(start=args.start,end=args.end,fps=args.fps,width=args.width,
+                confidence=args.confidence,smoothSeconds=args.smooth_seconds),report=report,
+            offlineSmoothed=True))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(data, separators=(',',':'), allow_nan=False) + '\n')
     args.diagnostics.mkdir(parents=True, exist_ok=True)
-    (args.diagnostics / 'report.json').write_text(json.dumps(data | {'poses': 'omitted', 'times': 'omitted'}, indent=2) + '\n')
+    (args.diagnostics / 'report.json').write_text(json.dumps(data | {'samples': 'omitted'}, indent=2) + '\n')
     np.savez_compressed(args.diagnostics / 'raw.npz', times=times, poses=raw)
     # Silent review copy. The input video remains local and is never copied to public/.
     cap = cv2.VideoCapture(str(args.video))

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { HUD_HEIGHT, HUD_WIDTH } from '../../../frutiger-character/client/src/stages/shared/hud.jsx';
+import { HUD_HEIGHT, HUD_WIDTH } from '../../../../packages/stages/shared/hud.jsx';
 import { PLAYERS, REVEAL, backOut, clamp01, timeline } from './results.js';
 
 /*
  * The 2D side of a win screen, drawn in the stages' HUD layer (1280x720 virtual pixels,
- * unaffected by bloom) in the title screen's Inter type, with the stage name card's glass
- * pills, tinted with the stage's accent and the winner's colour. Scores are marked TEMP SCORE.
+ * unaffected by bloom) in the title screen's Inter type: the title and scores free-standing
+ * over the stage in the winner's and players' colours, and buttons in the stage name card's
+ * glass pills, tinted with the stage's accent.
  *
  * <WinHud layer show stage={meta} song onReplay onMenu />
  */
@@ -15,6 +16,9 @@ import { PLAYERS, REVEAL, backOut, clamp01, timeline } from './results.js';
 const W = HUD_WIDTH;
 const H = HUD_HEIGHT;
 const TITLE = { x: 640, y: 82, w: 900 };
+// Score columns: centre offset from the middle, and the y of each row.
+const SCORES = { dx: 240, status: 516, name: 544, score: 620 };
+const GOLD = ['#fff6cc', '#ffd34d', '#f0a500'];
 const BUTTONS = {
   replay: { x: 640 - 230, y: 650, w: 220, h: 50, label: 'Play again' },
   menu: { x: 650, y: 650, w: 160, h: 50, label: 'Menu' },
@@ -35,10 +39,9 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 /** The name card's glass pill: white-to-aqua body, sheen and a crisp rim. */
-function glassPill(ctx, x, y, w, h, { alpha = 1, rim = null } = {}) {
+function glassPill(ctx, x, y, w, h, { rim = null } = {}) {
   const r = h / 2;
   ctx.save();
-  ctx.globalAlpha *= alpha;
   ctx.shadowColor = 'rgba(0,40,80,0.35)';
   ctx.shadowBlur = 14;
   ctx.shadowOffsetY = 4;
@@ -71,10 +74,13 @@ function glassPill(ctx, x, y, w, h, { alpha = 1, rim = null } = {}) {
   ctx.restore();
 }
 
-/** Glossy orb in a two-colour gradient (the name card's arrow orbs). */
-function orb(ctx, cx, cy, r, light, dark) {
+/**
+ * Glossy orb in a two-colour gradient (the name card's arrow orbs). Soft orbs carry an icon,
+ * so they drop the white hot spot and keep only a faint sheen for the white icon to read on.
+ */
+function orb(ctx, cx, cy, r, light, dark, { soft = false } = {}) {
   const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.45, r * 0.1, cx, cy, r);
-  g.addColorStop(0, '#ffffff');
+  g.addColorStop(0, soft ? light : '#ffffff');
   g.addColorStop(0.35, light);
   g.addColorStop(1, dark);
   ctx.fillStyle = g;
@@ -85,12 +91,56 @@ function orb(ctx, cx, cy, r, light, dark) {
   ctx.lineWidth = 3;
   ctx.stroke();
   const s = ctx.createLinearGradient(0, cy - r, 0, cy);
-  s.addColorStop(0, 'rgba(255,255,255,0.95)');
+  s.addColorStop(0, `rgba(255,255,255,${soft ? 0.4 : 0.95})`);
   s.addColorStop(1, 'rgba(255,255,255,0.05)');
   ctx.fillStyle = s;
   ctx.beginPath();
   ctx.ellipse(cx, cy - r * 0.42, r * 0.72, r * 0.45, 0, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/**
+ * White button icons for the orbs, keyed by button id, centred at (cx, cy) in an orb of
+ * radius r. Kept to bold, simple strokes so they read at the 640x480 buffer.
+ */
+const ICONS = {
+  // Anticlockwise arrow, open at the top left, like a replay control.
+  replay(ctx, cx, cy, r) {
+    const a = r * 0.5;
+    const head = r * 0.3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, a, -Math.PI / 2, Math.PI * 0.95);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - head * 1.1, cy - a);
+    ctx.lineTo(cx + head * 0.4, cy - a - head);
+    ctx.lineTo(cx + head * 0.4, cy - a + head);
+    ctx.closePath();
+    ctx.fill();
+  },
+  // Three bars.
+  menu(ctx, cx, cy, r) {
+    const a = r * 0.46;
+    ctx.beginPath();
+    for (const dy of [-a * 0.75, 0, a * 0.75]) {
+      ctx.moveTo(cx - a, cy + dy);
+      ctx.lineTo(cx + a, cy + dy);
+    }
+    ctx.stroke();
+  },
+};
+
+function icon(ctx, id, cx, cy, r) {
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 30, 70, 0.75)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 1;
+  ctx.strokeStyle = ctx.fillStyle = '#ffffff';
+  ctx.lineWidth = r * 0.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ICONS[id](ctx, cx, cy, r);
+  ctx.restore();
 }
 
 /** Bold Inter with a white outline and a vertical ink gradient. */
@@ -145,18 +195,25 @@ function headline(ctx, text, x, y, size, face, maxW) {
   ctx.restore();
 }
 
-function tempTag(ctx, x, y) {
+/**
+ * Small free-standing caption: the headline's soft dark halo, so it holds on bright stages,
+ * under the subtitle's tight shadow.
+ */
+function caption(ctx, text, x, y, size, color, { align = 'center', spacing = 0 } = {}) {
   ctx.save();
-  ctx.font = `800 12px ${FONT}`;
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
-  const w = ctx.measureText('TEMP SCORE').width + 18;
-  roundRect(ctx, x - w / 2, y - 10, w, 20, 10);
-  ctx.fillStyle = 'rgba(255, 211, 77, 0.9)';
-  ctx.fill();
-  ctx.fillStyle = '#6a4200';
-  ctx.textAlign = 'center';
+  if ('letterSpacing' in ctx) ctx.letterSpacing = `${spacing}px`;
+  ctx.font = `800 ${size}px ${FONT}`;
+  ctx.textAlign = align;
   ctx.textBaseline = 'middle';
-  ctx.fillText('TEMP SCORE', x, y + 1);
+  ctx.shadowColor = 'rgba(0, 28, 70, 0.6)';
+  ctx.shadowBlur = 16;
+  ctx.fillStyle = 'rgba(0, 40, 90, 0.35)';
+  ctx.fillText(text, x, y);
+  ctx.shadowColor = 'rgba(0, 30, 70, 0.8)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
   ctx.restore();
 }
 
@@ -181,7 +238,7 @@ function drawHud(ctx, { show, now, stage, song, hover, toast, modeLabel }) {
     pop = backOut(clamp01((t - REVEAL) / 0.32));
     if (winner === null) {
       title = "IT'S A TIE!";
-      face = ['#fff6cc', '#ffd34d', '#f0a500'];
+      face = GOLD;
     } else {
       const p = PLAYERS[winner];
       title = `${p.name.toUpperCase()} WINS!`;
@@ -201,65 +258,38 @@ function drawHud(ctx, { show, now, stage, song, hover, toast, modeLabel }) {
   ctx.fillText(`${stage.name}  ·  ${song.title}`, 0, 50);
   ctx.restore();
 
-  // Score pills.
-  const cardW = solo ? 470 : 430;
-  const xs = solo ? [640 - cardW / 2] : [640 - cardW - 24, 640 + 24];
+  // Scores: free-standing over the stage like the title, one column per dancer. Each column
+  // reads top to bottom: status (solo, or a tie once it's in), number orb and name, the score.
+  const xs = solo ? [640] : [640 - SCORES.dx, 640 + SCORES.dx];
   results.forEach((r, i) => {
     const x = xs[i];
-    const y = 540;
-    const h = 90;
+    const p = PLAYERS[i];
     const win = !solo && winner === i;
     const lose = !solo && winner !== null && !win;
-    const p = PLAYERS[i];
-    glassPill(ctx, x, y, cardW, h, { alpha: lose ? 1 - 0.25 * reveal : 1, rim: win && reveal > 0 ? `rgba(255, 211, 77, ${reveal})` : null });
+    const tied = !solo && winner === null && t >= REVEAL;
     ctx.save();
-    ctx.globalAlpha *= lose ? 1 - 0.25 * reveal : 1;
-    orb(ctx, x + 48, y + h / 2, 30, p.light, p.dark);
-    ctx.font = `800 26px ${FONT}`;
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), x + 48, y + h / 2 + 1);
-    ctx.textAlign = 'left';
-    ctx.font = `800 26px ${FONT}`;
-    ctx.fillStyle = '#064a7e';
-    ctx.fillText(solo ? 'Final score' : r.name, x + 92, y + 34);
-    ctx.font = `700 15px ${FONT}`;
-    ctx.fillStyle = 'rgba(10,80,120,0.75)';
-    ctx.fillText(solo ? r.name : win && reveal > 0.5 ? 'Winner' : winner === null && t >= REVEAL ? 'Tied' : 'Score', x + 93, y + 62);
-    inkText(ctx, String(Math.round(r.score * count)), x + cardW - 34, y + 64, 50, win && reveal > 0.5 ? ['#ffc21a', '#b36b00'] : [p.color, p.dark], { align: 'right' });
-    ctx.restore();
-    tempTag(ctx, x + cardW / 2 + 40, y + h + 2);
-    // Winner tab above the pill.
-    if (win && reveal > 0) {
+    ctx.globalAlpha *= lose ? 1 - 0.2 * reveal : 1;
+    const status = solo ? 'FINAL SCORE' : tied ? 'TIED' : null;
+    if (status) {
       ctx.save();
-      ctx.globalAlpha *= reveal;
-      const tw = 150;
-      roundRect(ctx, x + cardW / 2 - tw / 2, y - 30, tw, 34, 17);
-      const g = ctx.createLinearGradient(0, y - 30, 0, y + 4);
-      g.addColorStop(0, '#fff2b0');
-      g.addColorStop(1, '#ffb800');
-      ctx.fillStyle = g;
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.font = `800 18px ${FONT}`;
-      ctx.fillStyle = '#6a4200';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('★ WINNER ★', x + cardW / 2, y - 12);
+      ctx.globalAlpha *= solo ? 1 : reveal;
+      caption(ctx, status, x, SCORES.status, 17, solo ? '#ffffff' : GOLD[1], { spacing: 3 });
       ctx.restore();
     }
+    ctx.font = `800 22px ${FONT}`;
+    const left = x - (36 + ctx.measureText(r.name).width) / 2;
+    orb(ctx, left + 13, SCORES.name, 13, p.light, p.dark);
+    caption(ctx, String(i + 1), left + 13, SCORES.name + 1, 15, '#ffffff');
+    caption(ctx, r.name, left + 36, SCORES.name, 22, '#ffffff', { align: 'left' });
+    // The winner's score turns gold and pops a size up as the result lands.
+    const grow = win ? 0.12 * backOut(clamp01((t - REVEAL) / 0.32)) : 0;
+    ctx.save();
+    ctx.translate(x, SCORES.score - 26);
+    ctx.scale(1 + grow, 1 + grow);
+    headline(ctx, String(Math.round(r.score * count)), 0, 26, 72, win && reveal > 0 ? GOLD : ['#ffffff', p.light, p.color], 400);
+    ctx.restore();
+    ctx.restore();
   });
-  if (!solo) {
-    orb(ctx, 640, 585, 26, accent[0], accent[1]);
-    ctx.font = `800 20px ${FONT}`;
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('VS', 640, 586);
-  }
 
   // Buttons.
   for (const [id, b] of Object.entries(BUTTONS)) {
@@ -267,7 +297,8 @@ function drawHud(ctx, { show, now, stage, song, hover, toast, modeLabel }) {
     ctx.save();
     ctx.translate(0, -2 * k);
     glassPill(ctx, b.x, b.y, b.w, b.h, { rim: k ? 'rgba(255,255,255,0.9)' : null });
-    orb(ctx, b.x + 26, b.y + b.h / 2, 17, accent[0], accent[1]);
+    orb(ctx, b.x + 26, b.y + b.h / 2, 19, accent[0], accent[1], { soft: true });
+    icon(ctx, id, b.x + 26, b.y + b.h / 2, 19);
     ctx.font = `800 21px ${FONT}`;
     ctx.fillStyle = '#064a7e';
     ctx.textAlign = 'left';

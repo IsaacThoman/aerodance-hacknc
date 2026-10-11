@@ -97,7 +97,16 @@ GPU task, session and open stream. No socket write or native inference holds tha
 lock. `MainActivity` preserves the selected count in process memory across activity
 recreation; a fresh process defaults to one player. Start once, stop idempotently, and handle camera contention, model errors, Wi-Fi changes, and disconnects without leaks.
 
-Initially run while the activity is active; stop on leaving that lifecycle and restart automatically on launch/return using the saved origin after initial setup. Manual Stop pauses streaming until Start or the next foreground entry. A service and boot launch are a later milestone: verify this image's launcher/permissions, using an appropriate foreground service if continuous capture is required. Capture lifetime is independent of browser connections.
+Initially run the server while the activity is active; stop on leaving that lifecycle and restart automatically on launch/return using the saved origin after initial setup. Manual Stop pauses streaming until Start or the next foreground entry. Camera capture and GPU inference start only after a browser opens `/v1/stream`. Disconnect detection stops capture, closes pending images, drains and closes the GPU task, then releases the camera reader and workers. Reconnect waits for that release before creating another camera/task pair; the server session, sequence counter and player count survive. Status/config requests do not start capture. A service and boot launch are a later milestone: verify this image's launcher/permissions, using an appropriate foreground service if continuous capture is required.
+
+While idle, `pipelineState: running` means the server is ready to accept a stream.
+Opening a live stream sets it to `starting`; heartbeats keep that stream alive
+through GPU initialization. The first successful inference sets it to `running`
+and publishes a pose, including an empty pose when nobody is detected. Config
+snapshots are withheld during initialization so they cannot falsely signal
+readiness. Disconnect restores server readiness for the next connection.
+The browser shows `initializing` until its first accepted, matching pose and
+allows 90 seconds after opening the stream; heartbeats do not extend that deadline.
 
 Show Start/Stop, LAN address/port, errors, browser connection, capture/result rates, and timing summaries. Preview/skeleton rendering are optional diagnostics that can be disabled. Game credentials stay in the browser/backend.
 

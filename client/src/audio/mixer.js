@@ -3,8 +3,8 @@ import { loadSound } from '../menu/soundSettings.js';
 /*
  * One AudioContext for the page, wired like a little mixing desk:
  *
- *   menu music ─ menuMusic ─┐
- *   (in-game songs) ────────┴─ music ─┐
+ *   menu music ─ menuMusic ─ menuDuck ─┐
+ *   in-game songs (songPlayer.js) ──────┴─ music ─┐
  *   button sounds ─────────── sfx ────┴─ master ─ limiter ─ speakers
  *
  * applySound(sound) maps Settings → Sound onto it:
@@ -13,6 +13,9 @@ import { loadSound } from '../menu/soundSettings.js';
  *   Effects    sfx: button sounds
  *   Menu music menuMusic: on/off for the menu's background track only
  *   Mute all   master off
+ *
+ * duckMenuMusic(true) fades the menu track out under a song (Song Select's preview) and back
+ * in afterwards, without touching the Menu music setting.
  *
  * Browsers keep audio suspended until the first click, tap or key press; the context
  * resumes on that gesture.
@@ -31,6 +34,7 @@ export function getMixer() {
   const master = gain();
   const music = gain();
   const menuMusic = gain();
+  const menuDuck = gain();
   const sfx = gain();
   // Catches the odd peak when a button pop lands on a loud bar of music.
   const limiter = ctx.createDynamicsCompressor();
@@ -40,11 +44,11 @@ export function getMixer() {
   limiter.attack.value = 0.002;
   limiter.release.value = 0.1;
 
-  menuMusic.connect(music);
+  menuMusic.connect(menuDuck).connect(music);
   music.connect(master);
   sfx.connect(master);
   master.connect(limiter).connect(ctx.destination);
-  const mixer = { ctx, master, music, menuMusic, sfx };
+  const mixer = { ctx, master, music, menuMusic, menuDuck, sfx };
   globalThis[KEY] = mixer;
 
   const unlock = () => { if (ctx.state === 'suspended') ctx.resume(); };
@@ -70,4 +74,12 @@ export function applySound(sound) {
   set(music.gain, level(sound.music), ctx);
   set(menuMusic.gain, sound.menuMusic === false ? 0 : 1, ctx);
   set(sfx.gain, level(sound.sfx), ctx);
+}
+
+export function duckMenuMusic(on) {
+  const { ctx, menuDuck } = getMixer();
+  const now = ctx.currentTime;
+  menuDuck.gain.cancelScheduledValues(now);
+  menuDuck.gain.setValueAtTime(menuDuck.gain.value, now);
+  menuDuck.gain.linearRampToValueAtTime(on ? 0 : 1, now + (on ? 0.4 : 1.2));
 }

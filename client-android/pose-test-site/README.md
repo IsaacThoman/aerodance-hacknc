@@ -36,6 +36,17 @@ node --test
 
 Nine tests cover arbitrary chunk boundaries and UTF-8, record limits, invalid data, stale and empty clearing, heartbeat semantics, session/sequence handling, IP validation, explicit player IDs and mode changes. Node 24.21.0 was used for the current protocol tests; runtime serving needs only Python or Docker.
 
+Connecting starts Android capture and GPU initialization. The page shows
+“Camera starting…” until the first pose result, allowing up to 90 seconds after
+the stream opens. Startup heartbeats keep transport alive but do not mark the
+camera ready or extend that deadline. Disconnect releases capture to save battery;
+each reconnect can take about 35 seconds to initialize again.
+
+With Playwright available, run the local HTTP startup fixture from the repository
+root with `node client-android/pose-test-site/startup.browser.mjs`. It verifies
+startup messaging, empty-result readiness, reconnect and cancellation without
+using the board. Ports 8081 and 1337 must be free.
+
 Chromium 153.0.8010.12 was checked with Playwright. Protocol-v2 synthetic
 skeletons, live count changes on one stream, reconnect mode reapplication,
 mirrored camera-side labels, disconnect and a 390-pixel layout passed without

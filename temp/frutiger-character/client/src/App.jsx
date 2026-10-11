@@ -2,7 +2,7 @@ import { Component, useEffect, useLayoutEffect, useState } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { PCFShadowMap } from "three";
 import Scene from "./Scene.jsx";
-import { validateMotion } from "./motion.js";
+import { validateMotion } from "../../../../packages/character/motion.js";
 
 function FixedRenderResolution() {
   const { gl, size } = useThree();
