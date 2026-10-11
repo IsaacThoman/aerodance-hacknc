@@ -10,7 +10,6 @@ import { FAKE_DANCE_MS, fakeDance } from './battle/fakeDance.js';
 import { api, createBattle, seatTokens, startBattle, useBattle } from './battle/api.js';
 import PhoneApp from './phone/PhoneApp.jsx';
 import { socket } from './socket.js';
-import RemoteDock from './remote/RemoteDock.jsx';
 
 function FixedRenderResolution() {
   const gl = useThree((state) => state.gl);
@@ -139,7 +138,6 @@ function DisplayApp() {
           onMenu={() => openBattle(null)}
         />
         <DebugPanel battle={battleId ? battle : null} />
-        <RemoteDock />
       </Canvas>
       <div className="hud">
         <div>

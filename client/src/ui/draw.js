@@ -105,15 +105,17 @@ export function drawDisc(g, cx, cy, r) {
 
 // Icons drawn in white on a blue disc of radius r.
 export const ICONS = {
-  fullscreen(g, cx, cy, r) {
+  fullscreen(g, cx, cy, r, collapse = false) {
     const a = r * 0.48;
     const b = r * 0.18;
+    const corner = collapse ? b : a;
+    const end = collapse ? a : b;
     g.beginPath();
     for (const sx of [-1, 1]) {
       for (const sy of [-1, 1]) {
-        g.moveTo(cx + sx * b, cy + sy * a);
-        g.lineTo(cx + sx * a, cy + sy * a);
-        g.lineTo(cx + sx * a, cy + sy * b);
+        g.moveTo(cx + sx * end, cy + sy * corner);
+        g.lineTo(cx + sx * corner, cy + sy * corner);
+        g.lineTo(cx + sx * corner, cy + sy * end);
       }
     }
     g.stroke();

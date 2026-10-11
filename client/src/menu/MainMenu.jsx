@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawShadowText, drawTitle, pill } from '../ui/draw.js';
+import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawTitle, pill } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
-import useFullscreen from './useFullscreen.js';
+import RemoteDock from '../remote/RemoteDock.jsx';
 
 /**
  * Title menu drawn in-engine (see ui/useCanvasUI.js), laid out in 16:9 design units and
  * drawn after the world (useFrame priority 2).
  *
  * Screens: main (Start, Battle, Settings), start (random / select song), songs (song list),
- * settings (sound and fullscreen). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
+ * settings (sound). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
+ * The main screen also shows the remote and fullscreen bubbles in the corner.
  *
  * Input comes from the mouse/touch on the canvas or from a paired phone remote
  * (remote/remoteLink.js; B goes back).
@@ -35,7 +36,6 @@ const SONGS = [
 ];
 const SONG_RECTS = SONGS.map((_, i) => ({ x: 128, y: 550 + i * 116, w: 520, h: 96 }));
 const PANEL = { x: 128, y: 548, w: 600, h: 284 };
-const FULLSCREEN = { x: 768, y: 548, w: 560, h: 96 };
 const SLIDERS = [
   { key: 'master', label: 'Master' },
   { key: 'music', label: 'Music' },
@@ -63,7 +63,6 @@ const WIDGETS = {
     { id: 'back', circle: BACK },
     ...SLIDERS.map((sl, i) => ({ id: sl.key, drag: true, rect: { x: TRACK.x0 - 24, y: ROW_Y(i) - 28, w: TRACK.x1 - TRACK.x0 + 48, h: 56 } })),
     { id: 'muted', rect: { x: PANEL.x + 16, y: ROW_Y(3) - 28, w: PANEL.w - 32, h: 56 } },
-    { id: 'fullscreen', rect: FULLSCREEN },
   ],
 };
 // Where back / Escape leads from each submenu.
@@ -142,10 +141,9 @@ function drawSoundPanel(g, sound, hover) {
 }
 
 export default function MainMenu({ visible = true, onStart, onBattle, onSettingsOpen, sound, onSoundChange }) {
-  const fullscreen = useFullscreen();
-  const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null, drawnFullscreen: null });
+  const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null });
   const props = useRef({});
-  props.current = { visible, onStart, onBattle, onSettingsOpen, sound, onSoundChange, fullscreen };
+  props.current = { visible, onStart, onBattle, onSettingsOpen, sound, onSoundChange };
 
   const m = menu.current;
   const go = (screen) => { if (screen !== m.next) m.next = screen; };
@@ -158,7 +156,7 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
     priority: 2,
     // Input goes to the visible screen as soon as it is fading in (never mid swap-out).
     active: () => props.current.visible && m.alpha > 0.3 && m.screen === m.next,
-    widgets: () => WIDGETS[m.screen].filter((wdg) => wdg.id !== 'fullscreen' || props.current.fullscreen.supported),
+    widgets: () => WIDGETS[m.screen],
     onDrag: (wdg, p) => setSound({ [wdg.id]: sliderValue(p.x) }),
     onActivate: (wdg, s) => {
       if (wdg.song) { props.current.onStart?.('select', wdg.song); return; }
@@ -170,7 +168,6 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
         case 'random': props.current.onStart?.('random'); break;
         case 'select': go('songs'); break;
         case 'muted': setSound({ muted: !props.current.sound?.muted }); break;
-        case 'fullscreen': props.current.fullscreen.toggle(); break;
         default:
       }
       s.invalidate();
@@ -194,14 +191,11 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
       m.alpha = s.ease(m.alpha, shown ? 1 : 0, shown ? 3 : 6);
       m.gearAngle = s.ease(m.gearAngle, m.spin + (s.hover.settings ?? 0) * 0.35, 8);
       if (props.current.sound !== m.drawnSound) s.invalidate();
-      if (props.current.fullscreen !== m.drawnFullscreen) s.invalidate();
     },
     opacity: () => m.alpha,
     draw: (g, s) => {
       const snd = props.current.sound;
-      const fs = props.current.fullscreen;
       m.drawnSound = snd;
-      m.drawnFullscreen = fs;
       drawTitle(g, TITLE);
 
       const t = m.swap;
@@ -224,17 +218,8 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
           drawPill(g, SONG_RECTS[i], { label: song.title, sub: song.artist, icon: 'note', hover: h[song.id] ?? 0, press: press(song.id) });
         });
       } else {
-        drawHeader(g, BACK, 'SETTINGS', h.back ?? 0);
+        drawHeader(g, BACK, 'SOUND', h.back ?? 0);
         drawSoundPanel(g, snd, h);
-        g.save();
-        if (!fs.supported) g.globalAlpha *= 0.5;
-        drawPill(g, FULLSCREEN, {
-          label: fs.supported ? (fs.active ? 'Exit fullscreen' : 'Enter fullscreen') : 'Fullscreen unavailable',
-          sub: fs.supported ? 'Esc to exit' : 'Use your browser\'s View menu',
-          icon: 'fullscreen', hover: h.fullscreen ?? 0, press: press('fullscreen'),
-        });
-        g.restore();
-        if (fs.error) drawShadowText(g, fs.error, FULLSCREEN.x + 16, FULLSCREEN.y + FULLSCREEN.h + 40, { size: 24 });
       }
       g.restore();
     },
@@ -248,5 +233,5 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
     ui.invalidate();
   }, [visible, m, ui]);
 
-  return null;
+  return <RemoteDock visible={() => props.current.visible && m.screen === 'main' && m.next === 'main'} />;
 }
