@@ -602,25 +602,30 @@
   });
   for (const t of ["pointerup", "pointercancel"]) $("pad").addEventListener(t, () => { padDrag = null; });
 
-  // A short click on every remote button: vibrate where supported (Android). Safari has
-  // no vibrate, but toggling a native switch plays the system tick (iOS 18+). WebKit
-  // only allows that from inside a click handler, so on iPhone the tick lands on release.
-  function haptic() {
-    if (navigator.vibrate) return void navigator.vibrate(12);
-    try {
-      const label = document.createElement("label");
-      label.ariaHidden = "true";
-      label.style.display = "none";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.setAttribute("switch", "");
-      label.appendChild(input);
-      document.head.appendChild(label);
-      label.click();
-      label.remove();
-    } catch {}
+  // A short click on every remote button. Android: the vibrate API on press. iOS Safari
+  // has no vibrate, but toggling a native switch plays the system haptic, and only a real
+  // tap counts. So, like tijnjh/ios-haptics, each button gets a transparent label on top,
+  // wired to a hidden switch: the finger's own tap toggles it (on release).
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  function hapticTrigger(el) {
+    if (el.querySelector(":scope > [data-haptic]")) return;
+    const label = document.createElement("label");
+    label.setAttribute("data-haptic", "");
+    label.setAttribute("aria-hidden", "true");
+    Object.assign(label.style, { position: "absolute", inset: "0", touchAction: "manipulation", borderRadius: "inherit" });
+    label.style.setProperty("-webkit-tap-highlight-color", "transparent");
+    const sw = document.createElement("input");
+    sw.type = "checkbox";
+    sw.setAttribute("switch", "");
+    Object.assign(sw.style, { position: "absolute", width: "1px", height: "1px", margin: "0", visibility: "hidden" });
+    // The label re-dispatches its click to the switch; don't let that copy reach the button too.
+    sw.addEventListener("click", (e) => e.stopPropagation());
+    label.append(sw);
+    if (getComputedStyle(el).position === "static") el.style.position = "relative";
+    el.append(label);
   }
-  $("remoteCard").addEventListener(navigator.vibrate ? "pointerdown" : "click", (e) => { if (e.target.closest("button")) haptic(); });
+  if (isIos) document.querySelectorAll("#remoteCard button").forEach(hapticTrigger);
+  else if (navigator.vibrate) $("remoteCard").addEventListener("pointerdown", (e) => { if (e.target.closest("button")) navigator.vibrate(12); });
 
   // Settings sheet, and − / + as quick speed steps.
   $("tuneOpen").onclick = () => show("tuneSheet", true);
