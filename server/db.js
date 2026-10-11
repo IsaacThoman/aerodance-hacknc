@@ -78,6 +78,8 @@ const schema = `
   );
   -- When the display last pressed Start, so phones can follow the dance.
   ALTER TABLE battles ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+  -- How long that dance lasts (countdown and song), when the display said.
+  ALTER TABLE battles ADD COLUMN IF NOT EXISTS dance_ms INTEGER;
 
   CREATE TABLE IF NOT EXISTS battle_seats (
     battle_id   TEXT        NOT NULL REFERENCES battles (id) ON DELETE CASCADE,

@@ -43,7 +43,27 @@ fun heartbeat(sessionId: String, nowMs: Long, seq: Long?, state: PipelineState):
 }
 
 fun status(deviceId: String, sessionId: String, state: PipelineState, synthetic: Boolean = true, playerCount: Int = 1): String =
-    """{"protocolVersion":2,"deviceId":${quote(deviceId)},"sessionId":${quote(sessionId)},"deviceName":"Open-Q 624A Pose Controller${if (synthetic) " (synthetic)" else ""}","pipelineState":"$state","playerCount":$playerCount,"capabilities":{"supportedPlayerCounts":[1,2],"poseModel":"${if (synthetic) "synthetic" else "pose_landmarker_lite"}","maxPoses":2,"landmarksPerPose":33,"worldLandmarks":false,"sensorTimestampSource":"unknown"}}"""
+    """{"protocolVersion":2,"deviceId":${quote(deviceId)},"sessionId":${quote(sessionId)},"deviceName":"Open-Q 624A Pose Controller${if (synthetic) " (synthetic)" else ""}","pipelineState":"$state","playerCount":$playerCount,"capabilities":{"supportedPlayerCounts":[1,2],"poseModel":"${if (synthetic) "synthetic" else "pose_landmarker_lite"}","maxPoses":2,"landmarksPerPose":33,"worldLandmarks":false,"sensorTimestampSource":"unknown","timeSync":true}}"""
+
+/**
+ * Monotonic millisecond clock shared by pose records, heartbeats and `/v1/time`.
+ * Android supplies `SystemClock.elapsedRealtime()`; tests inject a fake.
+ */
+fun interface MonotonicClock {
+    fun nowMs(): Long
+}
+
+/** `GET /v1/time` body: request-received and response-prepared times on the pose-record clock. */
+data class TimeSyncResponse(val sessionId: String, val receivedTimeMs: Long, val sentTimeMs: Long) {
+    init { require(sessionId.isNotBlank() && receivedTimeMs >= 0 && sentTimeMs >= receivedTimeMs) }
+
+    fun json(): String =
+        """{"protocolVersion":2,"sessionId":${quote(sessionId)},"receivedTimeMs":$receivedTimeMs,"sentTimeMs":$sentTimeMs}"""
+}
+
+/** Samples `sentTimeMs` from [clock] last, immediately before the caller serializes and writes the body. */
+fun timeSyncResponse(sessionId: String, receivedTimeMs: Long, clock: MonotonicClock): TimeSyncResponse =
+    TimeSyncResponse(sessionId, receivedTimeMs, clock.nowMs())
 
 private fun checkedRecord(json: String): String {
     require(json.encodeToByteArray().size <= MAX_RECORD_BYTES)

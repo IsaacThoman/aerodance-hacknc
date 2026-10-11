@@ -14,9 +14,16 @@ shows each player's detection status. **Webcam (dummy)** is an explicit menu-tes
 option that bypasses Android pairing without camera capture or pose/scoring data.
 Song Select discovers exported song bundles and previews music with one or two
 reference characters. The local catalog includes “Rockefeller Street Bad Test”;
-the silent recording remains a separate preview. Gameplay countdown, live player
-panels, calibrated timing, scoring, and results are not implemented yet. Container checks cover the transport;
+the silent recording remains a separate preview. Container checks cover the transport;
 real-board and deployed HTTPS acceptance remain outstanding.
+
+**Gameplay status (2026-10-11).** Dance! on the preview now plays a song for a score:
+a ready check, the scheduled three-second countdown, live player characters in the top
+corners, pause/resume, the late-arrival allowance and a results screen; battles report
+real scores. Browser clock mapping uses Android's `GET /v1/time`, and scoring follows
+[the scoring document](scoring.md). See [the completion plan](game-completion-plan.md)
+for what remains: human-labelled scoring evaluation, the camera capture-delay
+measurement, real-board and HTTPS acceptance, and more songs.
 
 ## Intended experience
 
@@ -36,7 +43,7 @@ Default decisions: one Android device captures both people; two-player participa
 | Android connection | The game adapter consumes protocol v2 status/config/NDJSON with bounded startup, freshness, and reconnect handling. | Validate real-board pairing from deployed HTTPS and integrate the shared pose model. |
 | Player slots | Android emits explicit `playerId: 0/1`; two-player IDs represent fixed camera halves. | Map IDs to player panels and tracks; never use pose-array position as identity. |
 | Recorded characters | `packages/character/Character.jsx` and `motion.js` animate the GLB from recorded `dance.json`; the stages live in `packages/stages`. | Add live pose support. |
-| Live retargeting | **Not implemented.** `createRetargeter(model, data, person)` samples an entire recorded clip and derives calibration from that clip. | Split pose sampling, calibration, and pose application; implement an Android-to-shared-format adapter. |
+| Live retargeting | Implemented: `createPoseApplier` drives each live character from a rolling-window live calibration (`client/src/game/livePose.js`, `client/src/stage/LivePanels.jsx`). | Validate against real players on the board. |
 | Recording | Locked Python/OpenCV/MediaPipe video tracking already produces two tracks, confidence, provenance, and review overlays. | Song alignment, Android landmark capture, persistent editing projects, timeline editor, and validated publishing. |
 | Timing/scoring | Android emits monotonic callback/inference timestamps; no browser/device clock exchange or score engine exists. | Clock synchronization, residual capture-delay measurement, audio timeline mapping, scoring research and implementation. |
 
@@ -124,6 +131,8 @@ Map browser monotonic time to the **audible** song position using audio output t
 ### Required Android timing extension
 
 The current callback timestamps permit device processing-duration measurement, but not clock mapping or proven sensor-exposure timing. Add a small bounded `GET /v1/time` exchange returning session ID and two timestamps on the **same monotonic clock used by pose records**: request-received `a1` and response-prepared `a2`. Advertise the capability in status, document CORS/methods, and test it. This can be an additive protocol-v2 capability; do not silently infer support from version 2 alone.
+
+Android side implemented: `GET /v1/time` returns `{"protocolVersion":2,"sessionId":…,"receivedTimeMs":a1,"sentTimeMs":a2}` in integer `SystemClock.elapsedRealtime()` milliseconds, and status advertises `capabilities.timeSync: true`. See the [streaming specification](../client-android/camera-to-client-streaming.md#clock-synchronization).
 
 For browser send/receive times `b0/b3` in milliseconds:
 

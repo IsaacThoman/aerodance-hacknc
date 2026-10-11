@@ -3,7 +3,6 @@ import {
   FONT, drawBubble, drawCaps, drawChip, drawField, drawGlassPanel, drawLink, drawMedal, drawPill, drawPlayerLeds,
   drawSparkle, drawSunburst, drawTitle, ellipsize, paragraph, roundRect, text, titleWidth, wrapText,
 } from '../ui/draw.js';
-import { FAKE_DANCE_MS } from '../battle/fakeDance.js';
 import { STICKERS, drawSticker } from '../ui/stickers.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 
@@ -176,7 +175,7 @@ export default function PhoneUI(props) {
           const crowd = p.role?.role === 'spectator';
           const mySeat = p.role?.role === 'dancer' ? p.role.seat : null;
           const since = b.startedAt ? Date.now() - Date.parse(b.startedAt) : null;
-          const dancing = !finished && since !== null && since < FAKE_DANCE_MS;
+          const dancing = !finished && since !== null && (!b.danceMs || since < b.danceMs);
           const winnerSeat = finished ? b.winnerSeat : null;
           const anyStickers = b.players.some((pl) => Object.values(pl.hype.stickers ?? {}).some(Boolean));
           const got = anyStickers ? 46 : 0;
@@ -204,7 +203,8 @@ export default function PhoneUI(props) {
             roundRect(g, bar.x, bar.y, bar.w, bar.h, bar.h / 2);
             g.fillStyle = 'rgba(0, 30, 70, 0.35)';
             g.fill();
-            const k = clamp01(since / FAKE_DANCE_MS);
+            // Without the dance's length the bar just shimmers until the scores come in.
+            const k = b.danceMs ? clamp01(since / b.danceMs) : 1;
             if (k > 0) {
               roundRect(g, bar.x, bar.y, Math.max(bar.h, bar.w * k), bar.h, bar.h / 2);
               const fill = g.createLinearGradient(0, bar.y, 0, bar.y + bar.h);
