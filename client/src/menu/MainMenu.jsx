@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawTitle, pill } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
-import { remote } from '../remote/remoteLink.js';
 
 /**
  * Title menu drawn in-engine (see ui/useCanvasUI.js), laid out in 16:9 design units and
@@ -11,7 +10,7 @@ import { remote } from '../remote/remoteLink.js';
  * settings (sound). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
  *
  * Input comes from the mouse/touch on the canvas or from a paired phone remote
- * (remote/remoteLink.js), whose cursor is drawn here in the menu's own pixels.
+ * (remote/remoteLink.js; B goes back).
  *
  * <MainMenu visible onStart={(mode, song) => ...} onBattle={() => ...} sound={sound} onSoundChange={setSound} />
  */
@@ -139,36 +138,6 @@ function drawSoundPanel(g, sound, hover) {
   g.fill();
 }
 
-// The phone remote's pointer: a glossy aqua arrow with a soft glow, like a Wii cursor.
-function drawRemoteCursor(g, { x, y }, press) {
-  const s = 1 - press * 0.12;
-  g.save();
-  g.translate(x, y);
-  g.scale(s, s);
-  g.rotate(-0.42);
-  g.shadowColor = 'rgba(0, 40, 90, 0.55)';
-  g.shadowBlur = 12;
-  g.shadowOffsetY = 4;
-  g.beginPath();
-  g.moveTo(0, 0);
-  g.lineTo(22, 54);
-  g.lineTo(0, 44);
-  g.lineTo(-22, 54);
-  g.closePath();
-  const body = g.createLinearGradient(0, 0, 0, 54);
-  body.addColorStop(0, '#ffffff');
-  body.addColorStop(0.5, '#8fe3ff');
-  body.addColorStop(1, '#13a8e8');
-  g.fillStyle = body;
-  g.fill();
-  g.shadowColor = 'transparent';
-  g.lineWidth = 4;
-  g.lineJoin = 'round';
-  g.strokeStyle = '#0c2f52';
-  g.stroke();
-  g.restore();
-}
-
 export default function MainMenu({ visible = true, onStart, onBattle, onSettingsOpen, sound, onSoundChange }) {
   const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null });
   const props = useRef({});
@@ -205,7 +174,6 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
       const active = props.current.visible && m.alpha > 0.3 && m.screen === m.next;
       if (e.key === 'Escape' && active && PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); }
     },
-    remote,
     onBack: (s) => { if (PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); } },
     update: (dt, s) => {
       const shown = props.current.visible;
@@ -252,7 +220,6 @@ export default function MainMenu({ visible = true, onStart, onBattle, onSettings
         drawSoundPanel(g, snd, h);
       }
       g.restore();
-      if (s.remote) drawRemoteCursor(g, s.remote, s.pressed || s.drag ? 1 : 0);
     },
   });
 

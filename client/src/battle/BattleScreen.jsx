@@ -165,6 +165,12 @@ export default function BattleScreen({ visible, battle, playing, onPlay, onBack,
       if (phaseOf(p.battle, p.playing) === 'results') p.onMenu?.();
       else p.onBack?.();
     },
+    // The phone remote's B button, like Escape.
+    onBack: () => {
+      const p = props.current;
+      if (phaseOf(p.battle, p.playing) === 'results') p.onMenu?.();
+      else p.onBack?.();
+    },
     update: (dt, s) => {
       const p = props.current;
       st.alpha = s.ease(st.alpha, p.visible && p.battle?.players ? 1 : 0, p.visible ? 3 : 6);

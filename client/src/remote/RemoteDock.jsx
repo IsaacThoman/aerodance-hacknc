@@ -1,0 +1,179 @@
+import { useMemo, useRef } from 'react';
+import QRCode from 'qrcode';
+import { FONT, drawCaps, drawGlassCircle, drawGlassPanel, drawQR, drawShadowText, ellipsize, roundRect } from '../ui/draw.js';
+import useCanvasUI from '../ui/useCanvasUI.js';
+import { useRemoteStatus } from './remoteLink.js';
+
+/**
+ * The display's phone-remote corner, drawn in-engine over everything (priority 3.5):
+ *   card    QR to /join?remote=<code>, with an X that whooshes it into the button
+ *   button  a Wii remote in the bottom-right corner that brings the card back
+ *   cursor  the remote's pointer, on top of every other overlay
+ * The card hides while a remote is connected. When the remote drops it comes back for
+ * 15 seconds, then whooshes away on its own; opened by hand it stays until closed.
+ *
+ * <RemoteDock />
+ */
+
+const ICON = { x: 1516, y: 836, r: 42 };
+const CARD = { x: 1262, y: 400, w: 300, h: 380 };
+const QR_BOX = { x: 1282, y: 432, w: 260, h: 260 };
+const CLOSE = { x: 1550, y: 412, r: 22 };
+const REOPEN_MS = 15000;
+
+const smooth = (k) => k * k * (3 - 2 * k);
+
+// The remote's pointer: a glossy aqua arrow with a soft glow, like a Wii cursor.
+function drawRemoteCursor(g, { x, y }, press) {
+  const s = 1 - press * 0.12;
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  g.rotate(-0.42);
+  g.shadowColor = 'rgba(0, 40, 90, 0.55)';
+  g.shadowBlur = 12;
+  g.shadowOffsetY = 4;
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(22, 54);
+  g.lineTo(0, 44);
+  g.lineTo(-22, 54);
+  g.closePath();
+  const body = g.createLinearGradient(0, 0, 0, 54);
+  body.addColorStop(0, '#ffffff');
+  body.addColorStop(0.5, '#8fe3ff');
+  body.addColorStop(1, '#13a8e8');
+  g.fillStyle = body;
+  g.fill();
+  g.shadowColor = 'transparent';
+  g.lineWidth = 4;
+  g.lineJoin = 'round';
+  g.strokeStyle = '#0c2f52';
+  g.stroke();
+  g.restore();
+}
+
+// A little white Wii remote, tilted, with its player LED lit while one is connected.
+function drawRemoteIcon(g, { x, y, r }, { lit, dim }) {
+  g.save();
+  g.translate(x, y);
+  g.rotate(-0.38);
+  g.globalAlpha *= dim ? 0.55 : 1;
+  const w = r * 0.5;
+  const h = r * 1.2;
+  roundRect(g, -w / 2, -h / 2, w, h, w * 0.45);
+  g.fillStyle = '#ffffff';
+  g.fill();
+  g.lineWidth = 2;
+  g.strokeStyle = 'rgba(12, 47, 82, 0.35)';
+  g.stroke();
+  // D-pad and A button.
+  g.fillStyle = '#8a98a5';
+  g.fillRect(-w * 0.09, -h * 0.36, w * 0.18, w * 0.5);
+  g.fillRect(-w * 0.25, -h * 0.36 + w * 0.16, w * 0.5, w * 0.18);
+  g.beginPath();
+  g.arc(0, -h * 0.05, w * 0.2, 0, Math.PI * 2);
+  g.fill();
+  // Player LED.
+  g.beginPath();
+  g.arc(0, h * 0.34, w * 0.11, 0, Math.PI * 2);
+  g.fillStyle = lit ? '#34b9ff' : '#cdd6dd';
+  if (lit) {
+    g.shadowColor = '#34b9ff';
+    g.shadowBlur = 10;
+  }
+  g.fill();
+  g.restore();
+}
+
+function drawClose(g, c, hover) {
+  drawGlassCircle(g, c, hover);
+  const a = c.r * 0.36;
+  g.beginPath();
+  g.moveTo(c.x - a, c.y - a);
+  g.lineTo(c.x + a, c.y + a);
+  g.moveTo(c.x + a, c.y - a);
+  g.lineTo(c.x - a, c.y + a);
+  g.lineCap = 'round';
+  g.lineWidth = 4;
+  g.strokeStyle = '#ffffff';
+  g.stroke();
+}
+
+export default function RemoteDock() {
+  const status = useRemoteStatus();
+  const props = useRef(status);
+  props.current = status;
+  // open: where the card is heading; k: how far out it is (0 tucked into the button, 1 out).
+  const st = useRef({ open: true, k: 1, hideAt: null, holder: null, drawn: null }).current;
+
+  const qr = useMemo(() => (status.joinUrl ? QRCode.create(status.joinUrl, { errorCorrectionLevel: 'M' }).modules : null), [status.joinUrl]);
+  const qrRef = useRef(qr);
+  qrRef.current = qr;
+
+  useCanvasUI({
+    priority: 3.5,
+    widgets: () => (st.k > 0.9 && st.open ? [{ id: 'close', circle: CLOSE }, { id: 'icon', circle: ICON }] : [{ id: 'icon', circle: ICON }]),
+    onActivate: (wdg, s) => {
+      if (wdg.id === 'close') st.open = false;
+      else st.open = !st.open;
+      st.hideAt = null;
+      s.invalidate();
+    },
+    update: (_dt, s) => {
+      const { holder } = props.current;
+      // Connected: tuck the card away. Dropped: show it again for a while.
+      if (holder !== st.holder) {
+        if (holder) { st.open = false; st.hideAt = null; }
+        else if (st.holder) { st.open = true; st.hideAt = s.time + REOPEN_MS / 1000; }
+        st.holder = holder;
+        s.invalidate();
+      }
+      if (st.hideAt !== null && s.time >= st.hideAt) { st.open = false; st.hideAt = null; }
+      st.k = s.ease(st.k, st.open && qrRef.current ? 1 : 0, st.open ? 7 : 9);
+      // The cursor is drawn here, so redraw whenever it moves.
+      const at = s.remote ? `${s.remote.x},${s.remote.y},${!!s.pressed}` : null;
+      if (at !== st.drawn) { st.drawn = at; s.invalidate(); }
+    },
+    draw: (g, s) => {
+      const { holder, error } = props.current;
+      const h = s.hover;
+      const k = smooth(st.k);
+
+      if (k > 0.01 && qrRef.current) {
+        // Whoosh: the card grows out of (and shrinks back into) the button.
+        g.save();
+        g.globalAlpha *= Math.min(1, k * 1.4);
+        g.translate(ICON.x, ICON.y);
+        g.scale(k, k);
+        g.translate(-ICON.x, -ICON.y);
+        drawGlassPanel(g, CARD, 30);
+        roundRect(g, QR_BOX.x - 4, QR_BOX.y - 4, QR_BOX.w + 8, QR_BOX.h + 8, 18);
+        g.fillStyle = '#ffffff';
+        g.fill();
+        // drawQR snaps to buffer pixels and ignores the whoosh scale: only draw it settled.
+        if (k > 0.98) drawQR(g, qrRef.current, QR_BOX, s);
+        const cx = CARD.x + CARD.w / 2;
+        g.font = `800 30px ${FONT}`;
+        drawShadowText(g, holder ? 'Remote taken' : 'Grab the remote', cx, QR_BOX.y + QR_BOX.h + 40, { size: 30, weight: 800, align: 'center' });
+        g.font = `600 21px ${FONT}`;
+        const sub = holder ? `${holder} is pointing` : 'Scan to point with your phone';
+        drawShadowText(g, ellipsize(g, sub, CARD.w - 36), cx, QR_BOX.y + QR_BOX.h + 72, { size: 21, weight: 600, align: 'center' });
+        if (k > 0.9) drawClose(g, CLOSE, h.close ?? 0);
+        g.restore();
+      }
+
+      drawGlassCircle(g, ICON, h.icon ?? 0);
+      drawRemoteIcon(g, ICON, { lit: !!holder, dim: !!error && !holder });
+      if (holder && k < 0.5) {
+        drawCaps(g, 'REMOTE', ICON.x - ICON.r - 18, ICON.y - 14, { size: 18, align: 'right' });
+        g.font = `700 26px ${FONT}`;
+        drawShadowText(g, ellipsize(g, holder, 360), ICON.x - ICON.r - 18, ICON.y + 18, { size: 26, align: 'right' });
+      }
+
+      if (s.remote) drawRemoteCursor(g, s.remote, s.pressed || s.drag ? 1 : 0);
+    },
+  });
+
+  return null;
+}

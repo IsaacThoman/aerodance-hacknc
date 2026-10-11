@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { loadFonts } from './draw.js';
+import { remote as sharedRemote } from '../remote/remoteLink.js';
 
 /**
  * An in-engine 2D overlay: a canvas the size of the render buffer, laid out in design
@@ -16,8 +17,8 @@ import { loadFonts } from './draw.js';
  *   onActivate: (wdg, ui) => {},          // press and release on the same widget
  *   onDrag: (wdg, point, ui) => {},       // widgets with drag: true (sliders)
  *   onKey: (event, ui) => {},
- *   onBack: (ui) => {},                   // a phone remote's B button
- *   remote: EventTarget,                  // optional phone remote (remote/remoteLink.js):
+ *   onBack: (ui) => {},                   // the phone remote's B button
+ *   remote: EventTarget | null,           // phone remote input (default: remote/remoteLink.js):
  *                                         // move / down / up / back / leave, in design units
  *   update: (dt, ui) => {},               // per-frame animation; ui.ease() marks the overlay dirty
  *   draw: (g, ui) => {},                  // redraw in design units, only when dirty
@@ -25,7 +26,8 @@ import { loadFonts } from './draw.js';
  * });
  *
  * Content taller than the design height scrolls by drag or wheel: draw sets ui.contentHeight.
- * While a remote is pointing, ui.remote is its cursor (content units) for draw to show.
+ * While a remote is pointing, ui.remote is its cursor (content units); remote/RemoteDock.jsx
+ * draws it over everything.
  */
 
 // Hit areas are padded a little so a bubble's rim and edge count as part of it.
@@ -185,17 +187,17 @@ export default function useCanvasUI(options) {
     // Phone remote: its cursor stands in for the mouse while it moves.
     const fromRemote = (e) => ({ x: e.detail.x, y: e.detail.y + s.scroll });
     const remoteHandlers = {
+      // Hover easing redraws when the hovered widget changes; RemoteDock draws the cursor.
       move: (e) => {
         s.remote = s.pointer = fromRemote(e);
         if (s.drag) opts.current.onDrag?.(s.drag, s.pointer, s);
-        s.dirty = true;
       },
       down: (e) => { s.remote = fromRemote(e); pressAt(s.remote); s.dirty = true; },
       up: (e) => { releaseAt(fromRemote(e)); s.dirty = true; },
       back: () => { if (active()) opts.current.onBack?.(s); },
       leave: () => { s.remote = s.pointer = s.drag = s.pressed = null; s.dirty = true; },
     };
-    const remote = opts.current.remote;
+    const remote = opts.current.remote === undefined ? sharedRemote : opts.current.remote;
     for (const [type, fn] of Object.entries(remoteHandlers)) remote?.addEventListener(type, fn);
 
     el.addEventListener('pointermove', onMove);
