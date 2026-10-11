@@ -6,7 +6,7 @@ import { COUNTDOWN_MS, GameSession, LATE_ALLOWANCE_MS, READY_HOLD_MS } from '../
 import { ReplayPoseSource, createPoseRecorder, parseRecording, standingPose } from '../src/pose/ReplayPoseSource.js';
 import { bestScore, recordResults } from '../src/game/bestScores.js';
 
-const dir = new URL('../public/songs/song-70c63c8e/', import.meta.url);
+const dir = new URL('./fixtures/song-70c63c8e/', import.meta.url);
 const bundle = {
   song: JSON.parse(readFileSync(new URL('song.json', dir))),
   choreography: JSON.parse(readFileSync(new URL('choreography.json', dir))),

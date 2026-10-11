@@ -93,7 +93,7 @@ test('webcam capture times drive scored gameplay and recordings through the cont
   const source = new PoseSourceController({ webcam: f.source });
   source.setMode('webcam');
   await source.connect(); f.deliver({ type: 'ready', delegate: 'CPU' });
-  const dir = new URL('../public/songs/song-70c63c8e/', import.meta.url);
+  const dir = new URL('./fixtures/song-70c63c8e/', import.meta.url);
   const bundle = {
     song: JSON.parse(readFileSync(new URL('song.json', dir))),
     choreography: JSON.parse(readFileSync(new URL('choreography.json', dir))),
