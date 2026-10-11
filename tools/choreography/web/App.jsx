@@ -1917,12 +1917,6 @@ export default function App() {
                 </button>
                 <button
                   disabled={readOnly || busy || !rangeValid}
-                  onClick={() => apply("mirror")}
-                >
-                  ↔ Mirror dance target
-                </button>
-                <button
-                  disabled={readOnly || busy || !rangeValid}
                   onClick={() => apply("smooth")}
                 >
                   ≈ Smooth selected track
