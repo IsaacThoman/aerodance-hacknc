@@ -272,7 +272,18 @@ function DisplayApp() {
   } : null, [finishedBattle, battleId, savedBattleResults]);
   const gameResults = screen === 'game' && gamePhase === 'results';
   const resultsVisible = gameResults || finishedBattle;
-  const resultShow = gameResults ? resultsShow : settledResults;
+  // A play link may report only one seat; another display can supply the other score.
+  // Once settled, show the server's outcome on this same screen without restarting it.
+  const gameResultShow = useMemo(() => {
+    const show = resultsShow.current;
+    if (!gameResults || !show || !battleId || battle?.id !== battleId || battle.status !== 'finished') return resultsShow;
+    return { current: {
+      ...battleResultsShow(battle, { results: show.results }, performance.now() / 1000),
+      key: show.key,
+      start: show.start,
+    } };
+  }, [gameResults, battleId, battle]);
+  const resultShow = gameResults ? gameResultShow : settledResults;
   const resultSong = gameResults ? game.bundle.song : savedBattleResults?.song ?? { title: `Battle ${battleId?.toUpperCase()}`, artist: '' };
   const gameRoutine = useMemo(() => game?.routine() ?? null, [game]);
   // Every song dances on its own stage, picked in Dance Studio (Open Reef if unset or unknown).
