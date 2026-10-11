@@ -65,7 +65,8 @@ same connection. Reconnect reapplies the selected count.
 
 Green is player 0, blue is player 1. Camera-left/right refer to the unmirrored
 inference image; mirror display moves both labels and skeletons together. With
-two players, occupy separate halves. A lone right-side player remains ID 1;
+two players, occupy separate halves. ID 0 is the right half, ID 1 the left half;
+a lone left-side player remains ID 1;
 single-player output always uses ID 0 anywhere in frame. Missing/empty/stale
 snapshots clear player state. IDs represent regions, not persistent people.
 

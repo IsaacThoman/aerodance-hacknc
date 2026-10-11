@@ -12,7 +12,7 @@ const { app, store } = createStudio({ dataDir: root });
 const source = { schema: 'aerodance.take', schemaVersion: 1, takeId: 'original-take', source: 'android', name: 'Original take',
   input: { width: 640, height: 480, mirrored: false }, offsetMs: 0, timeScale: 1,
   samples: Array.from({ length: 9 }, (_, i) => ({ takeTimeMs: i * 100, poses: [0, 1].map(playerId => ({ playerId,
-    landmarks: Array.from({ length: 33 }, (_, j) => ({ x: playerId ? .75 : .25, y: j < 23 ? .4 : .8,
+    landmarks: Array.from({ length: 33 }, (_, j) => ({ x: playerId ? .25 : .75, y: j < 23 ? .4 : .8,
       z: 0, visibility: .95, presence: .95 })) })) })) };
 const original = await store.writeTake('video-browser', source), assets = new Map([[original.takeId, original]]);
 let p = overwriteTracks(addTake(newProject('video-browser'), original), original, [0, 1], assets);
@@ -46,7 +46,7 @@ try {
         this.addEventListener('message', ({ data }) => {
           if (data.type !== 'result' || window.calibrationFixture !== 'weak-left') return;
           const left = this.regionId === 0 ? data.landmarks[0] : this.regionId === 1 ? null
-            : data.landmarks.find(p => (p[23].x + p[24].x) / 2 < .5);
+            : data.landmarks.find(p => (p[23].x + p[24].x) / 2 > .5);
           if (left) left[27].visibility = .1;
         });
       }

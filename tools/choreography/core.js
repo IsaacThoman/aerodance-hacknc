@@ -546,7 +546,7 @@ export function videoTakeFromRecords(records, metadata) {
     createdAt: metadata.createdAt, calibrationFrame: copy(metadata.calibrationFrame), status: config,
     provenance: { sessionId: first.sessionId, modelId: model.id, modelHash: model.sha256,
       packageVersion: config.packageVersion, delegate: config.delegate, thresholds: config.thresholds,
-      filename: config.filename, durationMs: config.durationMs, targetRateHz: 30,
+      filename: config.filename, durationMs: config.durationMs, targetRateHz: config.targetRateHz ?? 30,
       inferenceMethod: config.inferenceMethod || 'full-frame',
       calibrationFrameTimeMs: metadata.calibrationFrame?.mediaTimeMs,
       sourceRateHz: (samples.length - 1) * 1000 / (lastTime - first.mediaTimeMs),

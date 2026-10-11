@@ -26,7 +26,7 @@ function harness(t, configHandler) {
   return { source, requests, send: data => output.enqueue(new TextEncoder().encode(`${JSON.stringify(data)}\n`)), advance: value => { time = value; } };
 }
 
-test('switch waits for matching sequence/mode; right-only ID stays in player two', async t => {
+test('switch waits for matching sequence/mode; left-only ID stays in player two', async t => {
   const h = harness(t);
   h.source.connect('192.168.43.1'); await tick();
   h.send(record(1)); await tick();

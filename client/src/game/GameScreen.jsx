@@ -285,8 +285,8 @@ export default function GameScreen({ visible = false, blocked = false, session, 
         drawShadowText(g, session.playerCount === 2 ? 'Both players: stand upright with your feet visible.' : 'Stand upright with your feet visible.', 800, 270, { size: 24, align: 'center', color: '#e6f8ff' });
         drawGlassPanel(g, { x: 348, y: 278, w: 904, h: 444 }, 24);
         drawWebcamPreview(g, source?.video, source?.view?.snapshot, GAME_CALIBRATION_PREVIEW, session.playerCount);
-        // The setup preview is mirrored: player 1 is on its right-hand side.
-        const xs = session.playerCount === 2 ? [1020, 580] : [800];
+        // The setup preview is mirrored: player 1 is on its left-hand side.
+        const xs = session.playerCount === 2 ? [580, 1020] : [800];
         calibration.players.forEach((status, id) => {
           const [label, color] = CALIBRATION_STATUS[status];
           drawPlayerLeds(g, xs[id] - 85, 748, { player: id + 1, glow: ['holding', 'ready'].includes(status) ? 1 : 0.35, scale: 0.36 });

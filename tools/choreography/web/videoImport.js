@@ -5,12 +5,12 @@ import { validateVideoRecord } from '../../../packages/pose/videoRecord.js';
 import { validatePoses } from '../../../packages/pose/choreography.js';
 
 const cancelled = () => new DOMException('Video import cancelled', 'AbortError');
-const SAMPLE_RATE = 30;
+export const DEFAULT_SAMPLE_RATE = 30;
 
-// Sample the middle of each 1/30 s window. Container timestamps are rounded
-// (67 ms for 66.7 ms), so sampling exactly k/30 often selects the prior frame.
-export function* sampleTimes(durationMs, start = 0) {
-  for (let k = 0; k < Math.ceil(durationMs * SAMPLE_RATE / 1000); k++) yield start + (k + .5) / SAMPLE_RATE;
+// Sample the middle of each 1/rate s window. Container timestamps are rounded
+// (67 ms for 66.7 ms), so sampling exactly k/rate often selects the prior frame.
+export function* sampleTimes(durationMs, start = 0, rate = DEFAULT_SAMPLE_RATE) {
+  for (let k = 0; k < Math.ceil(durationMs * rate / 1000); k++) yield start + (k + .5) / rate;
 }
 
 export function videoRegionCrop(detections, playerId, width, height) {
@@ -31,8 +31,8 @@ export function videoRegionCrop(detections, playerId, width, height) {
   const cropHeight = Math.min(height, Math.max(width * .75, height * .4));
   const top = ys.length ? Math.max(0, Math.floor(Math.min(...ys) - padding)) : Math.floor((height - cropHeight) / 2);
   const bottom = ys.length ? Math.min(height, Math.ceil(Math.max(...ys) + padding)) : top + cropHeight;
-  const left = playerId === 0 ? 0 : Math.floor(width / 2);
-  return { x: left, y: top, width: playerId === 0 ? Math.floor(width / 2) : width - left,
+  const left = playerId === 1 ? 0 : Math.floor(width / 2);
+  return { x: left, y: top, width: playerId === 1 ? Math.floor(width / 2) : width - left,
     height: Math.max(1, Math.ceil(bottom - top)) };
 }
 
@@ -50,7 +50,7 @@ export function videoCalibrationPreview(detections) {
       visibility: p.visibility ?? null, presence: p.presence ?? null }));
     try { validatePoses([{ playerId: 0, landmarks }]); } catch { return []; }
     const x = (landmarks[23].x + landmarks[24].x) / 2;
-    const playerId = x < .5 ? 0 : 1;
+    const playerId = x < .5 ? 1 : 0;
     const ready = accepted.some(p => p.playerId === playerId &&
       p.landmarks[23].x === landmarks[23].x && p.landmarks[23].y === landmarks[23].y);
     const reason = ready ? 'ready' : Math.abs(x - .5) <= .025
@@ -94,13 +94,13 @@ export function seekVideoFrame(video, time, signal) {
 }
 
 // Fallback when WebCodecs cannot decode the file: one seek per sample.
-export async function* seekFrames(video, seek, durationMs, signal) {
-  for (const time of sampleTimes(durationMs)) yield { source: video, method: 'seeking', ...await seek(video, time, signal) };
+export async function* seekFrames(video, seek, durationMs, signal, rate) {
+  for (const time of sampleTimes(durationMs, 0, rate)) yield { source: video, method: 'seeking', ...await seek(video, time, signal) };
 }
 
 // Decodes the file sequentially, avoiding a decoder reset for every sample.
 // Returns null when this browser or file needs the seeking fallback.
-export async function webCodecsFrames(file, { width, height, durationMs }) {
+export async function webCodecsFrames(file, { width, height, durationMs, rate }) {
   if (!file || typeof VideoDecoder === 'undefined') return null;
   let input;
   try {
@@ -119,7 +119,7 @@ export async function webCodecsFrames(file, { width, height, durationMs }) {
     const sink = new CanvasSink(track, { poolSize: 3 });
     return (async function* () {
       try {
-        for await (const frame of sink.canvasesAtTimestamps(sampleTimes(durationMs, start))) {
+        for await (const frame of sink.canvasesAtTimestamps(sampleTimes(durationMs, start, rate))) {
           if (frame && frame.timestamp >= 0) yield { source: frame.canvas, mediaTimeMs: frame.timestamp * 1000,
             timingMethod: 'decoded-frame', method: 'WebCodecs' };
         }
@@ -129,12 +129,12 @@ export async function webCodecsFrames(file, { width, height, durationMs }) {
 }
 
 export class VideoImporter {
-  constructor({ video, file, modelId, request, projectId, onProgress = () => {},
+  constructor({ video, file, modelId, request, projectId, onProgress = () => {}, sampleRate = DEFAULT_SAMPLE_RATE,
     createWorker = () => new Worker(new URL('../../../packages/pose/browser/pose.worker.js', import.meta.url), { type: 'module' }),
     bitmap = (...args) => createImageBitmap(...args), seek = seekVideoFrame, decodeFrames = webCodecsFrames,
     assetUrl = () => new URL(`${import.meta.env?.BASE_URL || '/'}${ASSET_PATH}/`, location.origin).href,
   }) {
-    Object.assign(this, { video, file, modelId, request, projectId, onProgress, createWorker, bitmap, seek, decodeFrames, assetUrl });
+    Object.assign(this, { video, file, modelId, request, projectId, onProgress, sampleRate, createWorker, bitmap, seek, decodeFrames, assetUrl });
     this.model = poseModel(modelId);
     this.controller = new AbortController();
     this.sessionId = crypto.randomUUID();
@@ -211,7 +211,7 @@ export class VideoImporter {
       if (!candidate || calibration && !reliableBodyPose(candidate)) continue;
       // Replace candidates only in the searched region, retaining the other
       // dancer and its original coordinates and confidence.
-      detections = detections.filter(p => ((p[23].x + p[24].x) / 2 < .5 ? 0 : 1) !== id);
+      detections = detections.filter(p => ((p[23].x + p[24].x) / 2 < .5 ? 1 : 0) !== id);
       detections.push(candidate.landmarks);
     }
     return detections;
@@ -240,7 +240,7 @@ export class VideoImporter {
     const input = { width: this.video.videoWidth, height: this.video.videoHeight, mirrored: false };
     this.onProgress({ fraction: 0, message: `Loading ${this.model.label} model…` });
     try {
-      const status = { ...await this.initialize('VIDEO'), filename, durationMs };
+      const status = { ...await this.initialize('VIDEO'), filename, durationMs, targetRateHz: this.sampleRate };
       const capture = await this.upload(`/api/projects/${this.projectId}/takes`, { sourceKind: 'video', name: filename, status });
       this.path = `/api/projects/${this.projectId}/takes/${capture.takeId}`;
       this.players = new Set(); this.batchCount = 0; this.recordCount = 0;
@@ -251,8 +251,8 @@ export class VideoImporter {
         await this.upload(`${this.path}/batches`, { batchId: this.batchCount, records: pending });
         this.batchCount++; pending = [];
       };
-      const frames = await this.decodeFrames(this.file, { width: input.width, height: input.height, durationMs }) ??
-        seekFrames(this.video, this.seek, durationMs, this.controller.signal);
+      const frames = await this.decodeFrames(this.file, { width: input.width, height: input.height, durationMs,
+        rate: this.sampleRate }) ?? seekFrames(this.video, this.seek, durationMs, this.controller.signal, this.sampleRate);
       let next = frames.next(), firstTime;
       try {
         for (let result; !(result = await next).done;) {
@@ -263,7 +263,9 @@ export class VideoImporter {
           const prefetch = source !== this.video;
           next = prefetch ? frames.next() : null;
           next?.catch(() => {});
-          if (mediaTimeMs > lastTime) {
+          // The last sample window can reach past the container duration, and
+          // the final frame's timestamp may exceed it; the take rejects those.
+          if (mediaTimeMs > lastTime && mediaTimeMs <= durationMs) {
             if (!prefetch && (this.video.videoWidth !== input.width || this.video.videoHeight !== input.height))
               throw Error('Video dimensions changed during processing');
             const poses = slots.map(await this.detectDancers(mediaTimeMs, false, source), 2);

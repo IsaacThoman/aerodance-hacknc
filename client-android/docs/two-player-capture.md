@@ -113,9 +113,9 @@ The user reported that the feature works on 2026-10-10. Detailed steps were not
 separately reported, so the following checks remain a repeatable manual checklist.
 
 Have two people occupy opposite camera halves; confirm visual side labels and
-plausible skeletons. Have each leave and return, keep a lone person on the right,
+plausible skeletons. Have each leave and return, keep a lone person on the left,
 reach arms across center and switch 1→2→1 while streaming. Confirm ID 1 for a lone
-right-side person in two-player mode and ID 0 anywhere in single-player mode.
+left-side person in two-player mode and ID 0 anywhere in single-player mode.
 Native output has included all four ID sets, but the observations above do not
 substitute for this human-confirmed sequence. Confirm usability with two people
 and departure/reentry, and foreground-return mode preservation on the board.

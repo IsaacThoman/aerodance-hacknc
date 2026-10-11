@@ -497,7 +497,7 @@ export default function App() {
           inputWidth: 640,
           inputHeight: 480,
           torsoLength: 0.2,
-          baseHip: { x: playerId === 0 ? 0.25 : 0.75, y: 0.55, z: 0 },
+          baseHip: { x: playerId === 0 ? 0.75 : 0.25, y: 0.55, z: 0 },
           floorY: 0.9,
           profileVersion: 1,
         },

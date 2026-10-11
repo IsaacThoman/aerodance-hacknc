@@ -81,7 +81,8 @@ Record heartbeats and empty pose records as well as detected people.
    boundary and running pipeline, and show both players' tracking. Release any
    game/test-page connection first: Android permits only one stream consumer.
 3. **Check capture.** Keep a fixed camera and full bodies visible. In two-player
-   capture, ID 0 means the unmirrored camera's left half and ID 1 the right half;
+   capture, ID 0 means the unmirrored camera's right half and ID 1 the left half
+   (so player 1 is on the left in mirrored views);
    these are region slots, not persistent person identities. Keep dancers in their
    halves, and capture a short stable calibration stance. Show confidence and gaps.
 4. **Record take.** Begin saving before a three-second lead-in. Schedule music and

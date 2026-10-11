@@ -11,7 +11,7 @@ import { newProject, addTake, takeFromRecords, takeCalibration, overwriteTracks,
   offsetTrack, historyStep, compileProject, validateTake, validateTrackData, trackDataIds } from '../core.js';
 
 const pose = (playerId, hipY = .6) => ({ playerId, landmarks: Array.from({ length: 33 }, (_, i) => ({
-  x: playerId ? .75 : .25, y: i < 11 ? .15 : i < 23 ? .4 : i < 27 ? hipY : .9,
+  x: playerId ? .25 : .75, y: i < 11 ? .15 : i < 23 ? .4 : i < 27 ? hipY : .9,
   z: 0, visibility: .95, presence: .95,
 })) });
 function fixture() {
@@ -45,8 +45,8 @@ test('calibration preview keeps the left dancer visible when calibration confide
 });
 
 test('region recovery focuses on small dancers and restores full-frame XYZ coordinates', () => {
-  const right = pose(1).landmarks.map(p => ({ ...p, y: .45 + p.y * .2 }));
-  const crop = videoRegionCrop([right], 0, 481, 854);
+  const dancer = pose(1).landmarks.map(p => ({ ...p, y: .45 + p.y * .2 }));
+  const crop = videoRegionCrop([dancer], 1, 481, 854);
   assert.equal(crop.x, 0); assert.equal(crop.width, 240);
   assert.ok(crop.y > 0 && crop.height < 400, 'portrait height must be cropped to enlarge the dancer');
   const restored = restoreVideoLandmarks([{ x: .8, y: .6, z: -.2, visibility: .9, presence: .9 }], crop, 481, 854)[0];
@@ -54,7 +54,7 @@ test('region recovery focuses on small dancers and restores full-frame XYZ coord
   assert.equal(restored.y, (crop.y + .6 * crop.height) / 854);
   assert.equal(restored.z, -.2 * crop.width / 481);
   assert.equal(restored.visibility, .9);
-  const second = videoRegionCrop([right], 1, 481, 854);
+  const second = videoRegionCrop([dancer], 0, 481, 854);
   assert.equal(second.x, 240); assert.equal(second.width, 241);
 });
 
@@ -208,7 +208,8 @@ test('decoded frames are processed in order, prefetched during inference and rel
   const video = { duration: .3, videoWidth: 640, videoHeight: 480, pause() {} };
   const file = { name: 'decoded.webm' };
   // 33 ms appears twice: a source frame shown across two sample windows.
-  const order = [0, 33, 33, 67, 100, 133, 167, 200, 233, 267];
+  // 310 ms is a final frame stamped past the reported duration.
+  const order = [0, 33, 33, 67, 100, 133, 167, 200, 233, 267, 310];
   const job = new VideoImporter({ video, file, modelId: 'lite', projectId: 'project', assetUrl: () => 'http://localhost/',
     createWorker: () => new PoseWorker(diagnostics),
     bitmap: async source => { bitmaps.push({ source, pulled: state.pulled }); return { close() {} }; },
@@ -226,7 +227,7 @@ test('decoded frames are processed in order, prefetched during inference and rel
     request: async (url, options) => { calls.push({ url, body: structuredClone(options.body) }); return { takeId: 'decoded' }; },
   });
   await job.process('decoded.webm');
-  assert.deepEqual(state.options, { width: 640, height: 480, durationMs: 300 });
+  assert.deepEqual(state.options, { width: 640, height: 480, durationMs: 300, rate: 30 });
   const records = calls.filter(c => c.url.endsWith('/batches')).flatMap(c => c.body.records.map(e => e.record));
   assert.deepEqual(records.map(r => r.mediaTimeMs), [0, 33, 67, 100, 133, 167, 200, 233, 267]);
   assert.ok(records.every(r => r.timingMethod === 'decoded-frame'));
@@ -350,4 +351,20 @@ test('video batches finalize with calibration and survive export and backup afte
   assert.equal(dp.takes.length, 0);
   const snapshot = await (await fetch(`${base}/api/projects/${dp.projectId}/tracks/${dp.tracks[0].dataId}`)).json();
   assert.deepEqual(snapshot.calibration, takeCalibration(take, 0));
+});
+
+test('video import can sample at 15 fps', async () => {
+  assert.deepEqual([...sampleTimes(200, 0, 15)], [.5 / 15, 1.5 / 15, 2.5 / 15]);
+  const diagnostics = { active: 0, maxActive: 0, terminated: 0, modes: [] }, seeks = [], calls = [];
+  const job = new VideoImporter({ video: { duration: .2, videoWidth: 640, videoHeight: 480, pause() {} }, file: {},
+    modelId: 'lite', projectId: 'project', assetUrl: () => 'http://localhost/', bitmap: async () => ({ close() {} }),
+    createWorker: () => new PoseWorker(diagnostics), decodeFrames: async () => null, sampleRate: 15,
+    seek: async (_v, time) => { seeks.push(time); return { mediaTimeMs: time * 1000, timingMethod: 'seek-time' }; },
+    request: async (url, options) => { calls.push({ url, body: options.body }); return { takeId: 'half-rate' }; },
+  });
+  await job.process('fixture.webm');
+  assert.deepEqual(seeks, [...sampleTimes(200, 0, 15)]);
+  assert.equal(calls.find(c => c.url.endsWith('/takes')).body.status.targetRateHz, 15);
+  const records = calls.filter(c => c.url.endsWith('/batches')).flatMap(c => c.body.records);
+  assert.equal(records.length, 3);
 });

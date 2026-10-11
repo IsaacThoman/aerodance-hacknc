@@ -230,7 +230,7 @@ test('the ghost replay dances the routine and stands in its halves without a son
   await ghost.setPlayerCount(2);
   ghost.tick();
   assert.deepEqual(records[0].record.poses.map((p) => p.playerId), [0, 1]);
-  assert.ok(records[0].record.poses[0].landmarks[23].x < 0.5 && records[0].record.poses[1].landmarks[23].x > 0.5);
+  assert.ok(records[0].record.poses[0].landmarks[23].x > 0.5 && records[0].record.poses[1].landmarks[23].x < 0.5);
   ghost.attachSong({ bundle, songTimeAt: (perf) => perf, perfAtSong: (ms) => ms, playing: () => true });
   now = 5000;
   ghost.tick();

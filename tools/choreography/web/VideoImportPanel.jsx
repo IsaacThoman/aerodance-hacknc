@@ -5,7 +5,7 @@ import { VideoImporter } from './videoImport.js';
 
 export default function VideoImportPanel({ file, projectId, request, onImported, onClose, onBusy }) {
   const [url] = useState(() => URL.createObjectURL(file));
-  const [model, setModel] = useState('lite');
+  const [model, setModel] = useState('lite'), [fps, setFps] = useState(30);
   const [ready, setReady] = useState(false), [working, setWorking] = useState(false);
   const [processed, setProcessed] = useState(false), [calibration, setCalibration] = useState(null);
   const [detections, setDetections] = useState([]);
@@ -19,7 +19,7 @@ export default function VideoImportPanel({ file, projectId, request, onImported,
   }, [url, onBusy]);
   const close = () => { active.current = false; importer.current?.abort(); onClose(); };
   const getImporter = () => {
-    importer.current ||= new VideoImporter({ video: video.current, file, modelId: model, projectId, request, onProgress: setProgress });
+    importer.current ||= new VideoImporter({ video: video.current, file, modelId: model, sampleRate: fps, projectId, request, onProgress: setProgress });
     return importer.current;
   };
   const run = async action => {
@@ -72,6 +72,12 @@ export default function VideoImportPanel({ file, projectId, request, onImported,
         importer.current?.abort(); importer.current = null;
         setModel(event.target.value); setCalibration(null); setDetections([]); setProcessed(false); setProgress(null); setError('');
       }}>{MODELS.map(m => <option key={m.id} value={m.id}>{m.label} · {m.description}</option>)}</select>
+    </label>
+    <label>Sample rate
+      <select aria-label="Video sample rate" value={fps} disabled={working} onChange={event => {
+        importer.current?.abort(); importer.current = null;
+        setFps(Number(event.target.value)); setProcessed(false); setProgress(null); setError('');
+      }}><option value={30}>30 fps</option><option value={15}>15 fps · faster processing</option></select>
     </label>
     <video ref={video} src={url} controls={!working} muted playsInline preload="auto" aria-label="Source video"
       onLoadedData={() => {

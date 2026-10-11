@@ -117,7 +117,7 @@ export class ReplayPoseSource {
     return landmarks.map((j) => ({ ...j, x: j.x + gaussian(this.rnd) * this.noise, y: j.y + gaussian(this.rnd) * this.noise }));
   }
   standing() {
-    const xs = this.playerCount === 1 ? [0.5] : [0.3, 0.7];
+    const xs = this.playerCount === 1 ? [0.5] : [0.7, 0.3];
     return xs.map((cx, playerId) => ({ playerId, landmarks: this.jitter(standingPose(cx)) }));
   }
   tick() {

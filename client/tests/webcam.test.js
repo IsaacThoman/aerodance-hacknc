@@ -13,15 +13,15 @@ const points = x => Array.from({ length: 33 }, () => ({ x, y: 0.5, z: 0, visibil
 test('two-player slots require consecutive evidence and clear immediately on ambiguity', () => {
   const slots = new PlayerSlotMapper();
   assert.deepEqual(slots.map([points(0.25)], 2), []);
-  assert.deepEqual(slots.map([points(0.25)], 2).map(p => p.playerId), [0]);
+  assert.deepEqual(slots.map([points(0.25)], 2).map(p => p.playerId), [1]);
   assert.deepEqual(slots.map([points(0.25), points(0.3)], 2), []);
   assert.deepEqual(slots.map([points(0.25)], 2), []);
   assert.deepEqual(slots.map([points(0.75)], 2), []);
-  assert.deepEqual(slots.map([points(0.75)], 2).map(p => p.playerId), [1]);
+  assert.deepEqual(slots.map([points(0.75)], 2).map(p => p.playerId), [0]);
 });
 test('webcam slots use camera regions, preserve missing dancers and reject ambiguity', () => {
-  assert.deepEqual(assignPlayerSlots([points(0.75), points(0.25)], 2).map(p => [p.playerId, p.landmarks[0].x]), [[0, 0.25], [1, 0.75]]);
-  assert.deepEqual(assignPlayerSlots([points(0.75)], 2).map(p => p.playerId), [1]);
+  assert.deepEqual(assignPlayerSlots([points(0.75), points(0.25)], 2).map(p => [p.playerId, p.landmarks[0].x]), [[0, 0.75], [1, 0.25]]);
+  assert.deepEqual(assignPlayerSlots([points(0.75)], 2).map(p => p.playerId), [0]);
   assert.deepEqual(assignPlayerSlots([points(0.5)], 2), []);
   assert.deepEqual(assignPlayerSlots([points(0.2), points(0.3)], 2), []);
   assert.deepEqual(assignPlayerSlots([points(0.75)], 1).map(p => p.playerId), [0]);
