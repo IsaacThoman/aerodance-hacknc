@@ -30,7 +30,7 @@ const RAISE = 1.5;
 const SLIDE = 12;
 // Easing approaches its target forever; snap once the remaining step is imperceptible.
 const SPOT_EPSILON = 0.01;
-const SOLO_HIDE_PROGRESS = 0.85;
+const SOLO_HIDE_PROGRESS = 0.95;
 
 function Environment({ scene }) {
   const gl = useThree((state) => state.gl);
