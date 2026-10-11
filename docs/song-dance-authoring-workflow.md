@@ -251,24 +251,38 @@ integers. Assets are content-addressed with lowercase SHA-256 hashes.
     records.ndjson
     clock-mapping.json
     review/                 # optional video/overlay/report
+  tracks/<dataId>.json      # implemented independent track snapshots
   builds/<buildId>/
     validation.json
     runtime/<songId>/
 ```
 
-`project.json` has `schema: "aerodance.project"`, `schemaVersion: 1`, `projectId`,
-`songId`, `revision`, creation/update times, the song metadata, asset references,
-take references, a `tracks` list, ordered `operations`, `operationCursor`, markers,
-score exclusions, and compiler settings/version. Track IDs are 0 and 1.
+The implemented Dance Studio uses `project.json` with
+`schema: "aerodance.project"`, `schemaVersion: 2`, `projectId`, `songId`, `revision`,
+creation/update times, song metadata, audio/take references, two ordered `tracks`,
+`operations`, `operationCursor`, markers, and `alignmentReviewed`.
 
-Each track has `clips` with `clipId`, `takeId`, `sourcePlayerId`, `sourceStartMs`,
-`sourceEndMs`, `songStartMs`, and positive `timeScale`. Source intervals are
-half-open; their song duration is `(sourceEndMs-sourceStartMs)*timeScale`.
-Clips cannot overlap on a track unless an explicit transition defines how they
-blend. Record blend length/easing; flag the blended range for review. For ordinary
-capture clips, derive placement from the take alignment, then freeze the resolved
-mapping into the project revision. Warn on changed speed; do not time-warp a dance
-silently to fill the song.
+Each track has `playerId` (0 or 1), `label`, `offsetMs`, `dataId`, and
+`originalDataId`. Null data references mean an empty track. Snapshots are stored
+in `tracks/<dataId>.json` using `schema: "aerodance.track"`, `schemaVersion: 1`,
+`dataId`, `playerId`, input geometry, `samples`, `sources`, and `exclusions`.
+Each sample has a finite increasing `takeTimeMs` on the track's local clock,
+that player's `poses`, and matching `quality`. Snapshot timestamps already
+incorporate the source take's `timeScale`; song time is `takeTimeMs + offsetMs`.
+The immutable snapshot copies poses and provenance, so deleting the library take
+does not change the routine. `originalDataId` supplies the unedited comparison.
+
+Each edit-history entry stores `operationId`, its edit type/range, and ordered
+`beforeTracks`/`afterTracks` references. Undo/redo restores those snapshots and
+offsets. Backup includes current and historical snapshot references. Overwriting
+copies the requested source player(s), resets their offsets to recorded timing,
+and records one history entry. Track clearing resets its offset and references.
+
+Older project schema v1 referenced takes through `clips` with `clipId`, `takeId`,
+`sourcePlayerId`, `sourceStartMs`, `sourceEndMs`, `songStartMs`, and `timeScale`.
+Opening an old project or restoring an old backup materializes its current clips
+and edits into independent snapshots, retaining quality and source provenance.
+The conversion starts a fresh undo history. Runtime bundle schemas stay at v1.
 
 `take.json` has `schema: "aerodance.take"`, `schemaVersion: 1`, `takeId`, source
 kind (`android`, `video`, or `legacy-demo`), original status/capabilities, input
@@ -343,7 +357,8 @@ single affine fit. Store the chosen method and uncertainty in provenance.
 Example: a take begins 3 seconds before music and has no drift, so `offsetMs=-3000`.
 A pose at take time 5000 ms maps to song time 2000 ms. Negative/pre-roll and
 post-song samples stay in the take but are outside the runtime playable range.
-Track replacements use explicit clip mappings; review sync on both sides of joins.
+The editor copies takes into independent player tracks; adjust each track offset
+separately and review alignment after overwriting.
 
 ## Runtime song bundle
 

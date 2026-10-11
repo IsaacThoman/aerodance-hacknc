@@ -12,6 +12,14 @@ import {
   takeFromRecords,
   replaceRange,
   validateProject,
+  overwriteTracks,
+  clearTrack,
+  offsetTrack,
+  historyStep,
+  missingIntervals,
+  interpolateTrack,
+  migrateProject,
+  trackDataIds,
 } from "../core.js";
 import {
   sampleSnapshot,
@@ -52,10 +60,10 @@ test('webcam take timing follows frames despite variable inference latency and r
   assert.throws(() => takeFromRecords(android, metadata), /Invalid webcam/);
 });
 test('unsupported project tracks and null clips fail validation before the editor renders them', () => {
-  const project=newProject('format-fixture');
-  const future=structuredClone(project); future.schemaVersion=2;
+  const project=newProject('format-fixture', 1);
+  const future=structuredClone(project); future.schemaVersion=3;
   future.tracks=future.tracks.map(({playerId,label})=>({playerId,label,dataId:'edited',originalDataId:'original',offsetMs:0}));
-  assert.throws(()=>validateProject(future),/Unsupported project format 2/);
+  assert.throws(()=>validateProject(future),/Unsupported project format 3/);
   const broken=structuredClone(project); broken.tracks[0].clips=[null,{takeId:'missing'}];
   assert.throws(()=>validateProject(broken),/Invalid clips/);
   const missing=structuredClone(project); delete missing.tracks[0].clips;
@@ -76,7 +84,7 @@ function fixture() {
       poses: [pose(0), pose(1, 0.7)],
     })),
   };
-  let p = addTake(newProject("project-a"), take);
+  let p = addTake(newProject("project-a", 1), take);
   p.durationMs = 1000;
   p.playableEndMs = 1000;
   p.audio = { sha256: "a".repeat(64), extension: "wav", mimeType: "audio/wav" };
@@ -260,7 +268,10 @@ test("capture compensates processing delay without distorting frame intervals", 
   const take = takeFromRecords(records, { takeId: "timed" });
   assert.equal(take.offsetMs, 760);
   assert.equal(take.timeScale, 2);
-  assert.deepEqual(take.samples.map((s) => s.takeTimeMs), [0, 80, 160]);
+  assert.deepEqual(
+    take.samples.map((s) => s.takeTimeMs),
+    [0, 80, 160],
+  );
   for (const e of records) {
     delete e.audioPositionAtReceiptMs;
     delete e.audioPlaybackRate;
@@ -270,7 +281,10 @@ test("capture compensates processing delay without distorting frame intervals", 
   assert.equal(raw.timeScale, 1);
   assert.equal(raw.provenance.alignmentMethod, "unanchored-frame-timing");
   records[1].record.resultTimeMs = 179;
-  assert.throws(() => takeFromRecords(records, { takeId: "bad" }), /timestamps/);
+  assert.throws(
+    () => takeFromRecords(records, { takeId: "bad" }),
+    /timestamps/,
+  );
 });
 test("runtime validation rejects corrupt payloads and timestamps", () => {
   const { p, takes } = fixture(),
@@ -308,25 +322,51 @@ test("gap repair requires bounded endpoints and never invents measured confidenc
 
 test("grouped keyframes translate points together, preserve confidence and undo as one edit", () => {
   const { p, takes } = fixture();
-  const original = compileProject(p, takes).samples.find((s) => s.songTimeMs === 500);
+  const original = compileProject(p, takes).samples.find(
+    (s) => s.songTimeMs === 500,
+  );
   const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-  const targets = indices.map((joint) => ({ joint, value: {
-    x: original.poses[0].landmarks[joint].x + 0.1,
-    y: original.poses[0].landmarks[joint].y + 0.05,
-    z: original.poses[0].landmarks[joint].z,
-  } }));
-  const edited = appendOperation(p, { type: "joint", playerId: 0, joint: 0,
-    value: targets[0].value, targets, timeMs: 500, startMs: 350, endMs: 650 });
+  const targets = indices.map((joint) => ({
+    joint,
+    value: {
+      x: original.poses[0].landmarks[joint].x + 0.1,
+      y: original.poses[0].landmarks[joint].y + 0.05,
+      z: original.poses[0].landmarks[joint].z,
+    },
+  }));
+  const edited = appendOperation(p, {
+    type: "joint",
+    playerId: 0,
+    joint: 0,
+    value: targets[0].value,
+    targets,
+    timeMs: 500,
+    startMs: 350,
+    endMs: 650,
+  });
   const compiled = compileProject(edited, takes);
   const frame = compiled.samples.find((s) => s.songTimeMs === 500);
   for (const i of indices) {
-    assert.ok(Math.abs(frame.poses[0].landmarks[i].x - original.poses[0].landmarks[i].x - 0.1) < 1e-6);
-    assert.equal(frame.poses[0].landmarks[i].visibility, original.poses[0].landmarks[i].visibility);
+    assert.ok(
+      Math.abs(
+        frame.poses[0].landmarks[i].x - original.poses[0].landmarks[i].x - 0.1,
+      ) < 1e-6,
+    );
+    assert.equal(
+      frame.poses[0].landmarks[i].visibility,
+      original.poses[0].landmarks[i].visibility,
+    );
     assert.equal(frame.quality[0].scoreEligible[i], false);
   }
-  assert.deepEqual(frame.poses[0].landmarks[15], original.poses[0].landmarks[15]);
+  assert.deepEqual(
+    frame.poses[0].landmarks[15],
+    original.poses[0].landmarks[15],
+  );
   assert.deepEqual(frame.poses[1], original.poses[1]);
-  assert.deepEqual(compileProject({ ...edited, operationCursor: 0 }, takes).samples, compileProject(p, takes).samples);
+  assert.deepEqual(
+    compileProject({ ...edited, operationCursor: 0 }, takes).samples,
+    compileProject(p, takes).samples,
+  );
 });
 
 test("songs dance on Open Reef unless the project picks another stage", () => {
@@ -340,4 +380,181 @@ test("songs dance on Open Reef unless the project picks another stage", () => {
   delete p.metadata.stage;
   validateProject(p);
   assert.equal(p.metadata.stage, "openreef");
+});
+
+function independent(take = fixture().take) {
+  const assets = new Map([[take.takeId, take]]);
+  let p = addTake(newProject("independent"), take);
+  assert.ok(p.tracks.every((t) => t.dataId === null));
+  p = overwriteTracks(p, take, [0, 1], assets);
+  return { p, take, assets };
+}
+test("tracks own copied data, survive take deletion, and support atomic overwrite/undo", () => {
+  let { p, take, assets } = independent();
+  p.alignmentReviewed = true;
+  const libraryOnly = addTake(p, { ...take, takeId: "unassigned" });
+  assert.equal(libraryOnly.alignmentReviewed, true);
+  assert.deepEqual(libraryOnly.tracks, p.tracks);
+  const first = compileProject(p, assets);
+  take.samples[5].poses[0].landmarks[0].x = 0.99;
+  p.takes = [];
+  assets.delete(take.takeId);
+  assert.deepEqual(compileProject(p, assets).samples, first.samples);
+  assert.equal(
+    compileProject(p, assets).provenance.sources[0].takeId,
+    take.takeId,
+  );
+  const other = { ...fixture().take, takeId: "replacement", offsetMs: -100 };
+  other.samples.forEach((s) => (s.poses[0].landmarks[0].x = 0.4));
+  const overwritten = overwriteTracks(p, other, [0], assets);
+  assert.deepEqual(overwritten.tracks[1], p.tracks[1]);
+  assert.equal(overwritten.tracks[0].offsetMs, -100);
+  assert.deepEqual(historyStep(overwritten, -1).tracks, p.tracks);
+  assert.deepEqual(
+    historyStep(historyStep(overwritten, -1), 1).tracks,
+    overwritten.tracks,
+  );
+  const both = overwriteTracks(p, other, [0, 1], assets);
+  assert.equal(both.operationCursor, p.operationCursor + 1);
+  assert.ok(both.tracks.every((t) => t.offsetMs === -100));
+});
+test("independent negative offsets crop export and recover poses and edits on realignment", () => {
+  let { p, assets } = independent();
+  p = appendOperation(
+    p,
+    {
+      type: "joint",
+      playerId: 0,
+      joint: 15,
+      timeMs: 100,
+      startMs: 0,
+      endMs: 200,
+      value: { x: 0.55, y: 0.4, z: 0 },
+    },
+    assets,
+  );
+  const other = structuredClone(p.tracks[1]);
+  p = offsetTrack(p, 0, -100);
+  const data = compileProject(p, assets);
+  assert.ok(data.samples.every((s) => s.songTimeMs >= 0));
+  assert.equal(data.samples[0].poses[0].landmarks[15].x, 0.55);
+  assert.deepEqual(p.tracks[1], other);
+  p = offsetTrack(p, 0, 0);
+  assert.equal(
+    sampleSnapshot(compileProject(p, assets).samples, 100).poses[0]
+      .landmarks[15].x,
+    0.55,
+  );
+  p = offsetTrack(p, 0, -2000);
+  assert.ok(
+    compileProject(p, assets).samples.every(
+      (s) => !s.poses.some((v) => v.playerId === 0),
+    ),
+  );
+  p = offsetTrack(p, 0, 0);
+  assert.equal(compileProject(p, assets).samples[0].poses.length, 2);
+  assert.throws(() => offsetTrack(p, 0, NaN), /finite/);
+});
+test("track deletion clears only its poses and offset and is undoable", () => {
+  const { p, assets } = independent();
+  const cleared = clearTrack(offsetTrack(p, 0, 100), 0);
+  assert.equal(cleared.tracks[0].offsetMs, 0);
+  assert.equal(cleared.tracks[0].dataId, null);
+  assert.deepEqual(cleared.tracks[1], p.tracks[1]);
+  assert.equal(cleared.takes.length, p.takes.length);
+  assert.ok(
+    compileProject(cleared, assets).samples.every(
+      (s) => s.poses.length === 1 && s.poses[0].playerId === 1,
+    ),
+  );
+  assert.equal(historyStep(cleared, -1).tracks[0].dataId, p.tracks[0].dataId);
+});
+test("interpolation fills short and long bounded gaps, preserves existing poses, and leaves edge gaps", () => {
+  const take = fixture().take;
+  take.samples = [
+    { takeTimeMs: 0, poses: [] },
+    { takeTimeMs: 100, poses: [pose(0, 0.1), pose(1)] },
+    { takeTimeMs: 200, poses: [pose(1)] },
+    { takeTimeMs: 400, poses: [pose(0, 0.4), pose(1)] },
+    { takeTimeMs: 2000, poses: [pose(0, 0.8), pose(1)] },
+    { takeTimeMs: 2100, poses: [] },
+  ];
+  let { p, assets } = independent(take);
+  assert.equal(missingIntervals(p, assets, 0).length, 2);
+  const before = compileProject(p, assets);
+  const repaired = interpolateTrack(p, assets, 0);
+  assert.equal(repaired.filled, 2);
+  p = repaired.project;
+  const data = compileProject(p, assets);
+  assert.equal(missingIntervals(p, assets, 0).length, 0);
+  assert.deepEqual(data.samples[0].poses, []);
+  assert.deepEqual(data.samples.at(-1).poses, []);
+  for (const time of [100, 400, 2000])
+    assert.deepEqual(
+      sampleSnapshot(data.samples, time).poses[0],
+      sampleSnapshot(before.samples, time).poses[0],
+    );
+  const q = sampleSnapshot(data.samples, 1000).quality.find(
+    (q) => q.playerId === 0,
+  );
+  assert.ok(q.landmarkOrigins.every((v) => v === "gap-repaired"));
+  assert.ok(q.scoreEligible.every((v) => !v));
+  assert.equal(
+    sampleSnapshot(data.samples, 1000).poses[0].landmarks[0].visibility,
+    null,
+  );
+  assert.deepEqual(
+    p.tracks[1],
+    repaired.project.operations.at(-1).beforeTracks[1],
+  );
+  assert.deepEqual(
+    compileProject(historyStep(p, -1), assets).samples,
+    before.samples,
+  );
+  assert.throws(() => interpolateTrack(p, assets, 0), /No bounded/);
+});
+test("stored exclusions override later approvals and move with their track", () => {
+  let { p, assets } = independent();
+  p = appendOperation(
+    p,
+    {
+      type: "exclude",
+      playerId: 0,
+      startMs: 200,
+      endMs: 400,
+      reason: "occlusion",
+    },
+    assets,
+  );
+  p = appendOperation(
+    p,
+    { type: "approve", playerId: 0, startMs: 0, endMs: 1000, reason: "review" },
+    assets,
+  );
+  p = offsetTrack(p, 0, -100);
+  assert.ok(
+    sampleSnapshot(
+      compileProject(p, assets).samples,
+      200,
+    ).quality[0].scoreEligible.every((v) => !v),
+  );
+});
+test("legacy projects migrate their edited poses, negative source timing and original preview", () => {
+  const { p, takes } = fixture();
+  p.tracks[0].clips[0].songStartMs = -100;
+  const edited = appendOperation(p, {
+    type: "mirror",
+    playerId: 0,
+    startMs: 200,
+    endMs: 500,
+  });
+  const before = compileProject(edited, takes);
+  const migrated = migrateProject(edited, takes);
+  assert.equal(migrated.schemaVersion, 2);
+  assert.deepEqual(compileProject(migrated, takes).samples, before.samples);
+  assert.ok(takes.get(migrated.tracks[0].dataId).samples[0].takeTimeMs < 0);
+  assert.ok(trackDataIds(migrated).length >= 2);
+  migrated.takes = [];
+  takes.delete("take-a");
+  assert.deepEqual(compileProject(migrated, takes).samples, before.samples);
 });
