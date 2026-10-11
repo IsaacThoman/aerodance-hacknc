@@ -138,6 +138,38 @@ test('the song finishes after the late-arrival allowance, with results', async (
   assert.equal(session.results[0].coverage, 0);
 });
 
+test('the entrance follows the first beat and holds through pause and resume', async () => {
+  const { session, step } = await setup(1, { autoStart: false });
+  const routine = session.routine();
+  assert.equal(routine.entranceTimeMs(), -Infinity, 'hidden during the ready check');
+  session.start();
+  assert.equal(routine.entranceTimeMs(), -COUNTDOWN_MS);
+  step(COUNTDOWN_MS - 500);
+  assert.equal(routine.entranceTimeMs(), -500);
+  session.pause();
+  step(1000);
+  assert.equal(routine.entranceTimeMs(), -500, 'pausing mid-entrance freezes the effect');
+  session.resume();
+  assert.equal(routine.entranceTimeMs(), -COUNTDOWN_MS, 'an interrupted entrance starts again');
+  step(COUNTDOWN_MS);
+  assert.equal(routine.entranceTimeMs(), 0);
+  step(300);
+  session.pause();
+  step(1000);
+  assert.equal(routine.entranceTimeMs(), 300);
+  session.resume();
+  step(COUNTDOWN_MS - 100);
+  assert.equal(routine.entranceTimeMs(), 300, 'resume keeps an appeared dancer in place');
+  step(200);
+  assert.equal(routine.entranceTimeMs(), 400);
+  session.dispose();
+  const retry = await setup(2, { autoStart: false });
+  assert.equal(retry.session.routine().entranceTimeMs(), -Infinity);
+  retry.session.start();
+  assert.equal(retry.session.routine().entranceTimeMs(), -COUNTDOWN_MS, 'a new run gets a fresh entrance');
+  retry.session.dispose();
+});
+
 test('the ghost replay dances the routine and stands in its halves without a song', async () => {
   let now = 0;
   const ghost = new ReplayPoseSource({ now: () => now });
