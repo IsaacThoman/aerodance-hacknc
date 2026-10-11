@@ -146,6 +146,13 @@ Pause audio and reference time together when the game is paused or the tab becom
 
 ## Scoring research and proposed baseline
 
+The [scoring system plan](scoring-system-plan.md), prepared 2026-10-11 from the
+user's requirements, supersedes the initial feature/timing candidates below.
+Use six groups (hands, feet, head, torso), exclude elbows/knees completely,
+normalize scoring scale per reliable pose, compare corrected song times, and
+allocate a fixed duration-based maximum of 10,000 points per player. The earlier
+joint-angle/DTW proposals remain research alternatives rather than requirements.
+
 Research should produce a reproducible comparison and a short scoring decision document before thresholds are frozen. Google describes torso-size normalization and joint-distance features for pose comparison; that legacy classification example informs feature design but is not a dance score specification. A Stanford dance-coaching project demonstrates DTW sequence alignment; its ballet dataset and score scaling do not establish suitable thresholds for this game. [Google pose classification guidance](https://raw.githubusercontent.com/google-ai-edge/mediapipe/master/docs/solutions/pose_classification.md), [Stanford dance-coaching study](https://cs231n.stanford.edu/papers/CS_231N_Final_Project__Latex_Writeup_Update%20-%20Henry%20Jingsong%20Zhou.pdf).
 
 Compare these candidates:
@@ -158,12 +165,12 @@ Compare these candidates:
 
 Proposed initial score pipeline:
 
-- Correct image aspect ratio, center on the hips, and use a stable calibrated torso scale. Avoid dynamic rotation normalization that would remove intentional torso lean. Use consistent frontal recording/play conditions; 2D features cannot guarantee viewpoint invariance.
-- Compare shoulders, elbows, wrists, hips, knees, ankles, and limb directions. Downweight face/finger landmarks initially. Use reference and live confidence to select usable features; require a minimum torso and limb coverage.
+- Correct image aspect ratio, center on the hips, and divide by each reliable pose's torso scale for scoring, independently of fixed character calibration. Avoid dynamic rotation normalization that would remove intentional torso lean. Use consistent frontal recording/play conditions; 2D features cannot guarantee viewpoint invariance.
+- Compare grouped hands, feet, head, and torso as specified in the scoring plan. Shoulders/hips supply normalization anchors; elbows and knees are ignored entirely. Use reference and live confidence to require reliable group evidence.
 - Include pose shape and movement direction/change over time so holding one easy pose does not earn a high score through a moving phrase. Avoid making root screen position a core metric because camera placement differs; retain a separate normalized lateral-movement feature if validation supports it.
-- Start with timestamp-aligned comparison and a small bounded timing tolerance, provisionally ±100 ms, with a penalty for temporal displacement. Compare with constrained DTW during research. Network latency correction and player timing tolerance are separate controls.
+- Start with comparison at exact corrected song times as specified in the scoring plan. Evaluate bounded human timing tolerance or constrained DTW only if validation warrants them; network latency correction must remain independent of player timing tolerance.
 - Produce one score per fixed authored time interval, provisionally 100 ms, rather than per render frame or received packet. Interpolate only between nearby reliable samples; do not bridge long missing spans. This makes totals independent of FPS and duplicate packets.
-- Weight each player's total by authored interval duration/importance, then map a versioned normalized error curve to points and feedback such as Perfect/Good/Miss. Research selects feature weights, curve, confidence threshold, timing tolerance, and feedback thresholds; the provisional values are not validated results.
+- Allocate a fixed duration-based budget totaling 10,000 per player and use a versioned error curve for interval quality and Excellent/Great/Good/Bad feedback. Research validates feature weights, curve, confidence policy, and feedback thresholds; the provisional values in the scoring plan are not validated results.
 - Compute player 0 against track 0 and player 1 against track 1. Keep their scores independent. One-player mode must produce the same track-0 result as two-player mode for identical input.
 
 Authoring marks unreliable reference intervals unscorable before publication. Missing/unreliable live tracking gives **no awarded points** for that interval and is displayed as tracking loss rather than a confident dance judgment. Keep the published possible-point denominator fixed; never inflate accuracy by removing a player's difficult missing intervals. Report tracking coverage separately. Extended source failure pauses the session; sessions with inadequate coverage are incomplete and cannot be presented as comparable ranked results. Choose the minimum completion coverage during validation.

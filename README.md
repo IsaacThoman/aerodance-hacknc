@@ -6,6 +6,9 @@ The server still records `spin` events in the `spins` hypertable, but the curren
 
 See [the Android/game integration plan](docs/android-game-integration-plan.md) for pairing, player selection, live character animation, latency-aware scoring, and choreography recording/editing work.
 
+See [the scoring system plan](docs/scoring-system-plan.md) for grouped pose comparison,
+camera-scale normalization, calibrated timing, immediate feedback, and a 10,000-point total.
+
 See [the song and dance authoring workflow](docs/song-dance-authoring-workflow.md) for the proposed Docker-hosted editor, Android-compatible pose format, raw landmark editing, Frutiger playback, and portable song bundle contract.
 
 The editor is implemented as [Dance Studio](tools/choreography/README.md).
