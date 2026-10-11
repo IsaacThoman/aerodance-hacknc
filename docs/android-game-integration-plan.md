@@ -125,6 +125,8 @@ Map browser monotonic time to the **audible** song position using audio output t
 
 The current callback timestamps permit device processing-duration measurement, but not clock mapping or proven sensor-exposure timing. Add a small bounded `GET /v1/time` exchange returning session ID and two timestamps on the **same monotonic clock used by pose records**: request-received `a1` and response-prepared `a2`. Advertise the capability in status, document CORS/methods, and test it. This can be an additive protocol-v2 capability; do not silently infer support from version 2 alone.
 
+Android side implemented: `GET /v1/time` returns `{"protocolVersion":2,"sessionId":…,"receivedTimeMs":a1,"sentTimeMs":a2}` in integer `SystemClock.elapsedRealtime()` milliseconds, and status advertises `capabilities.timeSync: true`. See the [streaming specification](../client-android/camera-to-client-streaming.md#clock-synchronization).
+
 For browser send/receive times `b0/b3` in milliseconds:
 
 ```text

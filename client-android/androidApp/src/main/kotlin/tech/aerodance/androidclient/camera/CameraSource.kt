@@ -11,6 +11,7 @@ import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Range
 import java.util.concurrent.atomic.AtomicLong
+import tech.aerodance.androidclient.streaming.ElapsedRealtimeClock
 
 /** Fixed board Camera2 adapter. Stop requests before closing the estimator's owned images. */
 class CameraSource(context: Context, private val onFrame: (Image, Long) -> Unit,
@@ -45,7 +46,8 @@ class CameraSource(context: Context, private val onFrame: (Image, Long) -> Unit,
                     try {
                         source.acquireLatestImage()?.let { image ->
                             if (stopped) image.close() else {
-                                lastFrameMs = SystemClock.elapsedRealtime()
+                                // Wire frameReceivedTimeMs: same clock as heartbeats and /v1/time.
+                                lastFrameMs = ElapsedRealtimeClock.nowMs()
                                 count.incrementAndGet()
                                 // Consumer takes ownership on every call, including shutdown rejection.
                                 onFrame(image, lastFrameMs)
