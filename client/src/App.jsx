@@ -9,14 +9,15 @@ import { useLoopingMusic } from './audio/loopingMusic.js';
 import { applySound, duckMenuMusic } from './audio/mixer.js';
 import BattleScreen from './battle/BattleScreen.jsx';
 import DebugPanel from './battle/DebugPanel.jsx';
-import { api, createBattle, reportResult, seatTokens, startBattle, useBattle } from './battle/api.js';
+import { api, battleResults, createBattle, reportResult, seatTokens, startBattle, useBattle } from './battle/api.js';
 import PhoneApp from './phone/PhoneApp.jsx';
 import ConnectionPanel from './connect/ConnectionPanel.jsx';
 import SongSelect from './game/SongSelect.jsx';
 import GameScreen from './game/GameScreen.jsx';
+import ResultsScreen from './game/ResultsScreen.jsx';
 import { COUNTDOWN_MS, GameSession, LATE_ALLOWANCE_MS } from './game/GameSession.js';
 import { recordResults } from './game/bestScores.js';
-import { PLAYERS, winnerOf } from './game/results.js';
+import { PLAYERS, battleResultsShow, winnerOf } from './game/results.js';
 import StageView from './stage/StageView.jsx';
 import { resolveStage } from '../../packages/stages/catalog.js';
 import { PoseSourceController } from './pose/PoseSourceController.js';
@@ -121,7 +122,7 @@ function DisplayApp() {
   const [wiiCursor, setWiiCursor] = useState(loadWiiCursor);
   const [battleId, setBattleId] = useState(battleRoute);
   // A battle on this display: 'lobby', 'songs' (Start pressed: pick the song), 'game' (the
-  // song), then 'scoring' (results reported, the battle screen shows the outcome).
+  // song). Results stay on the song's stage until Continue returns to the main menu.
   const [battleStage, setBattleStage] = useState('lobby');
   const battle = useBattle(battleId);
   const battleRef = useRef(battle);
@@ -223,8 +224,14 @@ function DisplayApp() {
   const continueBattle = useCallback(() => {
     endGame();
     setScreen('menu');
-    setBattleStage('scoring');
-  }, [endGame]);
+    openBattle(null);
+  }, [endGame, openBattle]);
+  const rematchBattle = useCallback(() => {
+    endGame();
+    setScreen('menu');
+    setBattleStage('lobby');
+    newBattle();
+  }, [endGame, newBattle]);
 
   // The session's phases drive the stage (live characters, results) and the battle.
   useEffect(() => {
@@ -238,10 +245,11 @@ function DisplayApp() {
         startBattle(battleId, danceMs).catch((err) => console.warn('could not mark the battle started:', err.message));
       }
       if (session.phase !== 'results') return;
-      const results = session.results.map((r, i) => ({ ...PLAYERS[i], ...r }));
+      const results = session.results.map((r, i) => ({ ...PLAYERS[i], ...r, name: b?.players.find((p) => p.seat === i)?.name ?? PLAYERS[i].name }));
       const best = battleId ? null : recordResults(session.bundle.song.songId, session.playerCount, session.results);
       resultsShow.current = { key: `${session.bundle.song.songId}|${performance.now()}`, start: performance.now() / 1000 + 0.3, results, winner: winnerOf(results), best };
       if (session.recordingText) download(`${session.bundle.song.songId}-poses.ndjson`, session.recordingText);
+      if (battleId) battleResults.set(battleId, session.bundle.song, results);
       if (battleId && b?.id === battleId && b.status === 'open') {
         reportBattle(b, session.results).catch((err) => console.error('battle results could not be reported:', err.message));
       }
@@ -256,9 +264,30 @@ function DisplayApp() {
 
   const inBattleSong = !!battleId && (battleStage === 'songs' || battleStage === 'game');
   const songsOpen = screen === 'songs' && (!battleId || battleStage === 'songs');
+  const finishedBattle = !!battleId && battle?.status === 'finished' && !inBattleSong;
+  const savedBattleResults = useMemo(() => battleId ? battleResults.get(battleId) : null, [battleId]);
+  // Keep the reveal stable while receipt/trophy/hype updates arrive.
+  const settledResults = useMemo(() => finishedBattle ? {
+    current: battleResultsShow(battleRef.current, savedBattleResults, performance.now() / 1000),
+  } : null, [finishedBattle, battleId, savedBattleResults]);
+  const gameResults = screen === 'game' && gamePhase === 'results';
+  const resultsVisible = gameResults || finishedBattle;
+  // A play link may report only one seat; another display can supply the other score.
+  // Once settled, show the server's outcome on this same screen without restarting it.
+  const gameResultShow = useMemo(() => {
+    const show = resultsShow.current;
+    if (!gameResults || !show || !battleId || battle?.id !== battleId || battle.status !== 'finished') return resultsShow;
+    return { current: {
+      ...battleResultsShow(battle, { results: show.results }, performance.now() / 1000),
+      key: show.key,
+      start: show.start,
+    } };
+  }, [gameResults, battleId, battle]);
+  const resultShow = gameResults ? gameResultShow : settledResults;
+  const resultSong = gameResults ? game.bundle.song : savedBattleResults?.song ?? { title: `Battle ${battleId?.toUpperCase()}`, artist: '' };
   const gameRoutine = useMemo(() => game?.routine() ?? null, [game]);
   // Every song dances on its own stage, picked in Dance Studio (Open Reef if unset or unknown).
-  const stageId = resolveStage((game?.bundle ?? preview?.bundle)?.song.stage);
+  const stageId = resolveStage(finishedBattle ? savedBattleResults?.song.stage : (game?.bundle ?? preview?.bundle)?.song.stage);
   // The players' own characters, while the song is on.
   const liveDancers = useMemo(() => (game && ['countdown', 'playing', 'paused', 'finishing'].includes(gamePhase) ? {
     playerCount: game.playerCount,
@@ -272,12 +301,12 @@ function DisplayApp() {
         <FixedRenderResolution />
         <Scene paused={stage.showing} />
         <StageView
-          active={(songsOpen && !!preview) || screen === 'game'}
+          active={(songsOpen && !!preview) || screen === 'game' || finishedBattle}
           orbiting={songsOpen && !!preview}
           stageId={stageId}
           routine={game ? gameRoutine : preview}
           live={liveDancers}
-          results={gamePhase === 'results' ? resultsShow : null}
+          results={resultsVisible ? resultShow : null}
           onState={setStage}
         />
         <MenuDancers
@@ -312,25 +341,31 @@ function DisplayApp() {
           visible={screen === 'game' && !!game}
           blocked={connectOpen}
           session={game}
-          results={resultsShow}
-          battle={!!battleId}
+          onQuit={quitGame}
+          onRetry={retryGame}
+        />
+        <ResultsScreen
+          visible={resultsVisible}
+          blocked={connectOpen}
+          show={resultShow}
+          song={resultSong}
+          battleMode={!!battleId}
+          battle={battle}
           onQuit={quitGame}
           onRetry={retryGame}
           onContinue={continueBattle}
+          onRematch={rematchBattle}
         />
         <BattleScreen
-          visible={!!battleId && !inBattleSong}
+          visible={!!battleId && !inBattleSong && !finishedBattle}
           battle={battle}
-          playing={battleStage === 'scoring'}
           onPlay={() => {
             // Battles are two dancers: pick the song, then dance it.
             applyPlayerCount(2);
             setScreen('songs');
             setBattleStage('songs');
           }}
-          onBack={() => (battleStage === 'scoring' ? setBattleStage('lobby') : openBattle(null))}
-          onRematch={newBattle}
-          onMenu={() => openBattle(null)}
+          onBack={() => openBattle(null)}
         />
         <DebugPanel battle={battleId ? battle : null} />
         <ConnectionPanel
