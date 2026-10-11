@@ -190,9 +190,14 @@ export default function MainMenu({
       s.invalidate();
     },
     onKey: (e, s) => {
-      if (e.key === 'Escape' && live() && PARENT[m.screen]) { playUISound('back'); go(PARENT[m.screen]); s.invalidate(); }
+      if (e.key === 'Escape' && !e.repeat && live() && PARENT[m.screen]) { playUISound('back'); go(PARENT[m.screen]); s.invalidate(); }
     },
-    onBack: (s) => { if (PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); } },
+    onBack: (s) => {
+      if (!PARENT[m.screen]) return false;
+      go(PARENT[m.screen]);
+      s.invalidate();
+      return true;
+    },
     update: (dt, s) => {
       const shown = props.current.visible;
       // Screen change: fade the current screen out, swap, fade the next one in.

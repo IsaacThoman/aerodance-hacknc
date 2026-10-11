@@ -140,7 +140,7 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
     onKey: (e, s) => {
       const p = props.current;
       if (!p.visible || !p.open || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === 'Escape') { playUISound('back'); close(); }
+      if (e.key === 'Escape') { if (!e.repeat) { playUISound('back'); close(); } }
       else if (/^[0-9.]$/.test(e.key) || e.key === 'Backspace') edit(e.key);
       // With the keyboard cursor on a widget, Enter presses that widget instead (keyNav).
       else if (e.key === 'Enter' && s.pointerKind !== 'key') { playUISound('select'); submit(); }
@@ -148,7 +148,11 @@ export default function ConnectionPanel({ visible = true, open = false, onOpenCh
       e.preventDefault();
       s.invalidate();
     },
-    onBack: () => { if (props.current.open) close(); },
+    onBack: () => {
+      if (!props.current.open) return false;
+      close();
+      return true;
+    },
     update: (_dt, s) => {
       const p = props.current;
       st.alpha = s.ease(st.alpha, p.visible ? 1 : 0, p.visible ? 3 : 6);

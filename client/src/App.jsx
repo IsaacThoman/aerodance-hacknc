@@ -171,7 +171,7 @@ function DisplayApp() {
   }, []);
 
   return (
-    <div className="canvas-frame">
+    <div className="canvas-frame display">
       <Canvas dpr={1} flat camera={{ fov: 66, near: 0.3, far: 6500 }}>
         <FixedRenderResolution />
         <Scene paused={stage.showing} />
