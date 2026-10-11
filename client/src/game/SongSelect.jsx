@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import {
-  FONT, ICONS, drawGlassCircle, drawGlassPanel, drawHeader, drawPill, drawProgress, drawShadowText, ellipsize,
-  paragraph, text,
+  FONT, ICONS, drawGlassCircle, drawHeader, drawPill, drawShadowText, ellipsize, paragraph,
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
 import { playUISound } from '../audio/uiSounds.js';
@@ -14,7 +13,7 @@ import { SCORER_VERSION } from '../../../packages/score/scorer.js';
 import { bestScore } from './bestScores.js';
 import { preloadStage, resolveStage, stageName } from '../../../packages/stages/index.js';
 import {
-  BACK, BAR, DANCE, PAGE_DOWN, PAGE_UP, PLAY, RETRY, ROWS, SCRUB, rowRect,
+  BACK, DANCE, PAGE_DOWN, PAGE_UP, PREVIEW_NOTE, RETRY, ROWS, rowRect,
 } from './layout.js';
 
 /**
@@ -24,8 +23,9 @@ import {
  *            four to a page
  *   preview  a song's music with its reference dancers on the song's stage (StageView,
  *            mounted by App from onPreviewChange; each song's stage is picked in Dance
- *            Studio), play / pause, a scrubbable timeline and Dance!, which hands the
- *            bundle to the game (onDance); the menu music ducks underneath
+ *            Studio), the music looping on its own while the stage camera circles them,
+ *            and Dance!, which hands the bundle to the game (onDance); the menu music
+ *            ducks underneath
  *
  * Bundles are fully verified before they play (songs/loadBundle.js). Back / Escape / the
  * remote's B go from the preview to the list and from the list to the player count.
@@ -38,11 +38,6 @@ import {
 
 const CATALOG_URL = () => new URL(`${import.meta.env.BASE_URL}songs/manifest.json`, window.location.href).href;
 const ACTIVE = ['connecting', 'reconnecting'];
-const fmt = (ms) => {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-};
-const SCRUB_HIT = { x: SCRUB.x - 12, y: SCRUB.y - 24, w: SCRUB.w + 24, h: SCRUB.h + 48 };
 
 // Each player's tracking, from the pose input (reported for tests as data-player-slots).
 function slotStatus(connection, id) {
@@ -65,7 +60,7 @@ export default function SongSelect({
     alpha: 0, screen: 'list', next: 'list', swap: 1, page: 0,
     catalog: { status: 'idle', songs: [], error: '' }, catalogCtl: null,
     loading: null, loadError: '',
-    bundle: null, player: null, routine: null, previewState: 'loading', previewError: '', scrubMs: null,
+    bundle: null, player: null, routine: null, previewState: 'loading', previewError: '',
     drawn: '', reported: '',
   }).current;
 
@@ -106,7 +101,6 @@ export default function SongSelect({
     st.player = null;
     st.bundle = null;
     st.routine = null;
-    st.scrubMs = null;
     duckMenuMusic(false);
     props.current.onPreviewChange?.(null);
   };
@@ -120,7 +114,7 @@ export default function SongSelect({
       bundle,
       playerCount: props.current.playerCount,
       // While the timeline is dragged the dancers follow the knob.
-      timeMs: () => st.scrubMs ?? st.player?.timeMs() ?? song.playableStartMs,
+      timeMs: () => st.player?.timeMs() ?? song.playableStartMs,
       playing: () => st.player?.state === 'playing',
     };
     st.routine = routine;
@@ -132,8 +126,14 @@ export default function SongSelect({
       .then((player) => {
         if (st.bundle !== bundle) { player.dispose(); return; }
         st.player = player;
+        // The preview plays straight away and loops: at the end it starts over.
+        player.onChange(() => {
+          if (player.ended && st.player === player && !document.hidden) player.play();
+          st.previewState = player.state;
+          ui.invalidate();
+        });
+        if (!document.hidden) player.play();
         st.previewState = player.state;
-        player.onChange(() => { st.previewState = player.state; ui.invalidate(); });
       })
       .catch(() => {
         if (st.bundle !== bundle) return;
@@ -170,12 +170,6 @@ export default function SongSelect({
     closePreview();
     props.current.onDance?.(bundle);
   };
-  const togglePlay = () => {
-    const { player } = st;
-    if (!player) return;
-    if (player.state === 'playing') player.pause();
-    else player.play();
-  };
 
   const ui = useCanvasUI({
     priority: 2,
@@ -187,7 +181,6 @@ export default function SongSelect({
           { id: 'back', circle: BACK },
           { id: 'dance', rect: DANCE },
         ];
-        if (st.player) list.push({ id: 'play', rect: PLAY }, { id: 'scrub', drag: true, rect: SCRUB_HIT });
         return list;
       }
       const list = [{ id: 'back', circle: BACK }];
@@ -205,21 +198,13 @@ export default function SongSelect({
       else if (wdg.id === 'page-up') st.page = Math.max(0, st.page - 1);
       else if (wdg.id === 'page-down') st.page = Math.min(pages() - 1, st.page + 1);
       else if (wdg.id === 'retry') fetchCatalog();
-      else if (wdg.id === 'play') togglePlay();
       else if (wdg.id === 'dance') dance();
       s.invalidate();
-    },
-    onDrag: (_wdg, p) => {
-      const { song } = st.bundle ?? {};
-      if (!song) return;
-      const k = Math.min(1, Math.max(0, (p.x - SCRUB.x) / SCRUB.w));
-      st.scrubMs = song.playableStartMs + k * (song.playableEndMs - song.playableStartMs);
     },
     onKey: (e, s) => {
       // A held key shouldn't run through screens.
       if (!live() || e.repeat) return;
       if (e.key === 'Escape') { playUISound('back'); back(); }
-      else if (st.screen === 'preview' && e.key === ' ' && s.pointerKind !== 'key') { playUISound('select'); togglePlay(); }
       else return;
       e.preventDefault();
       s.invalidate();
@@ -236,11 +221,6 @@ export default function SongSelect({
         s.invalidate();
       }
       st.alpha = s.ease(st.alpha, p.visible ? 1 : 0, p.visible ? 3 : 6);
-      // A finished drag on the timeline seeks the song.
-      if (st.scrubMs !== null && !s.drag) {
-        st.player?.seek(st.scrubMs);
-        st.scrubMs = null;
-      }
       const c = p.connection;
       const slots = Array.from({ length: p.playerCount }, (_, i) => slotStatus(c, i).label);
       const key = [
@@ -248,8 +228,6 @@ export default function SongSelect({
         p.stageState.stage, p.stageState.ready, p.stageState.failed,
       ].join('~');
       if (key !== st.drawn) { st.drawn = key; s.invalidate(); }
-      // The timeline and clock move while the song plays or is dragged.
-      if (st.screen === 'preview' && (st.previewState === 'playing' || st.scrubMs !== null)) s.invalidate();
       if (st.catalog.status === 'loading' || st.loading) s.invalidate();
 
       const report = {
@@ -338,19 +316,8 @@ export default function SongSelect({
 
         const stageFailed = p.stageState.failed && p.stageState.stage === resolveStage(song.stage);
         const error = st.previewError || (stageFailed ? "This song's stage couldn't load." : p.stageState.dancersFailed ? 'Character preview could not load.' : '');
-        if (error) drawShadowText(g, error, BAR.x, BAR.y - 86, { size: 26, color: '#ffb38a' });
+        if (error) drawShadowText(g, error, PREVIEW_NOTE.x, PREVIEW_NOTE.y, { size: 26, color: '#ffb38a' });
         drawPill(g, DANCE, { label: 'Dance!', sub: p.playerCount === 1 ? 'One player' : 'Two players', icon: 'play', hover: h.dance ?? 0, press: press('dance') });
-        drawGlassPanel(g, BAR, 30);
-        const playing = st.previewState === 'playing';
-        drawPill(g, PLAY, {
-          label: st.player ? (playing ? 'Pause' : 'Play') : st.previewError ? 'No audio' : 'Loading…',
-          icon: playing ? 'pause' : 'play', hover: h.play ?? 0, press: press('play'), disabled: !st.player,
-        });
-        const start = song.playableStartMs;
-        const total = song.playableEndMs - start;
-        const now = st.routine.timeMs();
-        drawProgress(g, SCRUB, (now - start) / total, { hover: h.scrub ?? 0, knob: !!st.player });
-        text(g, `${fmt(now - start)} / ${fmt(total)}`, BAR.x + BAR.w - 30, BAR.y + BAR.h / 2 + 1, { size: 26, weight: 700, align: 'right' });
       }
       g.restore();
     },
@@ -376,7 +343,7 @@ export default function SongSelect({
 
   // A hidden tab pauses the song.
   useEffect(() => {
-    const onVisibility = () => { if (document.hidden) st.player?.pause(); };
+    const onVisibility = () => { if (document.hidden) st.player?.pause(); else st.player?.play(); };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [st]);

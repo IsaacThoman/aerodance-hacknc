@@ -11,7 +11,7 @@ import { bundleFixture } from './fixtures/songBundle.js';
 import { BACK as MENU_BACK, ONE_PLAYER, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
 import { KEYS, MODES, PILL, PRIMARY } from '../src/connect/layout.js';
 import {
-  BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, PLAY, RESULTS_RETRY, rowRect,
+  BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, RESULTS_RETRY, rowRect,
 } from '../src/game/layout.js';
 import { resolveStage } from '../../packages/stages/catalog.js';
 
@@ -158,9 +158,8 @@ try {
     for (const count of [1, 2]) {
       if (!song.supportedPlayerCounts.includes(count)) continue;
       await openSong(count, i);
-      await until({ songScreen: 'preview', songReady: 'true', previewState: 'paused', stage: resolveStage(song.stage), stageReady: 'true' });
-      await click(PLAY);
-      await until({ previewState: 'playing' });
+      // The preview plays by itself.
+      await until({ songScreen: 'preview', songReady: 'true', previewState: 'playing', stage: resolveStage(song.stage), stageReady: 'true' });
       await page.waitForFunction(() => Number(document.querySelector('canvas').dataset.previewTimeMs) > 150);
       await shot(`preview-${count}p`);
       await click(BACK);
@@ -185,11 +184,11 @@ try {
   await serveFixture();
   for (const count of [1, 2]) {
     await openSong(count, 0);
-    await until({ songScreen: 'preview', songReady: 'true', previewState: 'paused', previewTimeMs: '100', stage: 'openreef', stageReady: 'true' });
-    await click(PLAY);
+    await until({ songScreen: 'preview', songReady: 'true', previewState: 'playing', stage: 'openreef', stageReady: 'true' });
+    // It plays the playable range (100–900 ms) and loops back to its start.
+    await page.waitForFunction(() => Number(document.querySelector('canvas').dataset.previewTimeMs) > 700);
+    await page.waitForFunction(() => Number(document.querySelector('canvas').dataset.previewTimeMs) < 500);
     await until({ previewState: 'playing' });
-    // It stops at the end of the playable range.
-    await until({ previewState: 'paused', previewTimeMs: '900' });
     await click(BACK);
     await until({ songScreen: 'list', songReady: 'true', stage: '' });
   }

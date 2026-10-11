@@ -23,6 +23,10 @@ export function disposeDeep(value) {
   if (typeof value === 'object' && value.constructor === Object) Object.values(value).forEach(disposeDeep);
 }
 
+// Extra yaw (radians) around every stage camera's target, on top of its own swing. The game
+// turns it to circle the dancers in Song Select's preview and back to 0 for the song.
+export const stageOrbit = { yaw: 0 };
+
 /**
  * Stage camera that becomes the default camera while mounted.
  *
@@ -84,7 +88,7 @@ export function StageCamera({
     // Slow orbit around the target, like a crane drifting around the dancers.
     offset.current.subVectors(base.current, look.current);
     const s = spherical.current.setFromVector3(offset.current);
-    s.theta += Math.sin(t * 0.11 * orbitSpeed) * orbit[0];
+    s.theta += Math.sin(t * 0.11 * orbitSpeed) * orbit[0] + stageOrbit.yaw;
     s.phi = THREE.MathUtils.clamp(s.phi + Math.sin(t * 0.07 * orbitSpeed + 1.1) * orbit[1], 0.05, Math.PI - 0.05);
     offset.current.setFromSpherical(s);
     camera.position.copy(look.current).add(offset.current);

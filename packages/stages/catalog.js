@@ -9,7 +9,9 @@ import beach from './beach/meta.js';
 // song catalogs and node tests import this; index.js pairs each with its stage component.
 // Each `meta.js`: { id, name, subtitle, accent: [light, dark] orb colors for the name card,
 //   dancers: props for shared/Dancers.jsx (floor position, rotationY, spacing, scale),
-//   post: overrides for shared/post.jsx }
+//   post: overrides for shared/post.jsx,
+//   previewOrbit?: { swing } radians the Song Select preview camera swings either way, for
+//   stages that can't be circled (by default it circles the dancers) }
 export const STAGE_METAS = [sanctuary, reef, openreef, falls, club, beach];
 
 export const STAGE_LIST = STAGE_METAS.map(({ id, name, subtitle, accent }) => ({ id, name, subtitle, accent }));
