@@ -6,7 +6,7 @@
     "dev": "concurrently -n server,client -c blue,magenta \"node --watch server/index.js\" \"vite\"",
     "test": "node --test client/tests/*.test.js packages/*/tests/*.test.js temp/frutiger-character/tests/*.test.js",
     "bench:performance": "node scripts/performance-audit.mjs",
-    "build": "vite build && vite build --config temp/frutiger-character/vite.config.js --base=/dance/ --outDir=../../../dist/dance && vite build --config temp/menu-mocks/vite.config.js --base=/menu-mocks/ --outDir=../../../dist/menu-mocks && vite build --config temp/win-screens/vite.config.js --base=/win-screens/ --outDir=../../../dist/win-screens",
+    "build": "vite build && vite build --config temp/frutiger-character/vite.config.js --base=/dance/ --outDir=../../../dist/dance && vite build --config temp/win-screens/vite.config.js --base=/win-screens/ --outDir=../../../dist/win-screens",
     "start": "NODE_ENV=production node server/index.js",
     "studio:dev": "concurrently -n studio-api,studio-web \"STUDIO_PORT=8082 node --watch tools/choreography/server/index.js\" \"vite --config tools/choreography/vite.config.js\"",
     "studio:build": "vite build --config tools/choreography/vite.config.js",
@@ -20,7 +20,6 @@
     "socket.io": "^4.8.4"
   },
   "devDependencies": {
-    "@fontsource/comfortaa": "^5.3.0",
     "@fontsource/exo-2": "^5.3.0",
     "@fontsource/nunito": "^5.3.0",
     "@mediapipe/tasks-vision": "1.1.0",
