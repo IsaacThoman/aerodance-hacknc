@@ -1,7 +1,7 @@
 # Dance Studio
 
 Local song/choreography editor for Aerodance. Projects live on disk; reference
-poses use the Android client's landmark object format. No game database is needed.
+poses use the game's `{playerId, landmarks}` pose format. No game database is needed.
 See the [format/workflow reference](../../docs/song-dance-authoring-workflow.md).
 
 ## Run
@@ -44,19 +44,14 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    by the browser audio decoder. Set the real artist, authors/choreographers, the
    **Stage** the game shows the routine on (Open Reef by default), and
    distribution licenses or permissions.
-2. Import a pose JSON/Android NDJSON, or select a pose source and **Record new take**.
-   For Android set Allowed Origin to the exact origin printed in the capture panel.
-   Close other stream viewers and keep Android active. Connecting starts the
-   camera and pose tracker; the panel shows initialization for up to 90 seconds
-   (the board can take about 35 seconds). Recording stays disabled until the first
-   pose record arrives, even if neither player is detected. You can start the
-   countdown and then step into position. Cancel
-   connection stops the wait. Disconnect saves battery, so reconnect initializes
-   again. Set **Recording delay (seconds)** from 0 to 60 (default 3). A visible
-   countdown gives you time to get into position before music and movement
-   capture start. **Cancel countdown** stops the wait without adding a take.
-   For **Webcam**, choose a camera and **Lite / Full / Heavy**, then **Start camera**
-   and allow permission. The mirrored setup preview labels the two camera-side
+2. Import a pose JSON/NDJSON, or start the webcam and **Record new take**.
+   Choose a camera and **Lite / Full / Heavy**, then **Start camera**
+   and allow permission. Recording stays disabled until the first pose result
+   arrives, even if neither player is detected. You can start the countdown and
+   then step into position. **Cancel connection** stops the wait. Set
+   **Recording delay (seconds)** from 0 to 60 (default 3). A visible countdown
+   gives you time to get into position before music and movement capture start.
+   **Cancel countdown** stops the wait without adding a take. The mirrored setup preview labels the two camera-side
    slots. Camera/model preferences are remembered in this browser. Changes restart
    tracking; controls are locked during recording and countdown. Use HTTPS or
    localhost for camera access. Models run in a worker; the status shows GPU/CPU
@@ -65,8 +60,8 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    collects 20 reliable frames per player. The preview compensates for changes in
    apparent body size when you step back, including the floor and hip anchor.
    Use **Recalibrate body** at your final dancing position if the starting stance
-   was poor. This button is locked during recording. Webcam-only exports retain
-   the same distance compensation for playback; existing Android bundles retain
+   was poor. This button is locked during recording. Webcam exports retain
+   the same distance compensation for playback; older bundles retain
    their original calibration mode. This handles body size in the image, rather
    than correcting optical lens distortion.
    For a prerecorded video, choose **Import video**, select **Lite / Full / Heavy**,
@@ -92,8 +87,8 @@ Open http://localhost:5177. The API listens on 8082 and writes ignored
    after track edits or deleting the library take.
 3. Scrub the waveform, step samples, or play at 0.25/0.5/1 speed. Switch between
    Skeleton, Frutiger, and Both. The two preview characters have independent rigs.
-   Choose **Live view** to preview Android or webcam poses without recording or importing
-   music. Connect a pose source in the capture panel first, then step into view. Live
+   Choose **Live view** to preview webcam poses without recording or importing
+   music. Start the camera in the capture panel first, then step into view. Live
    poses are read-only in all three display modes; music can play for rehearsal.
    Choose **Playback** to return to the timeline and edit the routine. Recording
    automatically uses the live preview.
@@ -226,13 +221,8 @@ batches, backup restore, deterministic bundle checksums, and unsafe archives.
   Webcam fixtures cover Chromium runtime/capture integration; real duet accuracy,
   hardware performance, and Safari/Firefox/mobile compatibility need manual checks.
 
-- Captures subtract the measured Android processing delay (`resultTimeMs` minus
-  `frameReceivedTimeMs`) from the first pose's audio receipt position. Subsequent
-  movement timing uses frame-arrival differences, so changing inference delays
-  do not distort movement intervals. Original device/browser timestamps remain
-  in the saved records. Raw Android NDJSON without an audio anchor starts at zero.
-  Android's planned clock exchange is unavailable; network transit, sensor-to-callback
-  delay, and audio output latency remain uncalibrated. Manually review alignment.
+- Older protocol-v2 takes and raw NDJSON imports still load. NDJSON without an
+  audio anchor starts at zero; review its alignment manually.
 - The editor imports JSON/NDJSON, its own project backups, and browser-decodable
   videos. Video import runs the same local models as the webcam; the optional
   Python tracker remains an offline tool.

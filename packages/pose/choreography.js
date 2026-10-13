@@ -1,4 +1,4 @@
-// Android-shaped pose payloads; file clocks are explicitly separate from wire clocks.
+// Pose payloads ({ playerId, landmarks }); file clocks are explicitly separate from wire clocks.
 export const JOINT_NAMES = ['Nose','Left eye inner','Left eye','Left eye outer','Right eye inner','Right eye','Right eye outer','Left ear','Right ear','Mouth left','Mouth right','Left shoulder','Right shoulder','Left elbow','Right elbow','Left wrist','Right wrist','Left pinky','Right pinky','Left index','Right index','Left thumb','Right thumb','Left hip','Right hip','Left knee','Right knee','Left ankle','Right ankle','Left heel','Right heel','Left foot index','Right foot index'];
 export const CONNECTIONS = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[28,30],[30,32],[15,17],[15,19],[16,18],[16,20],[0,7],[0,8]];
 export const PAIRS = [[1,4],[2,5],[3,6],[7,8],[9,10],[11,12],[13,14],[15,16],[17,18],[19,20],[21,22],[23,24],[25,26],[27,28],[29,30],[31,32]];

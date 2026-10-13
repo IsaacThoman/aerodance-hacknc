@@ -91,7 +91,6 @@ test('changing a running model resets the session and records the explicit selec
 test('webcam capture times drive scored gameplay and recordings through the controller, and shutdown is safe', async t => {
   const f = fixture(t);
   const source = new PoseSourceController({ webcam: f.source });
-  source.setMode('webcam');
   await source.connect(); f.deliver({ type: 'ready', delegate: 'CPU' });
   const dir = new URL('./fixtures/song-70c63c8e/', import.meta.url);
   const bundle = {

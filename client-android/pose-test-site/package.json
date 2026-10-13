@@ -1,1 +1,0 @@
-{"name":"aerodance-pose-test","private":true,"type":"module","scripts":{"test":"node --test","start":"python3 -m http.server 8081 --bind 0.0.0.0 --directory dist"}}

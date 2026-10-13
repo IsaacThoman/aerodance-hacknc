@@ -1,7 +1,11 @@
 # Browser webcam support for the game and Dance Studio
 
+> **Historical plan.** The Android client, battles (Solana, iMessage), the phone remote,
+> Flock cameras and the bundled songs it mentions have since been removed; the game and
+> Dance Studio now take poses from the browser webcam only.
+
 Draft prepared 2026-10-11. This extends the
-[game integration plan](android-game-integration-plan.md) and
+game integration plan and
 [authoring workflow](song-dance-authoring-workflow.md).
 
 Implementation now includes the shared source/controller, locally served pinned

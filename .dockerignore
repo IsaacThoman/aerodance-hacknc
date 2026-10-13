@@ -9,5 +9,4 @@ dist
 !.cache/pose-assets/*/*.task
 **/__pycache__
 **/tracking-output
-agent
 studio-data

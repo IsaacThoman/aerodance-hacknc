@@ -1,7 +1,11 @@
 # Song and dance authoring workflow
 
+> **Historical plan.** The Android client, battles (Solana, iMessage), the phone remote,
+> Flock cameras and the bundled songs it mentions have since been removed; the game and
+> Dance Studio now take poses from the browser webcam only.
+
 Design reference prepared 2026-10-10. This specifies authoring and game contracts
-and extends the [game integration plan](android-game-integration-plan.md).
+and extends the game integration plan.
 
 The local editor and Docker image are now implemented; see
 [Dance Studio's run guide](../tools/choreography/README.md). It supports project
@@ -49,10 +53,10 @@ assets.
 
 ## Existing code to reuse
 
-- [Android streaming contract](../client-android/camera-to-client-streaming.md):
+- Android streaming contract (`client-android/camera-to-client-streaming.md`):
   HTTP port 1337, status/config endpoints, one NDJSON streaming connection,
   complete snapshots, explicit IDs, and 33 MediaPipe image landmarks.
-- [AndroidPoseSource](../client/src/pose/AndroidPoseSource.js) and
+- `AndroidPoseSource` and
   [protocol decoder](../client/src/pose/protocol.js): connection lifecycle,
   bounded decoding, validation, and player-mode boundaries.
 - [Frutiger capture guide](../temp/frutiger-character/README.md),
@@ -332,7 +336,7 @@ transport time and does not add three seconds to choreography timestamps.
 
 Use one Web Audio transport for preview/recording. Schedule starts and derive song
 position from the audio clock, accounting for audible-output mapping as described
-in the [integration plan](android-game-integration-plan.md). Rendering samples that
+in the integration plan. Rendering samples that
 position; it never advances music time by adding animation deltas.
 
 Android uptime and browser `performance.now()` cannot be subtracted directly.

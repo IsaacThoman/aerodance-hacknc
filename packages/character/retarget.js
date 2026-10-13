@@ -2,7 +2,7 @@ import { Matrix4, Vector3 } from 'three';
 export { calibratePoses } from './calibration.js';
 const clamp = (x,a,b) => Math.min(b,Math.max(a,x));
 const mid = (p,a,b) => ({x:(p[a].x+p[b].x)/2,y:(p[a].y+p[b].y)/2,z:(p[a].z+p[b].z)/2});
-/** One pose applier for recorded, edited and live Android-shaped poses. */
+/** One pose applier for recorded, edited and live poses. */
 export function createPoseApplier(model, calibration, {smoothDistance=false} = {}) {
   const bones = {};
   model.traverse(o=>{if(o.isBone) bones[o.name]=o;});

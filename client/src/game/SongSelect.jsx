@@ -4,7 +4,6 @@ import {
   FONT, ICONS, drawGlassCircle, drawHeader, drawPill, drawShadowText, ellipsize, paragraph,
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
-import { playUISound } from '../audio/uiSounds.js';
 import { duckMenuMusic } from '../audio/mixer.js';
 import { createSongPlayer } from '../audio/songPlayer.js';
 import { loadSongBundle } from '../songs/loadBundle.js';
@@ -27,8 +26,8 @@ import {
  *            and Dance!, which hands the bundle to the game (onDance); the menu music
  *            ducks underneath
  *
- * Bundles are fully verified before they play (songs/loadBundle.js). Back / Escape / the
- * remote's B go from the preview to the list and from the list to the player count.
+ * Bundles are fully verified before they play (songs/loadBundle.js). Back / Escape go from
+ * the preview to the list and from the list to the player count.
  * The canvas reports data-song-screen, -song-ready, -catalog, -song-count, -player-slots, -preview-state
  * and -preview-time-ms for tests.
  *
@@ -37,7 +36,7 @@ import {
  */
 
 const CATALOG_URL = () => new URL(`${import.meta.env.BASE_URL}songs/manifest.json`, window.location.href).href;
-const ACTIVE = ['connecting', 'reconnecting'];
+const ACTIVE = ['connecting'];
 
 // Each player's tracking, from the pose input (reported for tests as data-player-slots).
 function slotStatus(connection, id) {
@@ -203,12 +202,11 @@ export default function SongSelect({
     onKey: (e, s) => {
       // A held key shouldn't run through screens.
       if (!live() || e.repeat) return;
-      if (e.key === 'Escape') { playUISound('back'); back(); }
+      if (e.key === 'Escape') back();
       else return;
       e.preventDefault();
       s.invalidate();
     },
-    onBack: (s) => { back(); s.invalidate(); },
     update: (dt, s) => {
       const p = props.current;
       if (st.next !== st.screen) {

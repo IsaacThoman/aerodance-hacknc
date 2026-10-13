@@ -37,24 +37,3 @@ export function timeline(show, now) {
     step: easeInOut(clamp01((t - REVEAL) / STEP)),
   };
 }
-
-/** Reopened battles use public scores; restore full grades only when their scores match. */
-export function battleResultsShow(battle, saved, now) {
-  const results = battle.players.map((p) => {
-    const detail = saved?.results?.[p.seat];
-    const score = p.result?.score ?? 0;
-    return {
-      ...PLAYERS[p.seat % PLAYERS.length],
-      ...(p.result && detail?.score === score ? detail : {}),
-      name: p.name ?? `Player ${p.seat + 1}`,
-      score,
-      summary: p.result,
-    };
-  });
-  return {
-    key: `battle|${battle.id}`,
-    start: now + 0.3,
-    results,
-    winner: battle.winnerSeat === null ? null : battle.players.findIndex((p) => p.seat === battle.winnerSeat),
-  };
-}

@@ -6,7 +6,7 @@ import path from 'node:path';
 import express from 'express';
 import { chromium } from 'playwright';
 import { createStudio } from '../../tools/choreography/server/index.js';
-import { PILL, MODES, PRIMARY, MODEL_RECTS } from '../src/connect/layout.js';
+import { PILL, PRIMARY, MODEL_RECTS } from '../src/connect/layout.js';
 import { BACK as MENU_BACK, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
 import { BACK, rowRect } from '../src/game/layout.js';
 import { appendOperation, trackDataIds } from '../../tools/choreography/core.js';
@@ -82,8 +82,7 @@ try {
   };
   const until = (key, value) => game.waitForFunction(([key, value]) => document.querySelector('canvas')?.dataset[key] === value, [key, value]);
   await until('menuReady', 'true'); await click(SETTINGS); await until('menuScreen', 'settings'); await until('menuReady', 'true'); await click(PILL); await until('connectReady', 'true');
-  await click(MODES[1]); await until('connectMode', 'webcam');
-  assert.equal(await game.evaluate(() => cameraRequests), 0, 'selecting Webcam does not request permission');
+  assert.equal(await game.evaluate(() => cameraRequests), 0, 'opening Connect Client does not request permission');
   await game.evaluate(() => { cameraMode = 'denied'; }); await click(PRIMARY); await until('connectStatus', 'error');
   assert.match(await game.locator('canvas').getAttribute('data-connect-message'), /permission was denied/);
   await game.evaluate(() => { cameraMode = 'normal'; }); await click(PRIMARY);
@@ -105,7 +104,6 @@ try {
 
   studio = await pageFor(4181);
   await studio.getByRole('heading', { name: 'Make every move yours.' }).waitFor();
-  await studio.getByLabel('Pose source', { exact: true }).selectOption('webcam');
   assert.equal(await studio.evaluate(() => cameraRequests), 0);
   // Keep Studio capture responsive in software CI; all three models were exercised above.
   await studio.getByLabel('Webcam pose model').selectOption('lite');

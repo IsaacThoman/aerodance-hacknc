@@ -32,8 +32,7 @@ export function resetPost(overrides = {}) {
   Object.assign(post, POST_DEFAULTS, overrides);
 }
 
-// Exported so offline renders (temp/trophy-renders) grade exactly like the game.
-export const GradeShader = {
+const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uVignette: { value: 0.2 },

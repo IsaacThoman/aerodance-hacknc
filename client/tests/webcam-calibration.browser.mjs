@@ -5,7 +5,7 @@ import path from 'node:path';
 import express from 'express';
 import { chromium } from 'playwright';
 import { bundleFixture } from './fixtures/songBundle.js';
-import { PILL, MODES, PRIMARY } from '../src/connect/layout.js';
+import { PILL, PRIMARY } from '../src/connect/layout.js';
 import { BACK as MENU_BACK, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
 import { DANCE, GAME_READY_START, RESULTS_RETRY, rowRect } from '../src/game/layout.js';
 
@@ -74,7 +74,7 @@ try {
   };
   const until = (key, value) => page.waitForFunction(([key, value]) => document.querySelector('canvas')?.dataset[key] === value, [key, value]);
   await until('menuReady', 'true'); await click(SETTINGS); await until('menuScreen', 'settings'); await until('menuReady', 'true');
-  await click(PILL); await until('connectReady', 'true'); await click(MODES[1]); await until('connectMode', 'webcam');
+  await click(PILL); await until('connectReady', 'true');
   await click(PRIMARY); await until('connectStatus', 'connected');
   await page.keyboard.press('Escape'); await until('connectOpen', 'false');
   await click(MENU_BACK); await until('menuScreen', 'main'); await until('menuReady', 'true');

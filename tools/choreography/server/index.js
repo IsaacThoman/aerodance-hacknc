@@ -23,7 +23,7 @@ export function createStudio({
 } = {}) {
   const app = express(),
     store = new Store(dataDir);
-  // Browser writes are same-origin. LAN device CORS remains Android's responsibility.
+  // Browser writes are same-origin.
   app.use("/api", (req, res, next) => {
     const origin = req.headers.origin;
     if (origin && origin !== `${req.protocol}://${req.get("host")}`)

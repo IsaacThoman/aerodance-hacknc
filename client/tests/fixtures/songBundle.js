@@ -17,11 +17,18 @@ export function bundleFixture() {
     samples:[100,300,500,700,900].map(songTimeMs=>({songTimeMs,poses:structuredClone(poses),quality:qualityFor(poses)})),provenance:{},
   };
   // One second of silent PCM, solely for automated browser tests; never cataloged publicly.
-  const audio = new Uint8Array(16044), view = new DataView(audio.buffer);
-  const write = (offset,s) => [...s].forEach((c,i)=>view.setUint8(offset+i,c.charCodeAt(0)));
-  write(0,'RIFF');view.setUint32(4,16036,true);write(8,'WAVE');write(12,'fmt ');view.setUint32(16,16,true);
-  view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,8000,true);view.setUint32(28,16000,true);
-  view.setUint16(32,2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,16000,true);
+  const audio = silentWav(1000);
   const entry = {id:song.songId,title:song.title,artist:song.artist,durationMs:1000,supportedPlayerCounts:[1,2],bundleRevision:1,bundle:'fixture/song.json'};
   return {song,choreography,audio,entry};
+}
+
+/** Silent 8 kHz mono 16-bit PCM WAV lasting durationMs. */
+export function silentWav(durationMs) {
+  const data = Math.round(durationMs * 8) * 2;
+  const audio = new Uint8Array(44 + data), view = new DataView(audio.buffer);
+  const write = (offset,s) => [...s].forEach((c,i)=>view.setUint8(offset+i,c.charCodeAt(0)));
+  write(0,'RIFF');view.setUint32(4,36 + data,true);write(8,'WAVE');write(12,'fmt ');view.setUint32(16,16,true);
+  view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,8000,true);view.setUint32(28,16000,true);
+  view.setUint16(32,2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,data,true);
+  return audio;
 }

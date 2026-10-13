@@ -3,7 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
-import express from "express";
 import { createStudio } from "../server/index.js";
 import { readZip } from "../server/zip.js";
 
@@ -19,84 +18,62 @@ const browser = await chromium.launch({
     "--enable-unsafe-swiftshader",
   ],
 });
-// An actual streaming HTTP fixture exercises browser capture/batching, not hardware accuracy.
-const device = express();
-device.use((req, res, next) => {
-  res.set("Access-Control-Allow-Origin", "http://127.0.0.1:4175");
-  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-  next();
-});
-device.use(express.json());
-let seq = 0;
-let releasePoses;
-let liveX = 0.25;
-let visiblePlayers = [0, 1];
-device.get("/v1/status", (_req, res) =>
-  res.json({
-    protocolVersion: 2,
-    sessionId: "browser-fixture",
-    pipelineState: "running",
-    capabilities: { supportedPlayerCounts: [1, 2], poseModel: "fixture" },
-  }),
-);
-device.post("/v1/config", (_req, res) =>
-  res.json({
-    playerCount: 2,
-    sessionId: "browser-fixture",
-    effectiveFromSeq: seq + 1,
-  }),
-);
-device.get("/v1/stream", (req, res) => {
-  res.type("application/x-ndjson");
-  res.flushHeaders();
-  let initializing = true;
-  releasePoses = () => {
-    initializing = false;
+// A fake camera and pose worker exercise browser capture/batching, not tracking accuracy.
+// The page reads its poses from window.fakePose: whether the model has loaded, which
+// players are in view, and where player 1 stands (camera x; webcam slots are camera
+// regions, so player 1 is on the right of the image).
+function fakeWebcam() {
+  window.fakePose = { ready: false, visible: [0, 1], liveX: 0.75 };
+  Object.defineProperty(navigator, "mediaDevices", { value: {
+    enumerateDevices: async () => [{ kind: "videoinput", deviceId: "fixture-camera", label: "Fixture camera" }],
+    getUserMedia: async () => {
+      const canvas = Object.assign(document.createElement("canvas"), { width: 640, height: 480 });
+      const g = canvas.getContext("2d");
+      let frame = 0;
+      const draw = () => { g.fillStyle = frame++ % 2 ? "#fff" : "#eee"; g.fillRect(0, 0, 640, 480); };
+      draw();
+      const stream = canvas.captureStream(30), timer = setInterval(draw, 33);
+      for (const track of stream.getTracks()) {
+        const stop = track.stop.bind(track);
+        track.stop = () => { clearInterval(timer); stop(); };
+      }
+      return stream;
+    },
+  } });
+  const NativeWorker = window.Worker;
+  window.Worker = function Worker(url, options) {
+    if (!String(url).includes("pose.worker")) return new NativeWorker(url, options);
+    let sessionId, waiting;
+    const worker = {
+      onmessage: null,
+      onerror: null,
+      terminate() { clearInterval(waiting); },
+      postMessage(data) {
+        const reply = (message) => setTimeout(() => worker.onmessage?.({ data: { sessionId, ...message } }));
+        if (data.type === "initialize") {
+          sessionId = data.sessionId;
+          waiting = setInterval(() => {
+            if (!window.fakePose.ready) return;
+            clearInterval(waiting);
+            reply({ type: "ready", delegate: "CPU" });
+          }, 20);
+        } else if (data.type === "frame") {
+          data.bitmap.close();
+          const { visible, liveX } = window.fakePose;
+          reply({ type: "result", seq: data.seq, inferenceMs: 1, landmarks: visible.map((playerId) =>
+            Array.from({ length: 33 }, (_, i) => ({
+              x: playerId === 0 ? liveX : 0.25,
+              y: i < 11 ? 0.2 : i < 23 ? 0.4 : i < 27 ? 0.6 : 0.9,
+              z: 0,
+              visibility: 0.95,
+              presence: 0.98,
+            }))) });
+        }
+      },
+    };
+    return worker;
   };
-  const timer = setInterval(() => {
-    const t = Math.round(performance.now());
-    if (initializing) {
-      res.write(
-        JSON.stringify({
-          protocolVersion: 2,
-          type: "heartbeat",
-          sessionId: "browser-fixture",
-          producerTimeMs: t,
-          lastPoseSeq: seq || null,
-          pipelineState: "starting",
-        }) + "\n",
-      );
-      return;
-    }
-    res.write(
-      JSON.stringify({
-        protocolVersion: 2,
-        type: "pose",
-        sessionId: "browser-fixture",
-        seq: ++seq,
-        frameReceivedTimeMs: t,
-        resultTimeMs: t + 20,
-        playerCount: 2,
-        input: { width: 640, height: 480, mirrored: false },
-        poses: visiblePlayers.map((playerId) => ({
-          playerId,
-          landmarks: Array.from({ length: 33 }, (_, i) => ({
-            x: playerId === 0 ? liveX : 0.75,
-            y: i < 11 ? 0.2 : i < 23 ? 0.4 : i < 27 ? 0.6 : 0.9,
-            z: 0,
-            visibility: 0.95,
-            presence: 0.98,
-          })),
-        })),
-      }) + "\n",
-    );
-  }, 70);
-  req.on("close", () => clearInterval(timer));
-});
-const deviceServer = device.listen(1337, "127.0.0.1");
-await new Promise((r) => deviceServer.once("listening", r));
+}
 let testPage;
 try {
   const page = await browser.newPage({
@@ -105,6 +82,8 @@ try {
     errors = [];
   testPage = page;
   page.setDefaultTimeout(60000);
+  await page.addInitScript(fakeWebcam);
+  const setPoses = (patch) => page.evaluate((p) => Object.assign(window.fakePose, p), patch);
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("http://127.0.0.1:4175");
   await page.getByRole("heading", { name: "Make every move yours." }).waitFor();
@@ -383,14 +362,13 @@ try {
   const bundle = readZip(await readFile(file));
   assert.ok([...bundle.keys()].some((k) => k.endsWith("/choreography.json")));
   await page.getByRole("button", { name: "Frutiger", exact: true }).click();
-  await page.locator("canvas").waitFor();
+  await page.getByRole("main").locator("canvas").waitFor();
   await page.waitForTimeout(1500);
   await page.getByRole("button", { name: "Skeleton", exact: true }).click();
-  await page.getByLabel("Android IP address").fill("127.0.0.1");
   await page
-    .getByRole("button", { name: "Connect Android", exact: true })
+    .getByRole("button", { name: "Start camera", exact: true })
     .click();
-  await page.getByText(/Starting camera and pose tracking/).waitFor();
+  await page.getByText(/Loading .* model/).waitFor();
   assert.equal(
     await page
       .getByRole("button", { name: "Record new take", exact: false })
@@ -401,17 +379,17 @@ try {
     .getByRole("button", { name: "Cancel connection", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Connect Android", exact: true })
+    .getByRole("button", { name: "Start camera", exact: true })
     .click();
-  await page.getByText(/Starting camera and pose tracking/).waitFor();
+  await page.getByText(/Loading .* model/).waitFor();
   assert.equal(
     await page
       .getByRole("button", { name: "Record new take", exact: false })
       .isEnabled(),
     false,
   );
-  visiblePlayers = [];
-  releasePoses();
+  await setPoses({ visible: [], ready: true });
+  await page.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
   await page.getByText("P1 waiting", { exact: false }).waitFor();
   await page
     .getByRole("button", { name: "Record new take", exact: false })
@@ -422,7 +400,7 @@ try {
   await page
     .getByRole("button", { name: "Cancel countdown", exact: true })
     .click();
-  visiblePlayers = [0, 1];
+  await setPoses({ visible: [0, 1] });
   await page.getByText("P1 detected", { exact: false }).waitFor();
   await page.getByText("P2 detected", { exact: false }).waitFor();
   const savedCursor = await page.getByLabel("Song cursor").inputValue();
@@ -433,22 +411,22 @@ try {
   assert.equal(await liveSkeleton.locator(".original-pose").count(), 0);
   assert.equal(await page.getByLabel("Landmark X").isEnabled(), false);
   await page.getByLabel("Selected player").selectOption("0");
-  assert.equal(Number(await page.getByLabel("Landmark X").inputValue()), 0.25);
-  liveX = 0.35;
+  assert.equal(Number(await page.getByLabel("Landmark X").inputValue()), 0.75);
+  await setPoses({ liveX: 0.65 });
   await page.waitForFunction(
     () =>
-      document.querySelector('[aria-label="Landmark X"]').value === "0.35000",
+      document.querySelector('[aria-label="Landmark X"]').value === "0.65000",
   );
   assert.ok(
     Math.abs(
       Number(await liveSkeleton.locator("circle").first().getAttribute("cx")) -
-        650,
+        350,
     ) < 1e-5,
   );
   assert.ok(
     Math.abs(
       Number(await liveSkeleton.locator("circle").nth(33).getAttribute("cx")) -
-        250,
+        750,
     ) < 1e-5,
   );
   const liveJoint = liveSkeleton.locator("circle").first();
@@ -462,10 +440,10 @@ try {
   await page.mouse.up();
   assert.equal(await page.getByLabel("Song cursor").inputValue(), savedCursor);
   await page.getByRole("button", { name: "Frutiger", exact: true }).click();
-  await page.locator("canvas").waitFor();
+  await page.getByRole("main").locator("canvas").waitFor();
   await page.getByRole("button", { name: "Both", exact: true }).click();
   await liveSkeleton.waitFor();
-  await page.locator("canvas").waitFor();
+  await page.getByRole("main").locator("canvas").waitFor();
   await page.getByRole("button", { name: "Playback", exact: true }).click();
   await page.getByLabel("Editable pose skeleton").waitFor();
   assert.equal(await page.getByLabel("Song cursor").inputValue(), savedCursor);
@@ -486,7 +464,7 @@ try {
       "Recording cancelled before enough movement was captured. No take added.",
     )
     .waitFor();
-  visiblePlayers = [0];
+  await setPoses({ visible: [0] });
   await page.getByText("P2 waiting", { exact: false }).waitFor();
   await page
     .getByRole("button", { name: "Record new take", exact: false })
@@ -494,7 +472,7 @@ try {
   await page
     .getByRole("button", { name: "Cancel countdown", exact: true })
     .click();
-  visiblePlayers = [];
+  await setPoses({ visible: [] });
   await page.getByText("P1 waiting", { exact: false }).waitFor();
   await page.getByLabel("Recording delay (seconds)").fill("1");
   await page
@@ -503,7 +481,7 @@ try {
   await page
     .getByRole("button", { name: "Cancel countdown", exact: true })
     .waitFor();
-  visiblePlayers = [0, 1];
+  await setPoses({ visible: [0, 1] });
   await page
     .getByRole("button", { name: "Stop recording", exact: false })
     .waitFor();
@@ -722,8 +700,6 @@ try {
   throw error;
 } finally {
   await browser.close();
-  deviceServer.closeAllConnections();
-  await new Promise((r) => deviceServer.close(r));
   server.closeAllConnections();
   await new Promise((r) => server.close(r));
   await rm(dataDir, { recursive: true, force: true });

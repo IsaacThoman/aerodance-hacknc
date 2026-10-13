@@ -81,7 +81,7 @@ export default function Preview({
   readOnlyLabel = "Live pose skeleton",
   mirrored = false,
   emptyMessage = "No pose at this time",
-  emptyHint = "Import a take or connect Android to start capturing.",
+  emptyHint = "Import a take or start the webcam to start capturing.",
 }) {
   const svg = useRef(null);
   // Reflect the whole camera frame. The same involution converts pointer

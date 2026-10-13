@@ -1,7 +1,11 @@
 # Plan: finishing aerodance as a playable game
 
+> **Historical plan.** The Android client, battles (Solana, iMessage), the phone remote,
+> Flock cameras and the bundled songs it mentions have since been removed; the game and
+> Dance Studio now take poses from the browser webcam only.
+
 Prepared 2026-10-11 from the repository on `main` (4c3133e). This plan turns the
-[Android/game integration plan](android-game-integration-plan.md) and the
+Android/game integration plan and the
 [authoring workflow](song-dance-authoring-workflow.md) into an ordered path to a
 shippable game. It refers to those documents for detailed design rather than
 repeating it.

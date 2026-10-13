@@ -3,8 +3,5 @@ node_modules/
 dist/
 .env
 .DS_Store
-
-# Local Cloudflare tunnel state (scripts/dev-tunnel.sh)
-.dev-tunnel/
 studio-data/
 tools/choreography/dist/

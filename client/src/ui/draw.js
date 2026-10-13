@@ -147,46 +147,6 @@ export const ICONS = {
     g.closePath();
     g.stroke();
   },
-  // Two crossing strands with solid arrowheads; the strand on top gets a
-  // disc-coloured gap so the crossing still reads at 640x480.
-  shuffle(g, cx, cy, r) {
-    const a = r * 0.56;
-    const b = r * 0.3;
-    const hw = r * 0.2;
-    const tip = cx + a;
-    const neck = tip - hw * 1.3;
-    const strand = (y0, y1) => {
-      g.beginPath();
-      g.moveTo(cx - a, y0);
-      g.lineTo(cx - a * 0.35, y0);
-      g.lineTo(cx + a * 0.25, y1);
-      g.lineTo(neck, y1);
-      g.stroke();
-    };
-    const head = (y) => {
-      g.beginPath();
-      g.moveTo(tip, y);
-      g.lineTo(neck, y - hw);
-      g.lineTo(neck, y + hw);
-      g.closePath();
-      g.fill();
-    };
-    g.save();
-    g.fillStyle = '#ffffff';
-    g.lineWidth = 5;
-    g.lineJoin = 'miter';
-    g.lineCap = 'butt';
-    strand(cy - b, cy + b);
-    head(cy + b);
-    g.strokeStyle = '#1f8fd0';
-    g.lineWidth = 12;
-    strand(cy + b, cy - b);
-    g.strokeStyle = '#ffffff';
-    g.lineWidth = 5;
-    strand(cy + b, cy - b);
-    head(cy - b);
-    g.restore();
-  },
   note(g, cx, cy, r) {
     const s = r * 0.5;
     g.save();
@@ -216,32 +176,11 @@ export const ICONS = {
     }
     g.stroke();
   },
-  // Two figures side by side (battles).
-  duo(g, cx, cy, r) {
-    const s = r * 0.5;
-    g.save();
-    g.fillStyle = '#ffffff';
-    g.strokeStyle = '#1f8fd0';
-    g.lineWidth = 5;
-    for (const [dx, k] of [[s * 0.42, 0.82], [-s * 0.38, 1]]) {
-      const hx = cx + dx;
-      g.beginPath();
-      g.arc(hx, cy - s * 0.42 * k, s * 0.34 * k, 0, TAU);
-      g.stroke();
-      g.fill();
-      g.beginPath();
-      g.ellipse(hx, cy + s * 0.62, s * 0.56 * k, s * 0.5 * k, 0, Math.PI, TAU);
-      g.closePath();
-      g.stroke();
-      g.fill();
-    }
-    g.restore();
-  },
   // One figure (one player).
   solo(g, cx, cy, r) { figures(g, cx, cy, r, [[0, 1.15]]); },
-  // Two figures shoulder to shoulder (two players, co-op; Battle's duo stands staggered).
+  // Two figures shoulder to shoulder (two players).
   pair(g, cx, cy, r) { figures(g, cx, cy, r, [[-0.3, 0.8], [0.3, 0.8]]); },
-  // Circular arrow (run it back).
+  // Circular arrow (play again).
   replay(g, cx, cy, r) {
     const a = r * 0.42;
     g.beginPath();
@@ -258,29 +197,6 @@ export const ICONS = {
     g.closePath();
     g.fill();
     g.restore();
-  },
-  home(g, cx, cy, r) {
-    const a = r * 0.42;
-    g.beginPath();
-    g.moveTo(cx - a, cy - a * 0.05);
-    g.lineTo(cx, cy - a * 0.9);
-    g.lineTo(cx + a, cy - a * 0.05);
-    g.moveTo(cx - a * 0.7, cy - a * 0.3);
-    g.lineTo(cx - a * 0.7, cy + a * 0.8);
-    g.lineTo(cx + a * 0.7, cy + a * 0.8);
-    g.lineTo(cx + a * 0.7, cy - a * 0.3);
-    g.stroke();
-  },
-  bubble(g, cx, cy, r) {
-    g.beginPath();
-    g.arc(cx + r * 0.08, cy + r * 0.06, r * 0.36, 0, TAU);
-    g.stroke();
-    g.beginPath();
-    g.arc(cx - r * 0.3, cy - r * 0.32, r * 0.14, 0, TAU);
-    g.stroke();
-    g.beginPath();
-    g.arc(cx - r * 0.03, cy - r * 0.06, r * 0.1, Math.PI * 1.05, Math.PI * 1.55);
-    g.stroke();
   },
   gear(g, cx, cy, r, angle = 0) {
     const teeth = 8;
@@ -328,52 +244,6 @@ export const ICONS = {
   down(g, cx, cy, r) { chevron(g, cx, cy, r, Math.PI / 2); },
   left(g, cx, cy, r) { chevron(g, cx, cy, r, Math.PI); },
   right(g, cx, cy, r) { chevron(g, cx, cy, r, 0); },
-  // Delete-left key: a tag pointing left with an x in it.
-  backspace(g, cx, cy, r) {
-    const a = r * 0.5;
-    const b = r * 0.32;
-    g.beginPath();
-    g.moveTo(cx - a, cy);
-    g.lineTo(cx - a * 0.4, cy - b);
-    g.lineTo(cx + a, cy - b);
-    g.lineTo(cx + a, cy + b);
-    g.lineTo(cx - a * 0.4, cy + b);
-    g.closePath();
-    const x = cx + a * 0.3;
-    const k = b * 0.45;
-    g.moveTo(x - k, cy - k);
-    g.lineTo(x + k, cy + k);
-    g.moveTo(x + k, cy - k);
-    g.lineTo(x - k, cy + k);
-    g.stroke();
-  },
-  // A phone-shaped camera: the Android client.
-  camera(g, cx, cy, r) {
-    const w = r * 0.5;
-    const h = r * 0.82;
-    g.beginPath();
-    g.roundRect(cx - w / 2, cy - h / 2, w, h, r * 0.1);
-    g.stroke();
-    g.beginPath();
-    g.arc(cx, cy - h * 0.22, r * 0.09, 0, TAU);
-    g.stroke();
-  },
-  // Box with an arrow leaving it: opens somewhere else.
-  link(g, cx, cy, r) {
-    const a = r * 0.4;
-    g.beginPath();
-    g.moveTo(cx - a * 0.1, cy - a);
-    g.lineTo(cx - a, cy - a);
-    g.lineTo(cx - a, cy + a);
-    g.lineTo(cx + a, cy + a);
-    g.lineTo(cx + a, cy + a * 0.1);
-    g.moveTo(cx - a * 0.05, cy + a * 0.05);
-    g.lineTo(cx + a, cy - a);
-    g.moveTo(cx + a * 0.25, cy - a);
-    g.lineTo(cx + a, cy - a);
-    g.lineTo(cx + a, cy - a * 0.25);
-    g.stroke();
-  },
 };
 
 function chevron(g, cx, cy, r, angle) {
@@ -564,62 +434,6 @@ export function ellipsize(g, text, maxW) {
   return `${t.trimEnd()}…`;
 }
 
-// Soap bubble: clear body, bright rim and a specular highlight.
-export function drawBubble(g, x, y, r, alpha = 1) {
-  g.save();
-  g.globalAlpha *= alpha;
-  const body = g.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.05, x, y, r);
-  body.addColorStop(0, 'rgba(255,255,255,0.6)');
-  body.addColorStop(0.45, 'rgba(170,235,255,0.14)');
-  body.addColorStop(0.82, 'rgba(110,210,255,0.28)');
-  body.addColorStop(1, 'rgba(255,255,255,0.85)');
-  g.beginPath();
-  g.arc(x, y, r, 0, TAU);
-  g.fillStyle = body;
-  g.fill();
-  g.lineWidth = Math.max(2, r * 0.07);
-  g.strokeStyle = 'rgba(255,255,255,0.85)';
-  g.stroke();
-  g.beginPath();
-  g.ellipse(x - r * 0.36, y - r * 0.42, r * 0.28, r * 0.15, -0.6, 0, TAU);
-  g.fillStyle = 'rgba(255,255,255,0.95)';
-  g.fill();
-  g.restore();
-}
-
-/**
- * QR code from qrcode's module grid, snapped to whole render-buffer pixels so it stays
- * crisp after the pixelated stretch. Fills as much of `box` (design units) as fits, on
- * white with a two-module quiet zone. view = { w, h } is the design size.
- */
-export function drawQR(g, modules, box, view, { dark = '#0b3d6b' } = {}) {
-  const { canvas } = g;
-  const sx = canvas.width / view.w;
-  const sy = canvas.height / view.h;
-  // Width of a buffer pixel over its height once displayed (design units are square on screen).
-  const pixelAspect = sy / sx;
-  const n = modules.size + 4;
-  let mx = Math.max(1, Math.floor((box.w * sx) / n));
-  let my = Math.max(1, Math.floor((box.h * sy) / n));
-  // Keep modules roughly square on screen.
-  while (mx > 1 && mx * pixelAspect > my * 1.15) mx--;
-  while (my > 1 && my > mx * pixelAspect * 1.15) my--;
-  const t = g.getTransform();
-  const ox = Math.round(t.e + box.x * sx + (box.w * sx - n * mx) / 2);
-  const oy = Math.round(t.f + box.y * sy + (box.h * sy - n * my) / 2);
-  g.save();
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  g.fillStyle = '#ffffff';
-  g.fillRect(ox, oy, n * mx, n * my);
-  g.fillStyle = dark;
-  for (let row = 0; row < modules.size; row++) {
-    for (let col = 0; col < modules.size; col++) {
-      if (modules.get(row, col)) g.fillRect(ox + (col + 2) * mx, oy + (row + 2) * my, mx, my);
-    }
-  }
-  g.restore();
-}
-
 // Splits text into lines no wider than maxW in the current font.
 export function wrapText(g, text, maxW) {
   const lines = [];
@@ -654,63 +468,12 @@ export function paragraph(g, str, x, y, maxW, { size = 26, weight = 600, color =
   return lines.length * lineH;
 }
 
-// White text field with its value (or placeholder) and a blinking caret while focused.
-export function drawField(g, rect, { value, placeholder, focused, blink, disabled = false }) {
-  g.save();
-  if (disabled) g.globalAlpha *= 0.6;
-  roundRect(g, rect.x, rect.y, rect.w, rect.h, 22);
-  g.fillStyle = 'rgba(255,255,255,0.94)';
-  g.fill();
-  g.lineWidth = focused ? 5 : 3;
-  g.strokeStyle = focused ? '#4fd8e8' : 'rgba(255,255,255,0.9)';
-  g.stroke();
-  roundRect(g, rect.x + 4, rect.y, rect.w - 8, rect.h, 20);
-  g.clip();
-  g.font = `600 32px ${FONT}`;
-  const tw = g.measureText(value).width;
-  // Keep the end of long input in view.
-  const tx = rect.x + 26 - Math.max(0, tw - (rect.w - 60));
-  text(g, value || placeholder, tx, rect.y + rect.h / 2 + 1, { size: 32, color: value ? NAVY : 'rgba(12,47,82,0.42)' });
-  if (focused && blink) {
-    g.fillStyle = NAVY;
-    g.fillRect(tx + (value ? tw : 0) + 2, rect.y + rect.h / 2 - 20, 3, 40);
-  }
-  g.restore();
-}
-
-// Small outlined status chip; returns its width.
-export function drawChip(g, x, y, label, color) {
-  g.font = `700 22px ${FONT}`;
-  const w = g.measureText(label).width + 40;
-  roundRect(g, x, y, w, 44, 22);
-  g.fillStyle = 'rgba(0, 30, 70, 0.4)';
-  g.fill();
-  g.lineWidth = 2;
-  g.strokeStyle = color;
-  g.stroke();
-  text(g, label, x + 20, y + 23, { size: 22, weight: 700, color });
-  return w;
-}
-
-// Underlined text link; returns its (padded) hit rect.
-export function drawLink(g, label, x, y, hover, { align = 'left', size = 26 } = {}) {
-  text(g, label, x, y, { size, weight: 700, color: hover ? '#ffffff' : '#bff4ff', align });
-  g.font = `700 ${size}px ${FONT}`;
-  const w = g.measureText(label).width;
-  const x0 = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
-  g.fillStyle = hover ? '#ffffff' : 'rgba(191,244,255,0.7)';
-  g.fillRect(x0, y + size * 0.62, w, 2);
-  return { x: x0 - 12, y: y - size, w: w + 24, h: size * 2 };
-}
-
-// Connection status colours (the Android client): green when live, amber while connecting.
+// Connection status colours: green when live, amber while connecting.
 export const STATUS_COLORS = {
   connected: '#3ad68a',
   connecting: '#ffc44d',
   initializing: '#ffc44d',
-  reconnecting: '#ffc44d',
   error: '#ff6b70',
-  dummy: '#8fa3ff',
   disconnected: '#9db4bf',
 };
 
@@ -773,126 +536,6 @@ export function drawProgress(g, rect, t, { hover = 0, knob = false } = {}) {
 }
 
 // ---------- Frutiger Aero celebration ----------
-
-// Soft rotating light rays with a glowing aqua core, like a 2007 desktop wallpaper.
-export function drawSunburst(g, x, y, r, { angle = 0, alpha = 1, rays = 14 } = {}) {
-  if (r <= 0 || alpha <= 0) return;
-  g.save();
-  g.globalAlpha *= alpha;
-  g.translate(x, y);
-  g.rotate(angle);
-  const fade = g.createRadialGradient(0, 0, r * 0.08, 0, 0, r);
-  fade.addColorStop(0, 'rgba(255,255,255,0.75)');
-  fade.addColorStop(0.45, 'rgba(200,245,255,0.32)');
-  fade.addColorStop(1, 'rgba(160,235,255,0)');
-  g.fillStyle = fade;
-  const half = (Math.PI / rays) * 0.5;
-  g.beginPath();
-  for (let i = 0; i < rays; i++) {
-    const a = (i / rays) * TAU;
-    g.moveTo(0, 0);
-    g.arc(0, 0, r, a - half, a + half);
-    g.closePath();
-  }
-  g.fill();
-  const core = g.createRadialGradient(0, 0, 0, 0, 0, r * 0.42);
-  core.addColorStop(0, 'rgba(255,255,255,0.9)');
-  core.addColorStop(0.35, 'rgba(150,240,230,0.45)');
-  core.addColorStop(1, 'rgba(90,200,255,0)');
-  g.fillStyle = core;
-  g.beginPath();
-  g.arc(0, 0, r * 0.42, 0, TAU);
-  g.fill();
-  g.restore();
-}
-
-// Four-point glint.
-export function drawSparkle(g, x, y, size, alpha = 1) {
-  if (size <= 0 || alpha <= 0) return;
-  g.save();
-  g.globalAlpha *= alpha;
-  g.translate(x, y);
-  g.beginPath();
-  const w = size * 0.16;
-  g.moveTo(0, -size);
-  g.quadraticCurveTo(w, -w, size, 0);
-  g.quadraticCurveTo(w, w, 0, size);
-  g.quadraticCurveTo(-w, w, -size, 0);
-  g.quadraticCurveTo(-w, -w, 0, -size);
-  g.fillStyle = '#ffffff';
-  g.shadowColor = 'rgba(160,240,255,0.9)';
-  g.shadowBlur = size * 0.8;
-  g.fill();
-  g.restore();
-}
-
-// Glossy gold medal with a star: the winner's badge.
-export function drawMedal(g, x, y, r) {
-  if (r <= 0) return;
-  g.save();
-  g.shadowColor = 'rgba(120, 70, 0, 0.45)';
-  g.shadowBlur = r * 0.4;
-  g.shadowOffsetY = r * 0.12;
-  const body = g.createLinearGradient(0, y - r, 0, y + r);
-  body.addColorStop(0, '#fff3b0');
-  body.addColorStop(0.45, '#ffd34d');
-  body.addColorStop(1, '#e09a12');
-  g.beginPath();
-  g.arc(x, y, r, 0, TAU);
-  g.fillStyle = body;
-  g.fill();
-  g.shadowColor = 'transparent';
-  g.lineWidth = Math.max(2, r * 0.08);
-  g.strokeStyle = 'rgba(255,255,255,0.85)';
-  g.stroke();
-  g.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI / 2 + (i * Math.PI) / 5;
-    const rr = i % 2 ? r * 0.25 : r * 0.58;
-    g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
-  }
-  g.closePath();
-  g.fillStyle = '#ffffff';
-  g.fill();
-  g.beginPath();
-  g.ellipse(x - r * 0.1, y - r * 0.5, r * 0.6, r * 0.28, -0.2, 0, TAU);
-  g.fillStyle = 'rgba(255,255,255,0.35)';
-  g.fill();
-  g.restore();
-}
-
-// The four player LEDs off a Wii remote: `player` (1-4, or a list of them) lit and glowing,
-// `glow` 0..1 pulses it.
-export function drawPlayerLeds(g, cx, cy, { player, glow = 1, scale = 1 } = {}) {
-  const players = [player].flat();
-  const gap = 46 * scale;
-  const size = 22 * scale;
-  const bar = { x: cx - gap * 2 - 4 * scale, y: cy - 30 * scale, w: gap * 4 + 8 * scale, h: 60 * scale };
-  g.save();
-  roundRect(g, bar.x, bar.y, bar.w, bar.h, bar.h / 2);
-  const body = g.createLinearGradient(0, bar.y, 0, bar.y + bar.h);
-  body.addColorStop(0, '#ffffff');
-  body.addColorStop(1, '#dfe6ec');
-  g.fillStyle = body;
-  g.shadowColor = 'rgba(0, 34, 84, 0.35)';
-  g.shadowBlur = 14 * scale;
-  g.shadowOffsetY = 4 * scale;
-  g.fill();
-  g.restore();
-  for (let i = 0; i < 4; i++) {
-    const x = cx + (i - 1.5) * gap;
-    const lit = players.includes(i + 1);
-    g.save();
-    roundRect(g, x - size / 2, cy - size / 2, size, size, 5 * scale);
-    if (lit) {
-      g.shadowColor = '#34b9ff';
-      g.shadowBlur = (10 + 14 * glow) * scale;
-    }
-    g.fillStyle = lit ? '#34b9ff' : '#cdd6dd';
-    g.fill();
-    g.restore();
-  }
-}
 
 /** Headline in the wordmark's treatment: dark halo, hard drop shadow, glossy tinted face. */
 export function drawHeadline(g, str, x, y, size, face, maxW) {

@@ -391,15 +391,6 @@ small {
   margin: 10px 0;
   overflow-wrap: anywhere;
 }
-.origin {
-  display: block;
-  line-height: 1.7;
-  font-size: 9px;
-  overflow-wrap: anywhere;
-}
-.origin code {
-  color: #c5e1d4;
-}
 .tracking {
   display: flex;
   gap: 12px;

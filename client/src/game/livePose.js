@@ -1,8 +1,7 @@
 /*
  * Live poses for the players' characters: a calibration taken from a short window of
  * reliable poses and then held, and display smoothing between the camera's samples.
- * Display only: the scorer gets the raw poses (docs/android-game-integration-plan.md,
- * "Live retargeting").
+ * Display only: the scorer gets the raw poses.
  */
 
 const CORE = [11, 12, 23, 24];

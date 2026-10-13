@@ -1,4 +1,4 @@
-// Server-safe webcam capture validation. These records are not Android wire records.
+// Server-safe webcam capture validation. These records are not protocol-v2 wire records.
 import { validatePoses } from './choreography.js';
 import { poseModel } from './browser/models.js';
 export function validateWebcamRecord(record) {

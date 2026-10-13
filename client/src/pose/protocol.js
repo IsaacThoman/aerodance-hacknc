@@ -1,4 +1,5 @@
-// Promoted from the Android pose test page; preserve its bounded decoder and wire validation.
+// Pose wire records (protocol v2), the format of pose recordings and legacy captures, with a
+// bounded NDJSON decoder.
 export const MAX_BYTES = 16 * 1024;
 const states = ['starting', 'running', 'error', 'stopping'];
 const integer = (n, min = 0) => Number.isSafeInteger(n) && n >= min;
@@ -39,25 +40,4 @@ export class NdjsonDecoder {
     }
   }
   finish() { if (this.length) throw Error('Incomplete final record'); }
-}
-
-/** New connection creates a fresh state. A heartbeat keeps transport alive, never the pose. */
-export class PoseState {
-  constructor(staleMs = 500) { this.staleMs = staleMs; this.session = null; this.seq = 0; this.pose = null; this.received = null; this.lastRecord = null; }
-  accept(record, now) {
-    this.lastRecord = now;
-    if (record.sessionId !== this.session) {
-      this.session = record.sessionId; this.seq = 0; this.pose = null; this.received = null;
-    }
-    if (record.type !== 'pose' || record.seq <= this.seq) return false;
-    this.seq = record.seq; this.received = now; this.pose = record;
-    return true;
-  }
-  current(now) { return this.received !== null && now - this.received < this.staleMs ? this.pose : null; }
-}
-
-export function deviceEndpoint(ip) {
-  const pieces = ip.trim().split('.');
-  if (pieces.length !== 4 || pieces.some(p => !/^(0|[1-9]\d{0,2})$/.test(p) || +p > 255)) throw Error('Enter an IPv4 address, such as 192.168.43.1');
-  return `http://${pieces.join('.')}:1337`;
 }

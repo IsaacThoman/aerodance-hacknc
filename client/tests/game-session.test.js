@@ -36,7 +36,7 @@ function fakePlayer(clock) {
 }
 
 /** A pose source the test drives by hand. */
-function fakeSource(sourceKind = 'android') {
+function fakeSource(sourceKind = 'replay') {
   const listeners = new Set();
   let seq = 0;
   return {

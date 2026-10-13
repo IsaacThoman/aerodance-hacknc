@@ -8,7 +8,7 @@ self.onmessage = async ({ data }) => {
       sessionId = data.sessionId;
       runningMode = data.runningMode || 'VIDEO';
       if (!['IMAGE', 'VIDEO'].includes(runningMode)) throw Error('Invalid pose running mode');
-      if (!await FilesetResolver.isSimdSupported()) throw Error('Pose tracking requires a browser with WebAssembly SIMD support. Update your browser or use Android.');
+      if (!await FilesetResolver.isSimdSupported()) throw Error('Pose tracking requires a browser with WebAssembly SIMD support. Update your browser.');
       const files = await FilesetResolver.forVisionTasks(data.wasmUrl, true);
       const response = await fetch(data.modelUrl);
       if (!response.ok) throw Error(`Model download failed (HTTP ${response.status})`);

@@ -10,7 +10,7 @@ export class Recorder {
     this.failure = null;
   }
   async start() {
-    this.sourceKind = this.source.view.sourceKind || 'android';
+    this.sourceKind = this.source.view.sourceKind;
     this.modelId = this.source.view.model;
     // Freshness can clear the preview while the take request is in flight.
     // Retain the capture identity observed when recording starts.
@@ -24,9 +24,7 @@ export class Recorder {
         body: {
           name: `Take · ${new Date().toLocaleTimeString()}`,
           sourceKind: this.sourceKind,
-          status: this.sourceKind === 'webcam'
-            ? { ...this.source.view.modelConfig, audioAnchor: this.transport.audioAnchor }
-            : { poseModel: this.source.view.model, protocolVersion: 2 },
+          status: { ...this.source.view.modelConfig, audioAnchor: this.transport.audioAnchor },
         },
       },
     );
@@ -52,8 +50,8 @@ export class Recorder {
       }
       if (
         e.record.sessionId !== this.session ||
-        (this.sourceKind === 'webcam' &&
-          (e.record.schema !== 'aerodance.webcam-record' || e.record.modelId !== this.modelId)) ||
+        e.record.schema !== 'aerodance.webcam-record' ||
+        e.record.modelId !== this.modelId ||
         (e.record.type === "pose" &&
           (e.record.playerCount !== 2 ||
             e.record.input.width !== this.input.width ||
@@ -69,13 +67,8 @@ export class Recorder {
           ? Math.max(0, performance.now() - e.receivedBrowserTimeMs) * this.transport.rate
           : 0);
       // Ignore the lead-in, including late inference results for frames that
-      // arrived before music started. Device timestamp differences need no sync.
-      const processingDelayMs = this.sourceKind === 'android' && e.record.type === "pose"
-        ? e.record.resultTimeMs - e.record.frameReceivedTimeMs
-        : 0;
-      const audioPositionAtFrameMs = this.sourceKind === 'webcam'
-        ? this.transport.atBrowserTime(e.record.frameBrowserTimeMs)
-        : audioPositionAtReceiptMs - processingDelayMs * this.transport.rate;
+      // arrived before music started.
+      const audioPositionAtFrameMs = this.transport.atBrowserTime(e.record.frameBrowserTimeMs);
       if (audioPositionAtFrameMs < this.transport.positionMs)
         return;
       this.captureStartedAt ??= performance.now();
@@ -85,7 +78,7 @@ export class Recorder {
         receivedBrowserTimeMs: e.receivedBrowserTimeMs,
         audioPositionAtReceiptMs,
         audioPlaybackRate: this.transport.rate,
-        ...(this.sourceKind === 'webcam' ? { audioPositionAtFrameMs } : {}),
+        audioPositionAtFrameMs,
         record: e.record,
       };
       this.pending.push(envelope);

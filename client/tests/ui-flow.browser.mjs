@@ -1,5 +1,5 @@
 // Browser flow for the in-engine game UI: Connect Client, player count, Song Select, the
-// song preview on its dance stage and Android pairing. Everything is drawn on the canvas,
+// song preview on its dance stage and a scored song. Everything is drawn on the canvas,
 // so it clicks design coordinates (the layout modules below) and reads the state each
 // overlay reports on the canvas's data attributes. Run after `npm run build`.
 import assert from 'node:assert/strict';
@@ -7,9 +7,9 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import express from 'express';
 import { chromium } from 'playwright';
-import { bundleFixture } from './fixtures/songBundle.js';
+import { bundleFixture, silentWav } from './fixtures/songBundle.js';
 import { BACK as MENU_BACK, ONE_PLAYER, SETTINGS, START, TWO_PLAYERS } from '../src/menu/layout.js';
-import { KEYS, MODES, PILL, PRIMARY, MODEL_RECTS } from '../src/connect/layout.js';
+import { PILL, PRIMARY, MODEL_RECTS } from '../src/connect/layout.js';
 import {
   BACK, DANCE, GAME_PAUSE, GAME_QUIT, GAME_RESUME, RESULTS_RETRY, rowRect,
 } from '../src/game/layout.js';
@@ -31,8 +31,6 @@ const center = (shape) => {
   const r = shape.rect ?? shape;
   return r.w === undefined ? { x: r.x, y: r.y } : { x: r.x + r.w / 2, y: r.y + r.h / 2 };
 };
-const key = (k) => KEYS.find((entry) => entry.key === k);
-let deviceServer;
 let testPage;
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, hasTouch: true });
@@ -55,8 +53,6 @@ try {
       }
     }
   });
-  let deviceRequests = 0;
-  page.on('request', (request) => { if (new URL(request.url()).port === '1337') deviceRequests++; });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   // Keep empty-catalog coverage independent of installed authored songs.
@@ -87,29 +83,19 @@ try {
   await page.waitForFunction(() => document.querySelector('canvas')?.style.opacity === '1', null, { timeout: 90000 });
   await menuOn('main');
 
-  // Connect Client lives on Settings: remembered address, keyboard validation, the keypad, Escape.
+  // Connect Client lives on Settings; Escape closes only the card.
   await click(SETTINGS);
   await menuOn('settings');
   await click(PILL);
-  await until({ connectReady: 'true', connectAddress: '192.168.43.1', connectMessage: 'Ready to connect on port 1337.' });
-  await page.keyboard.type('999');
-  await page.keyboard.press('Enter');
-  await until({ connectMessage: /Enter an IPv4 address/ });
-  for (let i = 0; i < 16; i++) await page.keyboard.press('Backspace');
-  for (const k of '127.0.0.1') await click(key(k));
-  await until({ connectAddress: '127.0.0.1' });
-  await click(key('Backspace'));
-  await until({ connectAddress: '127.0.0.' });
+  await until({ connectReady: 'true', connectStatus: 'disconnected' });
   await page.keyboard.press('Escape');
   await until({ connectOpen: 'false' });
   assert.equal((await data()).menuScreen, 'settings', 'Escape closes only the card');
   await shot('settings');
 
-  // Webcam selection/model controls do not request permission; Start handles denial.
+  // Camera and model controls do not request permission; Start handles denial.
   await click(PILL);
   await until({ connectReady: 'true' });
-  await click(MODES[1]);
-  await until({ connectMode: 'webcam', connectStatus: 'disconnected' });
   await click(MODEL_RECTS[1]);
   await until({ connectModel: 'full' });
   assert.equal(await page.evaluate(() => webcamRequests), 0);
@@ -136,7 +122,6 @@ try {
   await menuOn('players');
   await click(TWO_PLAYERS);
   await until({ songScreen: 'list', songReady: 'true', catalog: 'empty', playerSlots: 'Connect Client|Connect Client' });
-  assert.equal(deviceRequests, 0, 'Webcam must not contact Android');
   await shot('song-select');
 
   // Keyboard: Escape leaves Song Select, arrows and Enter pick Two Players again.
@@ -181,8 +166,7 @@ try {
   }
 
   // Private fixtures cover the exact playable range and song stages, apart from authored music.
-  const serveFixture = async (stage) => {
-    const fixture = bundleFixture();
+  const serveFixture = async (stage, fixture = bundleFixture()) => {
     if (stage) fixture.song.stage = stage;
     const files = new Map([['song.json', Buffer.from(JSON.stringify(fixture.song))], ['choreography.json', Buffer.from(JSON.stringify(fixture.choreography))], ['audio.wav', Buffer.from(fixture.audio)]]);
     files.set('checksums.json', Buffer.from(JSON.stringify({ schema: 'aerodance.checksums', schemaVersion: 1, files: [...files].map(([path, body]) => ({ path, bytes: body.length, sha256: createHash('sha256').update(body).digest('hex') })) })));
@@ -226,87 +210,19 @@ try {
   await click(BACK);
   await until({ songScreen: 'list', stage: '' });
 
-  // A fake Android device: camera startup, first-pose readiness, disconnect and cancel.
-  const device = express();
-  device.use((req, res, next) => {
-    res.set('Access-Control-Allow-Origin', 'http://127.0.0.1:4173');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
-    next();
-  });
-  device.use(express.json());
-  let mode = 2;
-  let seq = 0;
-  let ready = false;
-  let closed;
-  device.get('/v1/status', (_req, res) => res.json({ protocolVersion: 2, sessionId: 'startup-fixture', pipelineState: 'running', capabilities: { supportedPlayerCounts: [1, 2], poseModel: 'fixture' } }));
-  device.post('/v1/config', (req, res) => { mode = req.body.playerCount; res.json({ playerCount: mode, sessionId: 'startup-fixture', effectiveFromSeq: seq + 1 }); });
-  device.get('/v1/stream', (req, res) => {
-    ready = false;
-    res.type('application/x-ndjson');
-    res.flushHeaders();
-    let release;
-    closed = new Promise((resolve) => { release = resolve; });
-    const timer = setInterval(() => {
-      const now = Math.round(performance.now());
-      const record = ready ? {
-        protocolVersion: 2, type: 'pose', sessionId: 'startup-fixture', seq: ++seq, playerCount: mode,
-        frameReceivedTimeMs: now, resultTimeMs: now + 20, input: { width: 640, height: 480, mirrored: false },
-        poses: Array.from({ length: mode }, (_, playerId) => ({ playerId, landmarks: Array.from({ length: 33 }, () => ({ x: 0.25 + playerId * 0.5, y: 0.5, z: 0, visibility: 1, presence: 1 })) })),
-      } : { protocolVersion: 2, type: 'heartbeat', sessionId: 'startup-fixture', producerTimeMs: now, lastPoseSeq: seq || null, pipelineState: 'starting' };
-      res.write(`${JSON.stringify(record)}\n`);
-    }, 100);
-    req.on('close', () => { clearInterval(timer); release(); });
-  });
-  deviceServer = device.listen(1337, '127.0.0.1');
-  await new Promise((resolve) => deviceServer.once('listening', resolve));
-  await openSong(2, 0);
-  await until({ songScreen: 'preview', songReady: 'true' });
-  await click(BACK);
-  await until({ songScreen: 'list', songReady: 'true' });
-  // Connect Client from Settings, with two players picked.
-  const openConnect = async () => {
-    await click(BACK);
-    await menuOn('players');
-    await click(MENU_BACK);
-    await menuOn('main');
-    await click(SETTINGS);
-    await menuOn('settings');
-    await click(PILL);
-    await until({ connectReady: 'true' });
-  };
-  await openConnect();
-  await click(MODES[0]);
-  await until({ connectMode: 'android', connectStatus: 'disconnected' });
-  for (let i = 0; i < 16; i++) await page.keyboard.press('Backspace');
-  await page.keyboard.type('127.0.0.1');
-  await page.keyboard.press('Enter');
-  await until({ connectStatus: 'initializing', connectMessage: /90 seconds/ }, 10000);
-  ready = true;
-  await until({ connectStatus: 'connected' }, 10000);
-  // Both players are tracked once Song Select is back up.
-  await page.keyboard.press('Escape');
-  await until({ connectOpen: 'false' });
-  await click(MENU_BACK);
-  await menuOn('main');
-  await click(START);
-  await menuOn('players');
-  await click(TWO_PLAYERS);
-  await until({ songScreen: 'list', songReady: 'true', playerSlots: 'Detected|Detected' }, 10000);
-  await shot('android-connected');
-  await openConnect();
-  await click(PRIMARY); // Disconnect
-  await closed;
-  await until({ connectStatus: 'disconnected' }, 5000);
-  await click(PRIMARY); // Connect
-  await until({ connectStatus: 'initializing' }, 10000);
-  await click(PRIMARY); // Cancel connection
-  await closed;
-  await until({ connectStatus: 'disconnected' }, 5000);
-
   // A whole song with the autoplay ghost (?input=ghost): ready check, countdown, pause and
-  // resume, scoring, results, Play again and back to Song Select.
+  // resume, scoring, results, Play again and back to Song Select. The test routine's own
+  // choreography plays over silence.
   await page.unrouteAll({ behavior: 'ignoreErrors' });
+  const routine = new URL('./fixtures/song-70c63c8e/', import.meta.url);
+  const song = JSON.parse(await readFile(new URL('song.json', routine), 'utf8'));
+  song.audio = { path: 'audio.wav', mimeType: 'audio/wav' };
+  await serveFixture(null, {
+    song,
+    choreography: JSON.parse(await readFile(new URL('choreography.json', routine), 'utf8')),
+    audio: silentWav(song.durationMs),
+    entry: { id: song.songId, title: song.title, artist: song.artist, durationMs: song.durationMs, supportedPlayerCounts: song.supportedPlayerCounts, bundleRevision: song.bundleRevision, bundle: `${song.songId}/song.json` },
+  });
   await page.goto('http://127.0.0.1:4173/?input=ghost');
   await page.locator('canvas').waitFor();
   await page.waitForFunction(() => document.querySelector('canvas')?.style.opacity === '1', null, { timeout: 90000 });
@@ -345,13 +261,12 @@ try {
   await until({ songScreen: 'list', songReady: 'true' }, 10000);
   assert.equal((await data()).gamePhase, undefined);
   assert.deepEqual(errors, []);
-  console.log('Browser flow passed: Connect Client card (keypad, keyboard, validation, webcam models and permission denial), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, each song on its own stage, Android startup, first-pose readiness, disconnect, startup cancellation, a scored two-player song with the autoplay ghost (countdown, pause, resume, results, Play again, quit) and no runtime errors.');
+  console.log('Browser flow passed: Connect Client card (webcam models and permission denial), both player modes, Back and Escape, keyboard navigation, letterboxing, catalog, bundle loading, finite audio through the mixer, each song on its own stage, a scored two-player song with the autoplay ghost (countdown, pause, resume, results, Play again, quit) and no runtime errors.');
 } catch (error) {
   console.error(error);
   if (testPage) console.error(await testPage.locator('canvas').evaluate((c) => JSON.stringify(c.dataset)).catch(() => ''));
   throw error;
 } finally {
   await browser.close();
-  if (deviceServer) { deviceServer.closeAllConnections(); await new Promise((resolve) => deviceServer.close(resolve)); }
   await new Promise((resolve) => server.close(resolve));
 }

@@ -21,7 +21,7 @@ import { WebcamCalibration } from './webcamCalibration.js';
  */
 
 export const COUNTDOWN_MS = 3000;
-// Live poses can arrive this late (Android's processing, Wi-Fi) and still count.
+// Live poses can arrive this late (camera and pose-tracking delay) and still count.
 export const LATE_ALLOWANCE_MS = 750;
 // The ready check: every player tracked and calibrated for this long starts the countdown.
 export const READY_HOLD_MS = 1000;

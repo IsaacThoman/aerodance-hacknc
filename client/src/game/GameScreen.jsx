@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import {
-  FONT, drawCaps, drawGlassCircle, drawGlassPanel, drawHeader, drawHeadline as headline, drawPill, drawPlayerLeds, drawProgress, drawShadowText, ellipsize, ICONS,
+  FONT, drawCaps, drawGlassCircle, drawGlassPanel, drawHeader, drawHeadline as headline, drawPill, drawProgress, drawShadowText, ellipsize, ICONS,
 } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
-import { playUISound } from '../audio/uiSounds.js';
 import { COUNTDOWN_MS, READY_HOLD_MS } from './GameSession.js';
 import { WEBCAM_STILL_MS } from './webcamCalibration.js';
 import { drawWebcamPreview } from '../../../packages/pose/browser/preview.js';
@@ -23,9 +22,9 @@ import {
  *              (or Start now)
  *   countdown  3, 2, 1 from the song's scheduled start
  *   playing    each player's score, combo and judgements under their live character, the
- *              song's progress, and a pause button (Escape, the remote's B, a hidden tab)
+ *              song's progress, and a pause button (Escape or a hidden tab)
  *   paused     Resume (with a fresh countdown), Restart, Song select
- *   results    hands the overlay to ResultsScreen, shared with finished battles
+ *   results    hands the overlay to ResultsScreen
  *
  * The canvas reports data-game-phase, -game-countdown, -game-time-ms and -game-scores for tests.
  *
@@ -82,7 +81,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
   const gl = useThree((state) => state.gl);
   const props = useRef({});
   props.current = { visible, blocked, session, onQuit, onRetry };
-  const st = useRef({ alpha: 0, popups: [], reported: '', countdownShown: null }).current;
+  const st = useRef({ alpha: 0, popups: [], reported: '' }).current;
 
   const live = () => props.current.visible && !props.current.blocked && phase() !== 'results' && st.alpha > 0.3;
   const phase = () => props.current.session?.phase ?? 'loading';
@@ -94,12 +93,12 @@ export default function GameScreen({ visible = false, blocked = false, session, 
     widgets: () => {
       const ph = phase();
       if (['ready', 'calibrating', 'loading', 'error'].includes(ph)) {
-        const list = [{ id: 'quit', circle: GAME_READY_BACK, sound: 'back' }];
+        const list = [{ id: 'quit', circle: GAME_READY_BACK }];
         if (ph === 'ready' && !props.current.session.webcamCalibration) list.push({ id: 'start', rect: GAME_READY_START });
         return list;
       }
       if (ph === 'countdown' || ph === 'playing') return [{ id: 'pause', circle: GAME_PAUSE, nav: false }];
-      if (ph === 'paused') return [{ id: 'resume', rect: GAME_RESUME }, { id: 'restart', rect: GAME_RESTART }, { id: 'quit', rect: GAME_QUIT, sound: 'back' }];
+      if (ph === 'paused') return [{ id: 'resume', rect: GAME_RESUME }, { id: 'restart', rect: GAME_RESTART }, { id: 'quit', rect: GAME_QUIT }];
       return [];
     },
     onActivate: (wdg, s) => {
@@ -117,23 +116,13 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       const session = props.current.session;
       const ph = phase();
       if (e.key === 'Escape') {
-        if (ph === 'countdown' || ph === 'playing') { playUISound('back'); session.pause(); }
-        else if (ph === 'paused') { playUISound('select'); session.resume(); }
-        else if (['loading', 'calibrating', 'ready', 'error'].includes(ph)) { playUISound('back'); props.current.onQuit?.(); }
+        if (ph === 'countdown' || ph === 'playing') session.pause();
+        else if (ph === 'paused') session.resume();
+        else if (['loading', 'calibrating', 'ready', 'error'].includes(ph)) props.current.onQuit?.();
         else return;
       } else return;
       e.preventDefault();
       s.invalidate();
-    },
-    onBack: (s) => {
-      const session = props.current.session;
-      const ph = phase();
-      if (ph === 'countdown' || ph === 'playing') session.pause();
-      else if (ph === 'paused') session.resume();
-      else if (['loading', 'calibrating', 'ready', 'error'].includes(ph)) props.current.onQuit?.();
-      else return false;
-      s.invalidate();
-      return true;
     },
     update: (dt, s) => {
       const p = props.current;
@@ -158,12 +147,6 @@ export default function GameScreen({ visible = false, blocked = false, session, 
       };
       const json = JSON.stringify(report);
       if (json !== st.reported) { st.reported = json; Object.assign(gl.domElement.dataset, report); }
-      // A tick for each new count in the countdown.
-      const n = session.phase === 'countdown' ? Math.ceil(session.countdownMs() / 1000) : null;
-      if (n !== st.countdownShown) {
-        st.countdownShown = n;
-        if (n) playUISound('hover');
-      }
     },
     opacity: () => st.alpha,
     draw: (g, s) => {
@@ -188,8 +171,7 @@ export default function GameScreen({ visible = false, blocked = false, session, 
         const xs = session.playerCount === 2 ? [580, 1020] : [800];
         calibration.players.forEach((status, id) => {
           const [label, color] = CALIBRATION_STATUS[status];
-          drawPlayerLeds(g, xs[id] - 85, 748, { player: id + 1, glow: ['holding', 'ready'].includes(status) ? 1 : 0.35, scale: 0.36 });
-          drawCaps(g, `PLAYER ${id + 1}`, xs[id] - 40, 750, { size: 18 });
+          drawCaps(g, `PLAYER ${id + 1}`, xs[id], 750, { size: 18, align: 'center' });
           drawShadowText(g, label, xs[id], 784, { size: 22, weight: 700, align: 'center', color });
         });
         drawProgress(g, GAME_CALIBRATION_PROGRESS, calibration.progress);

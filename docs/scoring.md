@@ -1,7 +1,6 @@
 # How scores are calculated
 
-This is the scoring decision document the [integration plan](android-game-integration-plan.md)
-asks for. It describes scorer version 1 (`SCORER_VERSION` in
+This document describes scorer version 1 (`SCORER_VERSION` in
 [`packages/score/scorer.js`](../packages/score/scorer.js)). Any change that would move
 scores must bump that version; best scores are saved per version.
 
@@ -22,16 +21,11 @@ which drives the pop-ups and the combo.
   ineligible (`quality.scoreEligible`) and the track's `unscorableIntervals` never count.
 - **Live poses.** Every pose record from the pose source, placed at the song position
   that was audible when the camera captured it, not when the pose arrived:
-  - Android: the frame time `frameReceivedTimeMs` mapped onto the browser clock, less
-    `LATENCY_EXTRA_MS` (10 ms). The mapping comes from the stream alone
-    ([`client/src/pose/streamClock.js`](../client/src/pose/streamClock.js)): the
-    smallest arrival-minus-`resultTimeMs` seen is the clock offset plus the fastest
-    delivery, so a pose delayed by Wi-Fi or delivered in a burst keeps its real time.
-    The estimate follows clock drift of up to 200 ppm and resets on each connection.
+  - Webcam: the browser time the video frame was observed (`frameBrowserTimeMs`).
   - The browser time then goes through the song player's audible clock (`songTimeAt`,
     from `AudioContext.getOutputTimestamp`, or `currentTime - outputLatency`).
 - **Late arrivals.** Intervals are scored 750 ms behind the song (`LATE_ALLOWANCE_MS`),
-  so poses delayed by Wi-Fi or processing still count. The results wait for the same
+  so poses delayed by camera buffering or pose tracking still count. The results wait for the same
   allowance after the song ends.
 
 ## Features
@@ -69,7 +63,7 @@ For interval time `t`, the live directions at `t` (interpolated between samples 
   interval score is 60% pose and 40% movement.
 - **Timing.** Shifts beyond ±50 ms are multiplied down linearly, to 0.85 at ±150 ms.
   The best shifted score is kept, and its shift feeds the average timing offset
-  (`meanOffsetMs`, the battle's `sync`).
+  (`meanOffsetMs`).
 
 An interval is **scorable** when the reference shows at least half of the total limb
 weight. This is decided from the reference alone, so missing live tracking never shrinks
@@ -90,16 +84,10 @@ limb weight is **lost**: it scores 0.
 - **Coverage.** The share of scored intervals where the player was tracked. Below 80%,
   the results screen says so.
 
-## Battles
-
-A battle reports each seat's `score`, `pops` (Perfect judgements), `sync` (1 minus the
-mean timing offset over 150 ms, from 0 to 1) and `flair` (best combo). The highest
-score wins. A seat with no result reports zero so the battle settles straight away.
-
 ## Evidence and limits
 
 [`packages/score/tests/scorer.test.js`](../packages/score/tests/scorer.test.js) uses the
-shipped routine's real tracking data. It checks these orderings:
+captured test routine's real tracking data. It checks these orderings:
 
 | Attempt (both tracks) | Scorer v1 |
 | --- | --- |
@@ -119,9 +107,7 @@ mode does.
 These numbers come from synthetic attempts built out of the reference itself. The
 thresholds (σ, the points curve, the judgement cut-offs) have **not yet been tuned
 against people dancing**: no human-labelled set of attempts exists yet, which is the
-next step the integration plan calls for. Play with `?record` in the URL to download
+next step. Play with `?record` in the URL to download
 each song's live poses as a recording. Replay one with
 `?input=recording&recording=<url>`, and score a batch of recordings to compare against
-human rankings. `LATENCY_EXTRA_MS` (10 ms) is a working estimate for the network and
-camera delay not covered by the detection time, until it is measured with an external
-timing test. It must never be tuned to raise scores.
+human rankings. Timing allowances must never be tuned to raise scores.

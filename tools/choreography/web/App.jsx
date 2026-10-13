@@ -114,9 +114,6 @@ export default function App() {
     [peaks, setPeaks] = useState([]),
     [activeTake, setActiveTake] = useState(""),
     [reason, setReason] = useState("Reviewed against audio and source pose"),
-    [ip, setIp] = useState(
-      () => localStorage.getItem("aerodance-client-ip") || "192.168.43.1",
-    ),
     [connection, setConnection] = useState({
       status: "disconnected",
       snapshot: null,
@@ -134,7 +131,6 @@ export default function App() {
   viewRef.current = view;
   assetsRef.current = takes;
   takeRef.current = takes.get(activeTake) || null;
-  const [inputMode, setInputMode] = useState('android');
   const [videoFile, setVideoFile] = useState(null);
   const liveHistory = useRef(new LiveCalibration());
   const [calibrationCounts, setCalibrationCounts] = useState([0, 0]);
@@ -759,9 +755,7 @@ export default function App() {
       setMode("both");
       setRecordCount(0);
       setNotice(
-        inputMode === 'webcam'
-          ? 'Webcam frames use a browser/audio clock anchor. Review remaining camera buffering and audio output delay before export.'
-          : 'Camera processing delay is compensated automatically. Review alignment for remaining camera and network delay before export.',
+        'Webcam frames use a browser/audio clock anchor. Review remaining camera buffering and audio output delay before export.',
       );
     });
   }
@@ -1039,7 +1033,7 @@ export default function App() {
             <span>⌁</span>
             <div>
               Import pose recording
-              <small>JSON, Android NDJSON or project ZIP</small>
+              <small>JSON, NDJSON or project ZIP</small>
             </div>
             <input
               type="file"
@@ -1211,61 +1205,39 @@ export default function App() {
           </div>
           <div className="capture">
             <div className="section-heading">
-              {inputMode === 'webcam' ? 'WEBCAM CAPTURE' : 'ANDROID CAPTURE'}{" "}
+              WEBCAM CAPTURE{" "}
               <i
                 className={`dot ${connection.status === "connected" ? "green" : ""}`}
               />
             </div>
-            <label>Pose source
-              <select aria-label="Pose source" value={inputMode} disabled={recording || busy}
-                onChange={e => { source.setMode(e.target.value); setInputMode(e.target.value); }}>
-                <option value="android">Android</option><option value="webcam">Webcam</option>
-              </select>
-            </label>
-            {inputMode === 'webcam' ? <WebcamControls source={source} connection={connection} disabled={recording || busy} /> : <label>
-              Controller IP
-              <input
-                aria-label="Android IP address"
-                value={ip}
-                disabled={recording || busy}
-                onChange={(e) => setIp(e.target.value)}
-              />
-            </label>}
+            <WebcamControls source={source} connection={connection} disabled={recording || busy} />
             <button
               disabled={recording || busy}
               onClick={() =>
                 execute(async () => {
                   if (
-                    [
-                      "connected",
-                      "connecting",
-                      "initializing",
-                      "reconnecting",
-                    ].includes(connection.status)
+                    ["connected", "connecting", "initializing"].includes(
+                      connection.status,
+                    )
                   ) {
                     source.disconnect();
                     return;
                   }
                   await source.setPlayerCount(2);
-                  await source.connect(inputMode === 'android' ? ip : undefined);
+                  await source.connect();
                 })
               }
             >
               {connection.status === "connected"
                 ? "Disconnect"
-                : ["connecting", "initializing", "reconnecting"].includes(
-                      connection.status,
-                    )
+                : ["connecting", "initializing"].includes(connection.status)
                   ? "Cancel connection"
-                : inputMode === 'webcam' ? 'Start camera' : 'Connect Android'}
+                  : "Start camera"}
             </button>
             <p className="connection-status">
               {connection.status} ·{" "}
-              {connection.message || "Two players, one controller"}
+              {connection.message || "Two players, one camera"}
             </p>
-            {inputMode === 'android' && <small className="origin">
-              Allowed Origin: <code>{location.origin}</code>
-            </small>}
             <div className="tracking">
               {[0, 1].map((id) => (
                 <span key={id}>
@@ -1279,7 +1251,7 @@ export default function App() {
                 </span>
               ))}
             </div>
-            {inputMode === 'webcam' && <div className="body-calibration">
+            <div className="body-calibration">
               <button disabled={recording || busy || connection.status !== 'connected'}
                 onClick={() => {
                   liveHistory.current.reset();
@@ -1290,7 +1262,7 @@ export default function App() {
               <small role="status">{calibrationCounts.every(count => count >= 20)
                 ? 'Body calibration ready · distance compensation on'
                 : `Stand upright with feet visible · P1 ${calibrationCounts[0]}/20 · P2 ${calibrationCounts[1]}/20`}</small>
-            </div>}
+            </div>
             <label>
               Recording delay (seconds)
               <input
@@ -1401,7 +1373,7 @@ export default function App() {
             }
             tracks={
               showingLive
-                ? liveTracks || (inputMode === "webcam" ? [] : fallbackTracks)
+                ? liveTracks || []
                 : showingTake
                   ? previewTracks || fallbackTracks
                   : compiled.data?.tracks || fallbackTracks

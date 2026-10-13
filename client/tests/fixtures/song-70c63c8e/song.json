@@ -3,8 +3,8 @@
   "schemaVersion": 1,
   "songId": "song-70c63c8e",
   "bundleRevision": 38,
-  "title": "Rockefeller Street Bad Test",
-  "artist": "Nightcore",
+  "title": "Test routine",
+  "artist": "aerodance tests",
   "songwriters": [],
   "choreographers": [
     "Austin Mann"
@@ -12,14 +12,14 @@
   "difficulty": "normal",
   "tags": [],
   "bpm": null,
-  "description": "Cult classic",
+  "description": "",
   "rights": {
     "audio": {
-      "license": "Free",
+      "license": "test",
       "attribution": ""
     },
     "choreography": {
-      "license": "Free",
+      "license": "test",
       "attribution": ""
     }
   },

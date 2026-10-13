@@ -1,33 +1,30 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
-import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawPlayerLeds, drawTitle, pill } from '../ui/draw.js';
+import { FONT, TAU, drawGlassPanel, drawHeader, drawPill, drawTitle, pill } from '../ui/draw.js';
 import useCanvasUI from '../ui/useCanvasUI.js';
-import { playUISound } from '../audio/uiSounds.js';
-import RemoteDock from '../remote/RemoteDock.jsx';
-import { BACK, BATTLE, ONE_PLAYER, SETTINGS, START, TITLE, TWO_PLAYERS } from './layout.js';
+import FullscreenButton from './FullscreenButton.jsx';
+import { BACK, ONE_PLAYER, SETTINGS, START, TITLE, TWO_PLAYERS } from './layout.js';
 
 /**
  * Title menu drawn in-engine (see ui/useCanvasUI.js), laid out in 16:9 design units and
  * drawn after the world (useFrame priority 2).
  *
- * Screens: main (Start, Battle, Settings), players (one / two players, then Song Select:
+ * Screens: main (Start, Settings), players (one / two players, then Song Select:
  * game/SongSelect.jsx), settings (sound: Master / Music / Effects volume, Menu music and Mute
- * all, which audio/mixer.js applies; and Wii cursor, the Wii hand in place of the mouse
- * pointer). Battle hands off to the battle lobby (battle/BattleScreen.jsx).
- * The main screen also shows the remote and fullscreen bubbles in the corner.
+ * all, which audio/mixer.js applies). The main screen also shows the fullscreen bubble in the
+ * corner.
  *
- * Input comes from the mouse/touch on the canvas, the keyboard (arrows, Enter, Escape) or a
- * paired phone remote (remote/remoteLink.js; B goes back). `blocked` (the Connect Client card
- * is open) holds input. onScreenChange hears which screen is showing (Settings carries the
- * Connect Client pill). The canvas reports data-menu-screen / data-menu-ready for tests.
+ * Input comes from the mouse/touch on the canvas or the keyboard (arrows, Enter, Escape).
+ * `blocked` (the Connect Client card is open) holds input. onScreenChange hears which screen
+ * is showing (Settings carries the Connect Client pill). The canvas reports
+ * data-menu-screen / data-menu-ready for tests.
  *
- * <MainMenu visible initialScreen="main" onStart={(playerCount) => ...} onBattle={() => ...}
- *   onScreenChange={setShown} sound={sound} onSoundChange={setSound} wiiCursor={wiiCursor}
- *   onWiiCursorChange={setWiiCursor} />
+ * <MainMenu visible initialScreen="main" onStart={(playerCount) => ...}
+ *   onScreenChange={setShown} sound={sound} onSoundChange={setSound} />
  */
 
 // Design space is 1600x900 (16:9); the layout is in ./layout.js.
-const PANEL = { x: 128, y: 540, w: 600, h: 344 };
+const PANEL = { x: 128, y: 540, w: 600, h: 294 };
 const SLIDERS = [
   { key: 'master', label: 'Master' },
   { key: 'music', label: 'Music' },
@@ -38,7 +35,6 @@ const SLIDERS = [
 const TOGGLES = [
   { key: 'menuMusic', label: 'Menu music', audio: true, on: (p) => p.sound.menuMusic !== false },
   { key: 'muted', label: 'Mute all', on: (p) => !!p.sound.muted },
-  { key: 'wiiCursor', label: 'Wii cursor', on: (p) => p.wiiCursor !== false },
 ];
 const ROW_Y = (i) => PANEL.y + 46 + i * 50;
 const SWITCH = { w: 84, h: 42, x: PANEL.x + PANEL.w - 40 - 84 };
@@ -47,7 +43,6 @@ const TRACK = { x0: PANEL.x + 190, x1: PANEL.x + PANEL.w - 110 };
 const WIDGETS = {
   main: [
     { id: 'start', rect: START },
-    { id: 'battle', rect: BATTLE },
     { id: 'settings', rect: SETTINGS },
   ],
   players: [
@@ -58,7 +53,7 @@ const WIDGETS = {
   settings: [
     { id: 'back', circle: BACK },
     ...SLIDERS.map((sl, i) => ({ id: sl.key, drag: true, rect: { x: TRACK.x0 - 24, y: ROW_Y(i) - 25, w: TRACK.x1 - TRACK.x0 + 48, h: 50 } })),
-    ...TOGGLES.map((tg, i) => ({ id: tg.key, toggle: tg, sound: false, rect: { x: PANEL.x + 16, y: ROW_Y(SLIDERS.length + i) - 24, w: PANEL.w - 32, h: 48 } })),
+    ...TOGGLES.map((tg, i) => ({ id: tg.key, toggle: tg, rect: { x: PANEL.x + 16, y: ROW_Y(SLIDERS.length + i) - 24, w: PANEL.w - 32, h: 48 } })),
   ],
 };
 // Where back / Escape leads from each submenu.
@@ -143,13 +138,12 @@ function drawSettingsPanel(g, p, hover) {
 }
 
 export default function MainMenu({
-  visible = true, blocked = false, initialScreen = 'main', onStart, onBattle, onSettingsOpen, onScreenChange, sound, onSoundChange,
-  wiiCursor = true, onWiiCursorChange,
+  visible = true, blocked = false, initialScreen = 'main', onStart, onSettingsOpen, onScreenChange, sound, onSoundChange,
 }) {
   const gl = useThree((state) => state.gl);
-  const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null, drawnWii: null });
+  const menu = useRef({ spin: 0, gearAngle: 0, alpha: 0, screen: 'main', next: 'main', swap: 1, drawnSound: null });
   const props = useRef({});
-  props.current = { visible, blocked, onStart, onBattle, onSettingsOpen, onScreenChange, sound, onSoundChange, wiiCursor, onWiiCursorChange };
+  props.current = { visible, blocked, onStart, onSettingsOpen, onScreenChange, sound, onSoundChange };
 
   const m = menu.current;
   const go = (screen) => {
@@ -170,24 +164,15 @@ export default function MainMenu({
     active: live,
     keyNav: true,
     widgets: () => WIDGETS[m.screen],
-    onDrag: (wdg, p) => {
-      const v = sliderValue(p.x);
-      // A soft tick every 10%, like a notched dial.
-      if (Math.round(v * 10) !== Math.round((props.current.sound?.[wdg.id] ?? 0) * 10)) playUISound('tick');
-      setSound({ [wdg.id]: v });
-    },
+    onDrag: (wdg, p) => setSound({ [wdg.id]: sliderValue(p.x) }),
     onActivate: (wdg, s) => {
       if (wdg.toggle) {
-        const on = !wdg.toggle.on(props.current);
-        playUISound(on ? 'toggleOn' : 'toggleOff');
-        if (wdg.id === 'wiiCursor') props.current.onWiiCursorChange?.(on);
-        else setSound({ [wdg.id]: on });
+        setSound({ [wdg.id]: !wdg.toggle.on(props.current) });
         s.invalidate();
         return;
       }
       switch (wdg.id) {
         case 'start': go('players'); break;
-        case 'battle': props.current.onBattle?.(); break;
         case 'settings': m.spin += Math.PI / 2; go('settings'); props.current.onSettingsOpen?.(); break;
         case 'back': go(PARENT[m.screen]); break;
         case 'one': props.current.onStart?.(1); break;
@@ -197,13 +182,7 @@ export default function MainMenu({
       s.invalidate();
     },
     onKey: (e, s) => {
-      if (e.key === 'Escape' && !e.repeat && live() && PARENT[m.screen]) { playUISound('back'); go(PARENT[m.screen]); s.invalidate(); }
-    },
-    onBack: (s) => {
-      if (!PARENT[m.screen]) return false;
-      go(PARENT[m.screen]);
-      s.invalidate();
-      return true;
+      if (e.key === 'Escape' && !e.repeat && live() && PARENT[m.screen]) { go(PARENT[m.screen]); s.invalidate(); }
     },
     update: (dt, s) => {
       const shown = props.current.visible;
@@ -218,7 +197,7 @@ export default function MainMenu({
       }
       m.alpha = s.ease(m.alpha, shown ? 1 : 0, shown ? 3 : 6);
       m.gearAngle = s.ease(m.gearAngle, m.spin + (s.hover.settings ?? 0) * 0.35, 8);
-      if (props.current.sound !== m.drawnSound || props.current.wiiCursor !== m.drawnWii) s.invalidate();
+      if (props.current.sound !== m.drawnSound) s.invalidate();
       if (m.screen !== m.reported) { m.reported = m.screen; props.current.onScreenChange?.(m.screen); }
       const { dataset } = gl.domElement;
       dataset.menuScreen = m.screen;
@@ -227,7 +206,6 @@ export default function MainMenu({
     opacity: () => m.alpha,
     draw: (g, s) => {
       m.drawnSound = props.current.sound;
-      m.drawnWii = props.current.wiiCursor;
       drawTitle(g, TITLE);
 
       const t = m.swap;
@@ -238,16 +216,11 @@ export default function MainMenu({
       const press = (id) => s.press * (h[id] ?? 0);
       if (m.screen === 'main') {
         drawPill(g, START, { label: 'Start', icon: 'play', hover: h.start ?? 0, press: press('start') });
-        drawPill(g, BATTLE, { label: 'Battle', icon: 'duo', hover: h.battle ?? 0, press: press('battle') });
         drawPill(g, SETTINGS, { label: 'Settings', icon: 'gear', hover: h.settings ?? 0, press: press('settings'), angle: m.gearAngle });
       } else if (m.screen === 'players') {
         drawHeader(g, BACK, 'PLAYERS', h.back ?? 0);
-        // Each pill shows the Wii-remote LEDs the players will get.
-        [[ONE_PLAYER, 'one', 'One Player', 'solo', [1]], [TWO_PLAYERS, 'two', 'Two Players', 'pair', [1, 2]]].forEach(([rect, id, label, icon, leds]) => {
-          const hv = h[id] ?? 0;
-          drawPill(g, rect, { label, icon, hover: hv, press: press(id) });
-          drawPlayerLeds(g, rect.x + rect.w - 92, rect.y + rect.h / 2 - hv * 3 + press(id) * 3, { player: leds, glow: 0.4 + hv * 0.6, scale: 0.55 });
-        });
+        drawPill(g, ONE_PLAYER, { label: 'One Player', icon: 'solo', hover: h.one ?? 0, press: press('one') });
+        drawPill(g, TWO_PLAYERS, { label: 'Two Players', icon: 'pair', hover: h.two ?? 0, press: press('two') });
       } else {
         drawHeader(g, BACK, 'SETTINGS', h.back ?? 0);
         drawSettingsPanel(g, props.current, h);
@@ -264,5 +237,5 @@ export default function MainMenu({
     ui.invalidate();
   }, [visible, initialScreen, m, ui]);
 
-  return <RemoteDock wiiCursor={wiiCursor} visible={() => props.current.visible && !props.current.blocked && m.screen === 'main' && m.next === 'main'} />;
+  return <FullscreenButton visible={() => props.current.visible && !props.current.blocked && m.screen === 'main' && m.next === 'main'} />;
 }

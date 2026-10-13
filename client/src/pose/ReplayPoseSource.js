@@ -2,8 +2,8 @@ import { sampleSong } from '../../../packages/pose/song.js';
 
 /*
  * A pose source that plays back poses instead of tracking anyone, with the same surface as
- * AndroidPoseSource (subscribe, subscribeRecords, setPlayerCount, connect, disconnect), so
- * the game, its tests and demos run without the board.
+ * the webcam source (subscribe, subscribeRecords, setPlayerCount, connect, disconnect), so
+ * the game, its tests and demos run without a camera.
  *
  *   ghost       dances the song's own choreography (each player copies their track), with
  *               a little tracking noise and an optional lag: an autoplay that should score

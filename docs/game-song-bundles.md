@@ -28,8 +28,8 @@ difficulty, stage, optional cover, and a SHA-256 pin for `song.json`. The previe
 opens on the song's stage, or Open Reef when it has none. Re-exported songs
 are discovered with their updated revision. Install the complete directory before
 opening Song Select. The game does not extract ZIP files or publish editor
-projects. The local songs directory includes the exported “Rockefeller Street Bad
-Test” routine, available in both preview modes after rebuilding.
+projects. The repo ships no songs; `client/public/songs/` holds only the generated
+catalog until you add exported folders.
 
 Catalog paths resolve relative to the catalog; media paths resolve relative to
 `song.json`. Only safe relative file paths are accepted. The loader checks
@@ -58,9 +58,9 @@ Code:
 
 The menu and `/dance/` asset now uses `aerodance.take`, schema version 1, with
 `durationMs`, unmirrored `input`, and `samples: [{takeTimeMs, poses, quality,
-legacyConfidence}]`. Pose entries match Android's `{playerId, landmarks}` with
+legacyConfidence}]`. Pose entries use the `{playerId, landmarks}` shape with
 33 `{x,y,z,visibility,presence}` landmarks. Capture clocks remain separate from
-Android wire envelopes; no session/sequence/device timestamps are invented.
+wire envelopes; no session/sequence/device timestamps are invented.
 
 The old tuple's fourth component combined visibility/presence. Migration sets
 both new fields to `null`, retains every combined value in `legacyConfidence`,

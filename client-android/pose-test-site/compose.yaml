@@ -1,7 +1,0 @@
-services:
-  pose-test:
-    image: nginx:1.28.0-alpine
-    ports:
-      - "8081:80"
-    volumes:
-      - ./dist:/usr/share/nginx/html:ro
